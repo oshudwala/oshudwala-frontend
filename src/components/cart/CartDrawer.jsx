@@ -124,11 +124,11 @@ export const CartDrawer = () => {
                     <div className="flex items-center justify-between mt-3">
                       <div className="flex items-baseline gap-1.5">
                         <span className="font-bold text-forest-700 text-sm">
-                          ৳{item.price * item.quantity}
+                          ₹{item.price * item.quantity}
                         </span>
                         {item.quantity > 1 && (
                           <span className="text-[11px] text-brandText-muted">
-                            (৳{item.price} each)
+                            (₹{item.price} each)
                           </span>
                         )}
                       </div>
@@ -166,23 +166,23 @@ export const CartDrawer = () => {
               <div className="space-y-1.5 text-xs text-brandText-secondary">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-brandText-main">৳{subtotal}</span>
+                  <span className="font-semibold text-brandText-main">₹{subtotal}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Delivery Fee</span>
                   <span className="font-semibold text-brandText-main">
-                    {deliveryFee === 0 ? <span className="text-emerald-600 font-bold">FREE</span> : `৳${deliveryFee}`}
+                    {deliveryFee === 0 ? <span className="text-emerald-600 font-bold">FREE</span> : `₹${deliveryFee}`}
                   </span>
                 </div>
                 {appliedCoupon && (
                   <div className="flex justify-between text-emerald-600 font-medium">
                     <span>Coupon ({appliedCoupon.code})</span>
-                    <span>-৳{discount}</span>
+                    <span>-₹{discount}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm font-bold text-forest-800 pt-2 border-t border-brandBorder-subtle">
                   <span>Total Amount</span>
-                  <span className="text-forest-700 text-base">৳{total}</span>
+                  <span className="text-forest-700 text-base">₹{total}</span>
                 </div>
               </div>
 

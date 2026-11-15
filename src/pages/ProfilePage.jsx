@@ -33,9 +33,9 @@ export const ProfilePage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name || 'Ayon Paul');
   const [email, setEmail] = useState(user?.email || 'ayon@oshudwala.com');
-  const [phone, setPhone] = useState(user?.phone || '+880 1712-345678');
+  const [phone, setPhone] = useState(user?.phone || '+91 98301 23456');
   const [bloodGroup, setBloodGroup] = useState(user?.bloodGroup || 'O+');
-  const [emergencyContact, setEmergencyContact] = useState(user?.emergencyContact || '+880 1799-887766');
+  const [emergencyContact, setEmergencyContact] = useState(user?.emergencyContact || '+91 98319 88776');
 
   // Saved Addresses state
   const [addresses, setAddresses] = useState([
@@ -43,15 +43,15 @@ export const ProfilePage = () => {
       id: 'addr-1',
       tag: 'Home',
       recipient: 'Ayon Paul',
-      phone: '+880 1712-345678',
-      address: 'House 24, Road 7, Dhanmondi, Dhaka-1205'
+      phone: '+91 98301 23456',
+      address: 'Flat 4B, Greenwood Park, Salt Lake Sector 1, Kolkata-700064'
     },
     {
       id: 'addr-2',
       tag: 'Office',
       recipient: 'Ayon Paul',
-      phone: '+880 1712-345678',
-      address: 'Level 5, Concord Tower, Banani C/A, Dhaka-1213'
+      phone: '+91 98301 23456',
+      address: 'Infinity Benchmark, 10th Floor, Sector V, Salt Lake, Kolkata-700091'
     }
   ]);
 
@@ -284,7 +284,7 @@ export const ProfilePage = () => {
                   </div>
                   <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                     <p className="text-brandText-secondary">Phone Number</p>
-                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.phone || '+880 1712-345678'}</p>
+                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.phone || '+91 98301 23456'}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                     <p className="text-brandText-secondary">Blood Group</p>
@@ -292,7 +292,7 @@ export const ProfilePage = () => {
                   </div>
                   <div className="sm:col-span-2 p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                     <p className="text-brandText-secondary">Emergency Contact</p>
-                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.emergencyContact || '+880 1799-887766'}</p>
+                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.emergencyContact || '+91 98319 88776'}</p>
                   </div>
                 </div>
               )}
@@ -406,7 +406,7 @@ export const ProfilePage = () => {
                 <p className="text-xs text-forest-200">Current Balance</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-4xl font-extrabold">{user?.walletBalance || 250}</span>
-                  <span className="text-sm font-bold text-emerald-300">Oshud Coins (৳{user?.walletBalance || 250}.00)</span>
+                  <span className="text-sm font-bold text-emerald-300">Oshud Coins (₹{user?.walletBalance || 250}.00)</span>
                 </div>
                 <p className="text-xs text-forest-200 pt-1">
                   Applicable instantly at checkout. Earn 50 Coins for every friend you refer.
@@ -487,7 +487,7 @@ export const ProfilePage = () => {
             <textarea
               required
               rows={2}
-              placeholder="House, Road, Area, Dhaka postal code..."
+              placeholder="Flat, Road, Area, Kolkata/Durgapur/Hooghly PIN code..."
               value={newAddressText}
               onChange={(e) => setNewAddressText(e.target.value)}
               className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"

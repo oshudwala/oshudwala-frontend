@@ -146,7 +146,7 @@ export const OrdersPage = () => {
                     )}
                     <div className="text-right">
                       <p className="text-xs text-brandText-secondary">Total Paid</p>
-                      <p className="font-heading font-extrabold text-forest-800 text-lg">৳{order.total}</p>
+                      <p className="font-heading font-extrabold text-forest-800 text-lg">₹{order.total}</p>
                     </div>
                   </div>
                 </div>
@@ -255,7 +255,7 @@ export const OrdersPage = () => {
                             <span className="text-brandText-muted ml-2">x{item.quantity}</span>
                           </div>
                           <span className="font-bold text-forest-700">
-                            ৳{item.price * item.quantity}
+                            ₹{item.price * item.quantity}
                           </span>
                         </div>
                       ))}

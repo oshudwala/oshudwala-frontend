@@ -93,7 +93,7 @@ export const ProductDetailPage = () => {
             <div>
               <p className="font-bold">100% Genuine Medicine</p>
               <p className="text-[11px] text-brandText-secondary">
-                Dispensed by licensed pharmacies under DGDA regulations.
+                Dispensed by licensed pharmacies under CDSCO & West Bengal regulations.
               </p>
             </div>
           </div>
@@ -171,15 +171,15 @@ export const ProductDetailPage = () => {
           <div className="pt-2 border-t border-brandBorder-subtle space-y-4">
             <div className="flex items-baseline gap-3">
               <span className="text-3xl font-heading font-extrabold text-forest-800">
-                ৳{product.price}
+                ₹{product.price}
               </span>
               {product.mrp > product.price && (
                 <>
                   <span className="text-sm text-brandText-muted line-through">
-                    ৳{product.mrp}
+                    ₹{product.mrp}
                   </span>
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    Save ৳{product.mrp - product.price}
+                    Save ₹{product.mrp - product.price}
                   </span>
                 </>
               )}
@@ -214,7 +214,7 @@ export const ProductDetailPage = () => {
                 onClick={handleAddToCart}
                 className="flex-1 shadow-card"
               >
-                Add To Cart (৳{product.price * quantity})
+                Add To Cart (₹{product.price * quantity})
               </Button>
             </div>
           </div>

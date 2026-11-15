@@ -28,7 +28,7 @@ export const UserMenuDropdown = ({ isOpen, onClose }) => {
     { label: 'My Orders', icon: ShoppingBag, path: '/orders' },
     { label: 'My Prescriptions', icon: FileText, path: '/profile?tab=prescriptions' },
     { label: 'Refer & Earn Coins', icon: Gift, path: '/refers' },
-    { label: 'Oshud Wallet (৳250)', icon: Wallet, path: '/profile?tab=wallet' },
+    { label: 'Oshud Wallet (₹250)', icon: Wallet, path: '/profile?tab=wallet' },
     { label: 'Account Settings', icon: Settings, path: '/profile?tab=settings' },
   ];
 
@@ -45,8 +45,13 @@ export const UserMenuDropdown = ({ isOpen, onClose }) => {
           className="w-10 h-10 rounded-full object-cover border-2 border-forest-500/40"
         />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-forest-800 truncate">
-            {user?.name || "Ayon Paul"}
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-bold text-forest-800 truncate">
+              {user?.name || "Ayon Paul"}
+            </p>
+          </div>
+          <p className="text-[10px] font-bold text-forest-600 uppercase tracking-wider">
+            {user?.role || 'patient'}
           </p>
           <p className="text-[11px] text-brandText-secondary truncate">
             {user?.email || "ayon@oshudwala.com"}

@@ -25,9 +25,9 @@ export const prescriptionService = {
         previewUrl: URL.createObjectURL(file),
         uploadedAt: new Date().toISOString(),
         status: "PENDING_VERIFICATION", // PENDING_VERIFICATION, VERIFIED, REJECTED
-        patientNotes: patientNotes || "Please dispatch generic alternatives if branded is unavailable.",
-        pharmacyName: preferredPharmacyId ? "MedPlus Pharmacy" : "Nearest Verified Pharmacy",
-        pharmacistReview: "Prescription queued for Registered Pharmacist A-grade verification.",
+        patientNotes: patientNotes || "Please dispense generic alternatives if branded medicine is unavailable.",
+        pharmacyName: preferredPharmacyId ? "MedPlus Pharmacy, Kolkata" : "Nearest Verified Pharmacy in West Bengal",
+        pharmacistReview: "Prescription queued for West Bengal Registered Pharmacist verification.",
         isMock: true
       };
 
@@ -43,14 +43,14 @@ export const prescriptionService = {
     const defaultList = [
       {
         id: "RX-841920",
-        fileName: "Dr_Priya_Sharma_Prescription.pdf",
+        fileName: "Dr_Priya_Sharma_Apollo_Prescription.pdf",
         fileSize: "1.4 MB",
         fileType: "application/pdf",
         uploadedAt: "2026-11-14T10:30:00.000Z",
         status: "VERIFIED",
-        patientNotes: "Deliver to Dhanmondi address",
-        pharmacyName: "MedPlus Pharmacy, Dhanmondi",
-        pharmacistReview: "Verified by Pharm. Kabir Hossain (Reg #A-1982). All medications available in stock."
+        patientNotes: "Deliver to Salt Lake Sector 1 address",
+        pharmacyName: "MedPlus Pharmacy, Salt Lake, Kolkata",
+        pharmacistReview: "Verified by WB Registered Pharmacist S. Banerjee (Reg #WBSPC-A-1982). All medications confirmed in stock."
       }
     ];
 

@@ -2,22 +2,22 @@ export const faqsData = [
   {
     id: "faq-1",
     question: "How can I order medicines through Oshud Wala?",
-    answer: "You can order medicines in two convenient ways: either search our medicine catalog, add items to your cart, and proceed to checkout; or simply use the 'Add Prescription' feature to upload a photo of your prescription. Our licensed pharmacist will review the prescription, prepare your order, and dispatch it to your doorstep via a temperature-controlled delivery rider."
+    answer: "You can order medicines in two convenient ways: either search our medicine catalog, add items to your cart, and proceed to checkout; or simply use the 'Add Prescription' feature to upload a photo of your prescription. Our licensed pharmacist in Kolkata, Durgapur, or your nearby West Bengal city will review the prescription, prepare your order, and dispatch it to your doorstep via a temperature-controlled delivery rider."
   },
   {
     id: "faq-2",
     question: "How do I upload a prescription?",
-    answer: "Click the prominent 'Add Prescription' button on the homepage or in the shop. You can upload an image (JPG, PNG) or a PDF file directly from your computer or phone. Make sure the doctor's name, patient details, medicine names, and dosage instructions are clearly visible. Once submitted, our registered pharmacist verifies the order before dispensing."
+    answer: "Click the prominent 'Add Prescription' button on the homepage or in the shop. You can upload an image (JPG, PNG) or a PDF file directly from your computer or phone. Make sure the doctor's name, registration number, patient details, medicine names, and dosage instructions are clearly visible. Once submitted, our registered pharmacist verifies the order before dispensing."
   },
   {
     id: "faq-3",
-    question: "Can I choose a specific pharmacy?",
-    answer: "Yes! Oshud Wala partners with verified, licensed local pharmacies. In the 'Featured Pharmacies' section or during checkout, you can browse pharmacies near your location (e.g. MedPlus, Wellness Forever, Care N Cure), check their delivery availability and ratings, and choose to fulfill your order from your preferred partner."
+    question: "Can I choose a specific pharmacy in West Bengal?",
+    answer: "Yes! Oshud Wala partners with verified, licensed local pharmacies across Kolkata, Durgapur, Hooghly, Howrah, and other districts. In the 'Featured Pharmacies' section or during checkout, you can browse pharmacies near your location (e.g. MedPlus, Wellness Forever, Care N Cure, Apollo Pharmacy), check their delivery availability and ratings, and choose to fulfill your order from your preferred partner."
   },
   {
     id: "faq-4",
     question: "How can I book a doctor appointment?",
-    answer: "Navigate to the 'Appointments' section or choose any doctor from the 'Featured Doctors' carousel. Review their credentials, clinic affiliations, and consultation fees, then click 'Book Appointment'. Pick your preferred date, available time slot, enter patient details, and receive an instant booking token with live queue tracking."
+    answer: "Navigate to the 'Appointments' section or choose any doctor from the 'Featured Doctors' carousel. Review their credentials, hospital affiliations (e.g. Apollo, Fortis, Belle Vue, The Mission Hospital), and consultation fees, then click 'Book Appointment'. Pick your preferred date, available time slot, enter patient details, and receive an instant booking token with live queue tracking."
   },
   {
     id: "faq-5",
@@ -32,11 +32,11 @@ export const faqsData = [
   {
     id: "faq-7",
     question: "Which payment methods are supported?",
-    answer: "We support Cash on Delivery (COD), popular Bangladeshi Mobile Financial Services (bKash, Nagad), and Visa / Mastercard debit and credit cards. When the backend payment gateway is configured, payments are processed securely through SSL-encrypted banking channels."
+    answer: "We support Cash on Delivery (COD), popular Indian UPI channels (Google Pay, PhonePe, Paytm), and Visa / Mastercard debit and credit cards. When the backend payment gateway is configured, payments are processed securely through RBI-compliant banking channels."
   },
   {
     id: "faq-8",
     question: "How can I contact customer support?",
-    answer: "Our healthcare helpline is available 24/7. You can contact us via our WhatsApp ordering line, send an email to support@oshudwala.com, or call our customer care hotline at 09612-OSHUD (67483). For immediate urgent assistance, click the 'Order On WhatsApp' button on the homepage."
+    answer: "Our healthcare helpline is available 24/7. You can contact us via our WhatsApp ordering line, send an email to support@oshudwala.com, or call our customer care hotline. For immediate urgent assistance, click the 'Order On WhatsApp' button on the homepage."
   }
 ];

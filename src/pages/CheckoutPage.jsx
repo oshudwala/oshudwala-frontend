@@ -39,15 +39,15 @@ export const CheckoutPage = () => {
       id: 'addr-1',
       tag: 'Home',
       recipient: user?.name || 'Ayon Paul',
-      phone: user?.phone || '+880 1712-345678',
-      address: 'House 24, Road 7, Dhanmondi, Dhaka-1205'
+      phone: user?.phone || '+91 98301 23456',
+      address: 'Flat 4B, Greenwood Park, Salt Lake Sector 1, Kolkata-700064'
     },
     {
       id: 'addr-2',
       tag: 'Office',
       recipient: user?.name || 'Ayon Paul',
-      phone: user?.phone || '+880 1712-345678',
-      address: 'Level 5, Concord Tower, Banani C/A, Dhaka-1213'
+      phone: user?.phone || '+91 98301 23456',
+      address: 'Infinity Benchmark, 10th Floor, Sector V, Salt Lake, Kolkata-700091'
     }
   ];
 
@@ -139,7 +139,7 @@ export const CheckoutPage = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-brandText-secondary">Total Paid / Payable:</span>
-              <span className="font-bold text-forest-800 text-sm">৳{placedOrderResult.total}</span>
+              <span className="font-bold text-forest-800 text-sm">₹{placedOrderResult.total}</span>
             </div>
           </div>
 
@@ -398,7 +398,7 @@ export const CheckoutPage = () => {
                       <p className="text-[11px] text-brandText-secondary">Qty: {item.quantity}</p>
                     </div>
                     <span className="font-semibold text-brandText-main flex-shrink-0">
-                      ৳{item.price * item.quantity}
+                      ₹{item.price * item.quantity}
                     </span>
                   </div>
                 ))}
@@ -407,23 +407,23 @@ export const CheckoutPage = () => {
               <div className="pt-3 border-t border-brandBorder-subtle space-y-2 text-xs text-brandText-secondary">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-semibold text-brandText-main">৳{subtotal}</span>
+                  <span className="font-semibold text-brandText-main">₹{subtotal}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Delivery Fee</span>
                   <span className="font-semibold text-brandText-main">
-                    {deliveryFee === 0 ? <span className="text-emerald-700 font-bold">FREE</span> : `৳${deliveryFee}`}
+                    {deliveryFee === 0 ? <span className="text-emerald-700 font-bold">FREE</span> : `₹${deliveryFee}`}
                   </span>
                 </div>
                 {appliedCoupon && (
                   <div className="flex justify-between text-emerald-700 font-bold">
                     <span>Coupon ({appliedCoupon.code})</span>
-                    <span>-৳{discount}</span>
+                    <span>-₹{discount}</span>
                   </div>
                 )}
                 <div className="pt-2 border-t border-brandBorder-subtle flex justify-between text-base font-heading font-extrabold text-forest-800">
                   <span>Total Payable</span>
-                  <span className="text-forest-700 text-lg">৳{total}</span>
+                  <span className="text-forest-700 text-lg">₹{total}</span>
                 </div>
               </div>
 

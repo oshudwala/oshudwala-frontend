@@ -127,7 +127,7 @@ export const CartPage = () => {
                         {item.packaging || item.genericName}
                       </p>
                       <p className="text-xs font-semibold text-forest-700 mt-1">
-                        ৳{item.price} each
+                        ₹{item.price} each
                       </p>
                     </div>
                   </div>
@@ -160,7 +160,7 @@ export const CartPage = () => {
                     {/* Total item price */}
                     <div className="text-right min-w-[70px]">
                       <p className="text-base font-heading font-bold text-forest-800">
-                        ৳{item.price * item.quantity}
+                        ₹{item.price * item.quantity}
                       </p>
                     </div>
 
@@ -243,7 +243,7 @@ export const CartPage = () => {
                       onClick={() => applyCoupon('WELCOME50')}
                       className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200"
                     >
-                      Use WELCOME50 (৳50 OFF)
+                      Use WELCOME50 (₹50 OFF)
                     </button>
                   </div>
                 </form>
@@ -259,15 +259,15 @@ export const CartPage = () => {
               <div className="space-y-2.5 text-xs text-brandText-secondary">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
-                  <span className="font-bold text-brandText-main">৳{subtotal}</span>
+                  <span className="font-bold text-brandText-main">₹{subtotal}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Delivery Fee</span>
                   <span className="font-bold text-brandText-main">
                     {deliveryFee === 0 ? (
-                      <span className="text-emerald-700 font-bold">FREE (Above ৳500)</span>
+                      <span className="text-emerald-700 font-bold">FREE (Above ₹500)</span>
                     ) : (
-                      `৳${deliveryFee}`
+                      `₹${deliveryFee}`
                     )}
                   </span>
                 </div>
@@ -275,13 +275,13 @@ export const CartPage = () => {
                 {appliedCoupon && (
                   <div className="flex justify-between text-emerald-700 font-bold">
                     <span>Coupon Discount</span>
-                    <span>-৳{discount}</span>
+                    <span>-₹{discount}</span>
                   </div>
                 )}
 
                 <div className="pt-3 border-t border-brandBorder-subtle flex justify-between text-base font-heading font-extrabold text-forest-800">
                   <span>Total Payable</span>
-                  <span className="text-forest-700 text-lg">৳{total}</span>
+                  <span className="text-forest-700 text-lg">₹{total}</span>
                 </div>
               </div>
 

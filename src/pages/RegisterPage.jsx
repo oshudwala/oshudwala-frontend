@@ -88,7 +88,7 @@ export const RegisterPage = () => {
               <input
                 type="tel"
                 required
-                placeholder="+880 1712-345678"
+                placeholder="+91 98301 23456"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"

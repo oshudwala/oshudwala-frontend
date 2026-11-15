@@ -252,7 +252,7 @@ export const AppointmentsPage = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-brandText-secondary">Consultation Fee:</span>
-                      <span className="font-bold text-forest-800">৳{apt.fee} (Pay at clinic counter)</span>
+                      <span className="font-bold text-forest-800">₹{apt.fee} (Pay at clinic counter)</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-brandText-secondary">Booking Reference:</span>

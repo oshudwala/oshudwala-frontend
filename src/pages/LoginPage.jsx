@@ -91,6 +91,11 @@ export const LoginPage = () => {
               Pharmacist
             </button>
           </div>
+          <p className="text-[10px] text-brandText-secondary pt-0.5">
+            {role === 'patient'
+              ? 'Access live medicine orders, doctor bookings & queue tracking.'
+              : 'Logging in as Doctor or Pharmacist displays the "Still under progress" workspace.'}
+          </p>
         </div>
 
         {/* Form */}

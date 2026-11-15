@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { authService } from '../services/authService';
 
 const AuthContext = createContext(null);
@@ -8,30 +8,7 @@ export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem('oshud_token'));
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    // If no user exists initially, provide a patient profile for seamless exploration
-    if (!user) {
-      const defaultPatient = {
-        id: "usr-ayon-101",
-        name: "Ayon Paul",
-        email: "ayon@oshudwala.com",
-        phone: "+880 1712-345678",
-        role: "patient",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
-        address: "House 24, Road 7, Dhanmondi, Dhaka",
-        walletBalance: 250,
-        referralCode: "OSHUD-CARE-99",
-        bloodGroup: "O+",
-        emergencyContact: "+880 1799-887766"
-      };
-      localStorage.setItem('oshud_user', JSON.stringify(defaultPatient));
-      localStorage.setItem('oshud_token', 'mock-demo-session-token');
-      setUser(defaultPatient);
-      setToken('mock-demo-session-token');
-    }
-  }, [user]);
-
-  const login = async ({ email, password, role }) => {
+  const login = async ({ email, password, role = 'patient' }) => {
     setIsLoading(true);
     try {
       const result = await authService.login({ email, password, role });
@@ -69,17 +46,34 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
+  const switchRole = (newRole) => {
+    if (!user) return;
+    const updated = {
+      ...user,
+      role: newRole,
+      name: newRole === 'doctor' ? 'Dr. Priya Sharma' : newRole === 'pharmacist' ? 'MedPlus Pharmacist' : 'Ayon Paul',
+      avatar: newRole === 'doctor'
+        ? 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=200'
+        : newRole === 'pharmacist'
+        ? 'https://images.unsplash.com/photo-1586015555751-63bb77f4322a?auto=format&fit=crop&q=80&w=200'
+        : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
+    };
+    setUser(updated);
+    localStorage.setItem('oshud_user', JSON.stringify(updated));
+  };
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
-        isAuthenticated: !!token,
+        isAuthenticated: !!token && !!user,
         isLoading,
         login,
         register,
         logout,
-        updateUserProfile
+        updateUserProfile,
+        switchRole
       }}
     >
       {children}

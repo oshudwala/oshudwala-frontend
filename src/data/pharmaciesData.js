@@ -8,12 +8,12 @@ export const pharmaciesData = [
     deliveryAvailable: true,
     estimatedDeliveryTime: "25-35 mins",
     distance: "1.2 km away",
-    address: "House 18, Road 2, Dhanmondi, Dhaka",
+    address: "Block EP & GP, Sector V, Salt Lake, Kolkata-700091",
     isOpen24Hours: true,
-    licenseNumber: "DGDA-PH-94102",
-    contactPhone: "+880 1711-223344",
+    licenseNumber: "WB-KOL-PH-74102",
+    contactPhone: "+91 98301 22334",
     image: "https://images.unsplash.com/photo-1586015555751-63bb77f4322a?auto=format&fit=crop&q=80&w=600",
-    featuredProducts: ["Napa Extra 500mg", "Sergel 20mg", "Ceevit 250mg", "Fexo 120mg"]
+    featuredProducts: ["Dolo 650", "Pan 40", "Limcee 500mg", "Allegra 120"]
   },
   {
     id: "pharm-2",
@@ -24,12 +24,12 @@ export const pharmaciesData = [
     deliveryAvailable: true,
     estimatedDeliveryTime: "30-40 mins",
     distance: "2.4 km away",
-    address: "Avenue 4, Block C, Banani, Dhaka",
+    address: "Park Circus Crossing, Near Quest Mall, Kolkata-700017",
     isOpen24Hours: true,
-    licenseNumber: "DGDA-PH-88219",
-    contactPhone: "+880 1722-334455",
+    licenseNumber: "WB-KOL-PH-68219",
+    contactPhone: "+91 98302 33445",
     image: "https://images.unsplash.com/photo-1631549916768-4119b2e5f926?auto=format&fit=crop&q=80&w=600",
-    featuredProducts: ["Monas 10mg", "Bicozin Syrup", "Finix 20mg", "Oral Rehydration Salt"]
+    featuredProducts: ["Montair LC", "Becosules Z", "Razo 20", "Electral ORS"]
   },
   {
     id: "pharm-3",
@@ -40,13 +40,13 @@ export const pharmaciesData = [
     deliveryAvailable: true,
     estimatedDeliveryTime: "20-30 mins",
     distance: "0.8 km away",
-    address: "Plot 14, Sector 7, Uttara, Dhaka",
+    address: "City Centre Commercial Plaza, Durgapur-713216",
     isOpen24Hours: false,
     openingHours: "08:00 AM - 11:30 PM",
-    licenseNumber: "DGDA-PH-75501",
-    contactPhone: "+880 1733-445566",
+    licenseNumber: "WB-DGP-PH-55501",
+    contactPhone: "+91 98303 44556",
     image: "https://images.unsplash.com/photo-1576602976047-174e57a47881?auto=format&fit=crop&q=80&w=600",
-    featuredProducts: ["Ace Plus 500mg", "Alatrol 10mg", "Maxpro 20mg", "Entacyd Plus"]
+    featuredProducts: ["Calpol 650", "Cetirizine 10mg", "Pantocid 40", "Digene Gel"]
   },
   {
     id: "pharm-4",
@@ -57,27 +57,27 @@ export const pharmaciesData = [
     deliveryAvailable: true,
     estimatedDeliveryTime: "35-45 mins",
     distance: "3.1 km away",
-    address: "Gulshan South Avenue, Gulshan 1, Dhaka",
+    address: "GT Road, Near Clock Tower, Chinsurah, Hooghly-712101",
     isOpen24Hours: true,
-    licenseNumber: "DGDA-PH-64210",
-    contactPhone: "+880 1744-556677",
+    licenseNumber: "WB-HGY-PH-44210",
+    contactPhone: "+91 98304 55667",
     image: "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&q=80&w=600",
-    featuredProducts: ["Thyrox 50mcg", "Seclo 20mg", "Tufnil 200mg", "Calbo D Forte"]
+    featuredProducts: ["Thyronorm 50mcg", "Omez 20", "Shelcal 500", "Telma 40"]
   },
   {
     id: "pharm-5",
-    name: "Green Life Pharma Care",
-    tagline: "Hospital Grade Dispensary",
+    name: "Frank Ross Pharmacy",
+    tagline: "Heritage Bengal Pharmacy Network",
     rating: 4.8,
-    reviewCount: "410+",
+    reviewCount: "510+",
     deliveryAvailable: true,
-    estimatedDeliveryTime: "30-40 mins",
-    distance: "1.9 km away",
-    address: "Green Road, Panthapath, Dhaka",
+    estimatedDeliveryTime: "25-35 mins",
+    distance: "1.5 km away",
+    address: "Gariahat Crossing, South Kolkata-700029",
     isOpen24Hours: true,
-    licenseNumber: "DGDA-PH-99120",
-    contactPhone: "+880 1755-667788",
+    licenseNumber: "WB-KOL-PH-99120",
+    contactPhone: "+91 98305 66778",
     image: "https://images.unsplash.com/photo-1585435557343-3b092031a831?auto=format&fit=crop&q=80&w=600",
-    featuredProducts: ["Neotack 150mg", "Pankreoflat", "Zimax 500mg"]
+    featuredProducts: ["Augmentin 625 Duo", "Supradyn Daily", "Ecosprin 75"]
   }
 ];

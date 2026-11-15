@@ -13,7 +13,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
   const [selectedDate, setSelectedDate] = useState('Today');
   const [selectedSlot, setSelectedSlot] = useState(doctor?.availableSlots?.[0] || '05:00 PM');
   const [patientName, setPatientName] = useState(user?.name || 'Ayon Paul');
-  const [patientPhone, setPatientPhone] = useState(user?.phone || '+880 1712-345678');
+  const [patientPhone, setPatientPhone] = useState(user?.phone || '+91 98301 23456');
   const [consultationType, setConsultationType] = useState('in-clinic'); // 'in-clinic' | 'telemedicine'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingResult, setBookingResult] = useState(null);
@@ -102,7 +102,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
             </div>
             <div className="flex justify-between">
               <span className="text-brandText-secondary">Consultation Fee:</span>
-              <span className="font-semibold text-forest-700">৳{doctor.consultationFee} (Pay at clinic)</span>
+              <span className="font-semibold text-forest-700">₹{doctor.consultationFee} (Pay at clinic)</span>
             </div>
           </div>
 
@@ -259,7 +259,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
           {/* Consultation Fee Note */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-surface-warm border border-brandBorder-subtle text-xs">
             <span className="text-brandText-secondary">Consultation Fee</span>
-            <span className="font-bold text-forest-800 text-sm">৳{doctor.consultationFee}</span>
+            <span className="font-bold text-forest-800 text-sm">₹{doctor.consultationFee}</span>
           </div>
 
           {/* Actions */}

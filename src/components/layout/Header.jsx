@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation as useRouterLocation } from 'react-router-dom';
-import { MapPin, ChevronDown, Bell, ShoppingBag, Menu, X, Search } from 'lucide-react';
+import { NavLink, Link, useLocation as useRouterLocation, useNavigate } from 'react-router-dom';
+import { MapPin, ChevronDown, Bell, ShoppingBag, Menu, X, LogIn, UserPlus } from 'lucide-react';
 import Logo from '../common/Logo';
 import { useLocation } from '../../context/LocationContext';
 import { useCart } from '../../context/CartContext';
@@ -8,12 +8,14 @@ import { useAuth } from '../../context/AuthContext';
 import NotificationsDropdown from '../common/NotificationsDropdown';
 import UserMenuDropdown from '../common/UserMenuDropdown';
 import LocationModal from './LocationModal';
+import Button from '../common/Button';
 
 export const Header = () => {
   const routerLocation = useRouterLocation();
+  const navigate = useNavigate();
   const { selectedLocation, setIsLocationModalOpen } = useLocation();
   const { itemCount, setIsCartDrawerOpen } = useCart();
-  const { user } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -33,8 +35,9 @@ export const Header = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
             {/* Left: Brand Logo & Location */}
-            <div className="flex items-center gap-6">
-              <Logo />
+            <div className="flex items-center gap-5 sm:gap-6">
+              {/* <Logo /> */}
+              <img src="/logo-light.png" alt="Logo" className="h-10 w-auto" />
 
               {/* Location Selector Pill */}
               <button
@@ -44,7 +47,7 @@ export const Header = () => {
                 title="Change delivery location"
               >
                 <MapPin className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
-                <span className="truncate max-w-[130px]">{selectedLocation.label}</span>
+                <span className="truncate max-w-[150px]">{selectedLocation.label}</span>
                 <ChevronDown className="w-3 h-3 text-forest-600" />
               </button>
             </div>
@@ -76,28 +79,30 @@ export const Header = () => {
               })}
             </nav>
 
-            {/* Right: Actions (Notifications, Cart, User Profile) */}
+            {/* Right: Actions */}
             <div className="flex items-center gap-2.5 sm:gap-3.5">
-              {/* Notification Bell */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsNotifOpen((prev) => !prev)}
-                  className="p-2.5 rounded-full hover:bg-forest-50 text-brandText-secondary hover:text-forest-700 transition-colors relative"
-                  aria-label="View notifications"
-                >
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
-                    2
-                  </span>
-                </button>
-                <NotificationsDropdown
-                  isOpen={isNotifOpen}
-                  onClose={() => setIsNotifOpen(false)}
-                />
-              </div>
+              {/* Notification Bell (Only visible when logged in) */}
+              {isAuthenticated && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsNotifOpen((prev) => !prev)}
+                    className="p-2.5 rounded-full hover:bg-forest-50 text-brandText-secondary hover:text-forest-700 transition-colors relative"
+                    aria-label="View notifications"
+                  >
+                    <Bell className="w-5 h-5" />
+                    <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white">
+                      2
+                    </span>
+                  </button>
+                  <NotificationsDropdown
+                    isOpen={isNotifOpen}
+                    onClose={() => setIsNotifOpen(false)}
+                  />
+                </div>
+              )}
 
-              {/* Cart Icon with Item Counter */}
+              {/* Cart Icon with Item Counter (Always accessible) */}
               <button
                 type="button"
                 onClick={() => setIsCartDrawerOpen(true)}
@@ -112,25 +117,46 @@ export const Header = () => {
                 )}
               </button>
 
-              {/* Profile Avatar / User Menu */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsUserMenuOpen((prev) => !prev)}
-                  className="flex items-center gap-2 p-1 rounded-full hover:ring-2 hover:ring-forest-300 transition-all"
-                  aria-label="User account"
-                >
-                  <img
-                    src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"}
-                    alt={user?.name || "Patient Profile"}
-                    className="w-9 h-9 rounded-full object-cover border-2 border-forest-600 shadow-sm"
+              {/* Conditional Auth: Profile Avatar if logged in, Login/Register buttons if not */}
+              {isAuthenticated ? (
+                /* Profile Avatar / User Menu */
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsUserMenuOpen((prev) => !prev)}
+                    className="flex items-center gap-2 p-0.5 rounded-full hover:ring-2 hover:ring-forest-400 transition-all"
+                    aria-label="User account"
+                  >
+                    <img
+                      src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"}
+                      alt={user?.name || "User Profile"}
+                      className="w-9 h-9 rounded-full object-cover border-2 border-forest-600 shadow-sm"
+                    />
+                  </button>
+                  <UserMenuDropdown
+                    isOpen={isUserMenuOpen}
+                    onClose={() => setIsUserMenuOpen(false)}
                   />
-                </button>
-                <UserMenuDropdown
-                  isOpen={isUserMenuOpen}
-                  onClose={() => setIsUserMenuOpen(false)}
-                />
-              </div>
+                </div>
+              ) : (
+                /* Login and Sign Up Buttons */
+                <div className="hidden sm:flex items-center gap-2">
+                  <Link
+                    to="/login"
+                    className="px-3.5 py-2 text-xs font-bold text-forest-700 hover:text-forest-900 transition-colors rounded-full hover:bg-forest-50"
+                  >
+                    Sign In
+                  </Link>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate('/register')}
+                    className="text-xs py-2 px-4 shadow-sm"
+                  >
+                    Register
+                  </Button>
+                </div>
+              )}
 
               {/* Mobile Menu Hamburger */}
               <button
@@ -190,6 +216,59 @@ export const Header = () => {
                 );
               })}
             </nav>
+
+            {/* Mobile Auth Buttons */}
+            <div className="pt-2 border-t border-brandBorder-subtle">
+              {isAuthenticated ? (
+                <div className="flex items-center justify-between p-2.5 bg-surface-warm rounded-xl">
+                  <div className="flex items-center gap-2.5">
+                    <img
+                      src={user?.avatar}
+                      alt={user?.name}
+                      className="w-8 h-8 rounded-full object-cover border border-forest-600"
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-forest-800">{user?.name}</p>
+                      <p className="text-[10px] text-brandText-secondary capitalize">{user?.role}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      logout();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-xs text-rose-600 font-semibold px-2 py-1 rounded hover:bg-rose-50"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigate('/login');
+                    }}
+                    className="w-full text-xs"
+                  >
+                    Sign In
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      navigate('/register');
+                    }}
+                    className="w-full text-xs"
+                  >
+                    Register
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </header>

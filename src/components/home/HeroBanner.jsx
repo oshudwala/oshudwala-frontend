@@ -101,7 +101,7 @@ export const HeroBanner = ({ onOpenPrescription }) => {
               {/* Trust Badge Overlay */}
               <div className="absolute bottom-3 left-3 bg-surface-pure/95 backdrop-blur-md px-3 py-1.5 rounded-full shadow-subtle border border-brandBorder-subtle flex items-center gap-1.5 text-[11px] font-bold text-forest-800">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                DGDA Verified Partner Pharmacies
+                Verified West Bengal Partner Pharmacies
               </div>
             </div>
           </div>

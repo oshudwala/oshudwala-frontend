@@ -14,7 +14,7 @@ export const orderService = {
       const newOrder = {
         id: orderId,
         items,
-        address: address || "House 24, Road 7, Dhanmondi, Dhaka",
+        address: address || "Flat 4B, Greenwood Park, Salt Lake Sector 1, Kolkata-700064",
         paymentMethod: paymentMethod || "Cash on Delivery",
         deliverySlot: deliverySlot || "Standard Express (35-45 mins)",
         prescriptionId: prescriptionId || null,
@@ -28,14 +28,14 @@ export const orderService = {
         placedAt: new Date().toISOString(),
         pharmacy: {
           name: "MedPlus Pharmacy",
-          address: "Road 2, Dhanmondi, Dhaka",
-          phone: "+880 1711-223344"
+          address: "Block EP & GP, Sector V, Salt Lake, Kolkata-700091",
+          phone: "+91 98301 22334"
         },
         rider: {
-          name: "Kamrul Islam",
-          phone: "+880 1819-987654",
-          vehicle: "Yamaha Saluto 125 (Dhaka Metro-Ha 34-9182)",
-          currentLocation: "1.2 km away — Near Shimanto Square",
+          name: "Subhashis Ghosh",
+          phone: "+91 98319 87654",
+          vehicle: "Hero Splendor Plus (WB 02 AR 4821)",
+          currentLocation: "1.2 km away — Near Karunamoyee Metro",
           temperatureBox: "Active 4°C - 8°C Insulated Unit"
         },
         timeline: [
@@ -61,53 +61,53 @@ export const orderService = {
         id: "OW-89214",
         placedAt: "2026-11-15T09:15:00.000Z",
         status: "OUT_FOR_DELIVERY",
-        total: 395,
-        subtotal: 355,
+        total: 412,
+        subtotal: 372,
         deliveryFee: 40,
         discount: 0,
         paymentMethod: "Cash on Delivery",
         deliverySlot: "Standard Express",
-        address: "House 24, Road 7, Dhanmondi, Dhaka",
+        address: "Flat 4B, Greenwood Park, Salt Lake Sector 1, Kolkata-700064",
         deliveryOtp: "4829",
         pharmacy: {
           name: "MedPlus Pharmacy",
-          address: "Road 2, Dhanmondi, Dhaka",
-          phone: "+880 1711-223344"
+          address: "Block EP & GP, Sector V, Salt Lake, Kolkata-700091",
+          phone: "+91 98301 22334"
         },
         rider: {
-          name: "Kamrul Islam",
-          phone: "+880 1819-987654",
-          vehicle: "Yamaha Saluto 125 (Dhaka Metro-Ha 34-9182)",
-          currentLocation: "Near Dhanmondi Lake, 800m away"
+          name: "Subhashis Ghosh",
+          phone: "+91 98319 87654",
+          vehicle: "Hero Splendor Plus (WB 02 AR 4821)",
+          currentLocation: "Near Salt Lake Stadium, 800m away"
         },
         items: [
           {
             id: "prod-1",
-            name: "Napa Extra",
+            name: "Dolo 650",
             quantity: 3,
-            price: 30,
-            packaging: "Strip of 10 Tablets"
+            price: 32,
+            packaging: "Strip of 15 Tablets"
           },
           {
             id: "prod-2",
-            name: "Sergel 20",
+            name: "Pan 40",
             quantity: 2,
-            price: 98,
-            packaging: "Strip of 14 Capsules"
+            price: 145,
+            packaging: "Strip of 15 Tablets"
           },
           {
             id: "prod-8",
-            name: "Fexo 120",
+            name: "Allegra 120",
             quantity: 1,
-            price: 90,
+            price: 190,
             packaging: "Strip of 10 Tablets"
           }
         ],
         timeline: [
           { status: "ORDER_PLACED", title: "Order Placed", time: "09:15 AM", completed: true },
-          { status: "PHARMACY_CONFIRMED", title: "Prescription Verified by MedPlus Pharmacist", time: "09:18 AM", completed: true },
+          { status: "PHARMACY_CONFIRMED", title: "Prescription Verified by MedPlus Registered Pharmacist", time: "09:18 AM", completed: true },
           { status: "PREPARING", title: "Dispensed & Sealed in Medical Pouch", time: "09:25 AM", completed: true },
-          { status: "OUT_FOR_DELIVERY", title: "Rider Kamrul Islam is Out for Delivery", time: "09:32 AM", current: true },
+          { status: "OUT_FOR_DELIVERY", title: "Rider Subhashis Ghosh is Out for Delivery", time: "09:32 AM", current: true },
           { status: "DELIVERED", title: "Delivered to Customer", time: "Expected 09:50 AM", completed: false }
         ]
       },
@@ -115,31 +115,31 @@ export const orderService = {
         id: "OW-74512",
         placedAt: "2026-11-10T14:20:00.000Z",
         status: "DELIVERED",
-        total: 215,
-        subtotal: 185,
+        total: 198,
+        subtotal: 168,
         deliveryFee: 30,
         discount: 0,
-        paymentMethod: "bKash Online",
+        paymentMethod: "UPI (Google Pay)",
         deliverySlot: "Standard Delivery",
-        address: "House 24, Road 7, Dhanmondi, Dhaka",
+        address: "Flat 4B, Greenwood Park, Salt Lake Sector 1, Kolkata-700064",
         pharmacy: {
           name: "Wellness Forever",
-          address: "Avenue 4, Block C, Banani, Dhaka"
+          address: "Park Circus Crossing, Kolkata-700017"
         },
         items: [
           {
             id: "prod-4",
-            name: "Ceevit 250 Chewable",
-            quantity: 1,
-            price: 110,
-            packaging: "Bottle of 50 Tablets"
+            name: "Limcee 500 Orange Chewable",
+            quantity: 2,
+            price: 26,
+            packaging: "Strip of 15 Chewable Tablets"
           },
           {
-            id: "prod-5",
-            name: "Bicozin Syrup",
+            id: "prod-9",
+            name: "Shelcal 500",
             quantity: 1,
-            price: 75,
-            packaging: "Bottle of 100 ml"
+            price: 115,
+            packaging: "Strip of 15 Tablets"
           }
         ],
         timeline: [

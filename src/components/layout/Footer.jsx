@@ -123,7 +123,7 @@ export const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="https://wa.me/8801700000000" target="_blank" rel="noreferrer" className="hover:text-emerald-300 transition-colors flex items-center gap-1">
+                <a href="https://wa.me/919800000000" target="_blank" rel="noreferrer" className="hover:text-emerald-300 transition-colors flex items-center gap-1">
                   Contact Support <ArrowUpRight className="w-3 h-3" />
                 </a>
               </li>

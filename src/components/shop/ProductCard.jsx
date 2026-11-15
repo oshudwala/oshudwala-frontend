@@ -89,11 +89,11 @@ export const ProductCard = ({ product }) => {
         <div>
           <div className="flex items-baseline gap-1.5">
             <span className="font-heading font-extrabold text-forest-800 text-base sm:text-lg">
-              ৳{product.price}
+              ₹{product.price}
             </span>
             {product.mrp && product.mrp > product.price && (
               <span className="text-xs text-brandText-muted line-through">
-                ৳{product.mrp}
+                ₹{product.mrp}
               </span>
             )}
           </div>

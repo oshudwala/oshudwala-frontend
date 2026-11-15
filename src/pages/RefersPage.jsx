@@ -25,7 +25,7 @@ export const RefersPage = () => {
   };
 
   const handleShareWhatsApp = () => {
-    const text = `Hey! Order genuine medicines and book doctor appointments with Oshud Wala. Use my referral code ${referralCode} to get ৳50 off your first medicine order: ${referralLink}`;
+    const text = `Hey! Order genuine medicines and book doctor appointments with Oshud Wala. Use my referral code ${referralCode} to get ₹50 off your first medicine order: ${referralLink}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
@@ -36,7 +36,7 @@ export const RefersPage = () => {
       date: '12 Nov 2026',
       status: 'Delivered & Credited',
       reward: '+50 Coins',
-      amount: '৳50.00'
+      amount: '₹50.00'
     },
     {
       id: 'ref-2',
@@ -44,7 +44,7 @@ export const RefersPage = () => {
       date: '08 Nov 2026',
       status: 'Delivered & Credited',
       reward: '+50 Coins',
-      amount: '৳50.00'
+      amount: '₹50.00'
     },
     {
       id: 'ref-3',
@@ -52,7 +52,7 @@ export const RefersPage = () => {
       date: '02 Nov 2026',
       status: 'Delivered & Credited',
       reward: '+50 Coins',
-      amount: '৳50.00'
+      amount: '₹50.00'
     }
   ];
 
@@ -70,7 +70,7 @@ export const RefersPage = () => {
             <span className="text-emerald-300">50 Oshud Coins</span> on Every Invite
           </h1>
           <p className="text-xs sm:text-sm text-forest-200 leading-relaxed max-w-lg">
-            Share your love for genuine medicines and reliable healthcare. Your friends get ৳50 discount on their first order, and you earn ৳50 in wallet credits.
+            Share your love for genuine medicines and reliable healthcare. Your friends get ₹50 discount on their first order, and you earn ₹50 in wallet credits.
           </p>
         </div>
 
@@ -150,7 +150,7 @@ export const RefersPage = () => {
                 Oshud Coin Balance
               </h2>
               <p className="text-xs text-brandText-secondary">
-                1 Oshud Coin = ৳1.00 BDT
+                1 Oshud Coin = ₹1.00 INR
               </p>
             </div>
           </div>
@@ -161,7 +161,7 @@ export const RefersPage = () => {
               <span className="text-3xl sm:text-4xl font-extrabold tracking-tight">
                 {user?.walletBalance || 250}
               </span>
-              <span className="text-xs font-bold text-emerald-300 uppercase">Coins (৳{user?.walletBalance || 250})</span>
+              <span className="text-xs font-bold text-emerald-300 uppercase">Coins (₹{user?.walletBalance || 250})</span>
             </div>
             <p className="text-[11px] text-forest-200 pt-1">
               Coins automatically apply as cash discounts during medicine checkout.
@@ -175,7 +175,7 @@ export const RefersPage = () => {
             </div>
             <div className="p-3.5 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
               <p className="text-brandText-secondary">Total Earned</p>
-              <p className="text-lg font-bold text-forest-800 mt-1">৳250.00</p>
+              <p className="text-lg font-bold text-forest-800 mt-1">₹250.00</p>
             </div>
           </div>
         </div>
@@ -196,7 +196,7 @@ export const RefersPage = () => {
               Share Your Referral Code
             </h4>
             <p className="text-xs text-brandText-secondary leading-relaxed">
-              Send your personal invite code to friends, family, or colleagues in Dhaka.
+              Send your personal invite code to friends, family, or colleagues across Kolkata & West Bengal.
             </p>
           </div>
 
@@ -208,7 +208,7 @@ export const RefersPage = () => {
               Friend Places First Order
             </h4>
             <p className="text-xs text-brandText-secondary leading-relaxed">
-              They receive ৳50 off instantly on their first medicine order using your code.
+              They receive ₹50 off instantly on their first medicine order using your code.
             </p>
           </div>
 

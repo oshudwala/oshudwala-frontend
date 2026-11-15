@@ -89,7 +89,7 @@ export const CartProvider = ({ children }) => {
       setAppliedCoupon({ code: 'OSHUD10', type: 'percent', value: 10, label: '10% OFF Oshud Care' });
       return true;
     } else if (cleanCode === 'WELCOME50') {
-      setAppliedCoupon({ code: 'WELCOME50', type: 'fixed', value: 50, label: '৳50 OFF First Order' });
+      setAppliedCoupon({ code: 'WELCOME50', type: 'fixed', value: 50, label: '₹50 OFF First Order' });
       return true;
     } else {
       setCouponError('Invalid coupon code. Try OSHUD10 or WELCOME50');

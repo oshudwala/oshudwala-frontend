@@ -4,7 +4,7 @@ import Button from '../common/Button';
 
 export const OrderChannels = ({ onOpenPrescription }) => {
   // Configurable WhatsApp ordering number from environment or official default
-  const whatsappNumber = import.meta.env.VITE_WHATSAPP_NUMBER || '+8801700000000';
+  const whatsappNumber = import.meta.env.VITE_WHATSAPP_NUMBER || '+919800000000';
   const cleanNumber = whatsappNumber.replace(/[^0-9]/g, '');
   const whatsappUrl = `https://wa.me/${cleanNumber}?text=${encodeURIComponent(
     'Hello Oshud Wala! I would like to order medicines through WhatsApp.'
