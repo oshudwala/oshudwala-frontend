@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Link, useLocation as useRouterLocation, useNavigate } from 'react-router-dom';
-import { MapPin, ChevronDown, Bell, ShoppingBag, Menu, X, LogIn, UserPlus } from 'lucide-react';
+import { MapPin, ChevronDown, Bell, ShoppingBag, Menu, X, LogIn, UserPlus, LayoutDashboard } from 'lucide-react';
 import Logo from '../common/Logo';
 import { useLocation } from '../../context/LocationContext';
 import { useCart } from '../../context/CartContext';
@@ -15,7 +15,7 @@ export const Header = () => {
   const navigate = useNavigate();
   const { selectedLocation, setIsLocationModalOpen } = useLocation();
   const { itemCount, setIsCartDrawerOpen } = useCart();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, isPatient, getRoleDefaultPath, logout } = useAuth();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -119,24 +119,38 @@ export const Header = () => {
 
               {/* Conditional Auth: Profile Avatar if logged in, Login/Register buttons if not */}
               {isAuthenticated ? (
-                /* Profile Avatar / User Menu */
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsUserMenuOpen((prev) => !prev)}
-                    className="flex items-center gap-2 p-0.5 rounded-full hover:ring-2 hover:ring-forest-400 transition-all"
-                    aria-label="User account"
-                  >
-                    <img
-                      src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"}
-                      alt={user?.name || "User Profile"}
-                      className="w-9 h-9 rounded-full object-cover border-2 border-forest-600 shadow-sm"
+                <div className="flex items-center gap-2.5">
+                  {/* Explicit Role-Based Workspace Entry Point */}
+                  {!isPatient && (
+                    <Link
+                      to={getRoleDefaultPath(user?.role)}
+                      className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-forest-800 hover:bg-forest-900 text-white text-xs font-bold transition-all shadow-sm hover:scale-[1.02]"
+                      title="Open your role workspace dashboard"
+                    >
+                      <LayoutDashboard className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Go to Dashboard</span>
+                    </Link>
+                  )}
+
+                  {/* Profile Avatar / User Menu */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsUserMenuOpen((prev) => !prev)}
+                      className="flex items-center gap-2 p-0.5 rounded-full hover:ring-2 hover:ring-forest-400 transition-all"
+                      aria-label="User account"
+                    >
+                      <img
+                        src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"}
+                        alt={user?.name || "User Profile"}
+                        className="w-9 h-9 rounded-full object-cover border-2 border-forest-600 shadow-sm"
+                      />
+                    </button>
+                    <UserMenuDropdown
+                      isOpen={isUserMenuOpen}
+                      onClose={() => setIsUserMenuOpen(false)}
                     />
-                  </button>
-                  <UserMenuDropdown
-                    isOpen={isUserMenuOpen}
-                    onClose={() => setIsUserMenuOpen(false)}
-                  />
+                  </div>
                 </div>
               ) : (
                 /* Login and Sign Up Buttons */

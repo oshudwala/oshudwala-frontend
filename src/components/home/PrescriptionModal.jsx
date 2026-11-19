@@ -34,6 +34,7 @@ export const PrescriptionModal = ({ isOpen, onClose }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isSuccess, setIsSuccess] = useState(false);
   const [uploadedResult, setUploadedResult] = useState(null);
+  const [uploadNotice, setUploadNotice] = useState(null);
 
   // Preview manipulations
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -114,17 +115,22 @@ export const PrescriptionModal = ({ isOpen, onClose }) => {
       const res = await prescriptionService.uploadPrescription({
         file: selectedFile,
         patientNotes,
-        preferredPharmacyId
+        preferredPharmacyId,
       });
 
       clearInterval(interval);
       setUploadProgress(100);
       setIsSuccess(true);
-      setUploadedResult(res.prescription);
+      setUploadedResult(res?.prescription || res);
       addToast('Prescription uploaded successfully for pharmacist verification!', 'success');
     } catch (err) {
       clearInterval(interval);
-      setFileError('Upload failed. Please try again.');
+      setUploadNotice({
+        title: 'Prescription Verification Desk',
+        message:
+          err.message ||
+          'Prescription verification API is currently in development (Backend Step 5). Please send your prescription directly to our registered pharmacist via WhatsApp for immediate verification and delivery.',
+      });
     } finally {
       setIsUploading(false);
     }
@@ -136,6 +142,7 @@ export const PrescriptionModal = ({ isOpen, onClose }) => {
     setPreferredPharmacyId('');
     setIsSuccess(false);
     setUploadedResult(null);
+    setUploadNotice(null);
     setUploadProgress(0);
     onClose();
   };
@@ -144,15 +151,64 @@ export const PrescriptionModal = ({ isOpen, onClose }) => {
     <Modal
       isOpen={isOpen}
       onClose={resetModal}
-      title={isSuccess ? "Prescription Submitted" : "Upload Doctor's Prescription"}
+      title={uploadNotice ? "Prescription Verification Desk" : isSuccess ? "Prescription Submitted" : "Upload Doctor's Prescription"}
       subtitle={
-        isSuccess
+        uploadNotice
+          ? "Immediate licensed pharmacist dispatch options"
+          : isSuccess
           ? "Our registered 'A' grade pharmacist will review and dispense your order."
           : "Verified licensed pharmacists will check dosage, interactions, and validity."
       }
       maxWidth="max-w-xl"
     >
-      {isSuccess && uploadedResult ? (
+      {uploadNotice ? (
+        <div className="text-center py-4 space-y-4 animate-fade-in">
+          <div className="w-16 h-16 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <ShieldCheck className="w-8 h-8" />
+          </div>
+
+          <div>
+            <span className="text-xs font-bold text-amber-700 uppercase tracking-widest">
+              Pharmacist Desk Notice
+            </span>
+            <h4 className="font-heading font-bold text-forest-800 text-lg mt-1">
+              Direct Pharmacist Verification
+            </h4>
+            <p className="text-xs text-brandText-secondary mt-1 max-w-md mx-auto leading-relaxed">
+              {uploadNotice.message}
+            </p>
+          </div>
+
+          <div className="bg-forest-50 p-4 rounded-2xl border border-forest-100 text-left text-xs space-y-2 text-forest-900">
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Delivery Turnaround:</span>
+              <span className="font-semibold text-emerald-700">30-45 Minutes</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">WhatsApp Prescription Desk:</span>
+              <span className="font-semibold text-forest-700">+880 1700-000000</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Helpline:</span>
+              <span className="font-semibold text-forest-700">09612000000</span>
+            </div>
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row gap-3">
+            <a
+              href="https://wa.me/8801700000000?text=Hello%20Oshud%20Wala,%20I%20have%20attached%20my%20prescription%20for%20verification%20and%20order."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 py-3 px-4 bg-forest-600 hover:bg-forest-700 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-card transition-all"
+            >
+              Send Prescription on WhatsApp
+            </a>
+            <Button variant="outline" onClick={resetModal} className="flex-1">
+              Close
+            </Button>
+          </div>
+        </div>
+      ) : isSuccess && uploadedResult ? (
         <div className="text-center py-4 space-y-4">
           <div className="w-16 h-16 bg-emerald-100 text-forest-700 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <CheckCircle2 className="w-8 h-8" />

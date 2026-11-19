@@ -12,11 +12,12 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
 
   const [selectedDate, setSelectedDate] = useState('Today');
   const [selectedSlot, setSelectedSlot] = useState(doctor?.availableSlots?.[0] || '05:00 PM');
-  const [patientName, setPatientName] = useState(user?.name || 'Ayon Paul');
-  const [patientPhone, setPatientPhone] = useState(user?.phone || '+91 98301 23456');
+  const [patientName, setPatientName] = useState(user?.fullName || user?.name || '');
+  const [patientPhone, setPatientPhone] = useState(user?.phone || '');
   const [consultationType, setConsultationType] = useState('in-clinic'); // 'in-clinic' | 'telemedicine'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingResult, setBookingResult] = useState(null);
+  const [bookingNotice, setBookingNotice] = useState(null);
 
   if (!doctor) return null;
 
@@ -39,14 +40,19 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
         slotTime: selectedSlot,
         patientName,
         patientPhone,
-        consultationType
+        consultationType,
       });
 
       setBookingResult(res);
       addToast(`Appointment booked successfully! Token #${res.tokenNumber}`, 'success');
       if (onBookingSuccess) onBookingSuccess(res);
-    } catch {
-      addToast('Failed to book appointment. Please try again.', 'error');
+    } catch (err) {
+      setBookingNotice({
+        title: 'Chamber Advance Token Booking Notice',
+        message:
+          err.message ||
+          'Live queue token booking is scheduled for backend Phase 2. To reserve an advance consultation token today, please contact the chamber reception directly.',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -54,6 +60,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
 
   const resetAndClose = () => {
     setBookingResult(null);
+    setBookingNotice(null);
     onClose();
   };
 
@@ -61,11 +68,56 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
     <Modal
       isOpen={isOpen}
       onClose={resetAndClose}
-      title={bookingResult ? "Appointment Confirmed" : `Book Appointment`}
-      subtitle={bookingResult ? "Your live queue token has been generated." : `Consult with ${doctor.name}`}
+      title={bookingNotice ? 'Chamber Booking Notice' : bookingResult ? 'Appointment Confirmed' : `Book Appointment`}
+      subtitle={
+        bookingNotice
+          ? 'Live chamber booking information'
+          : bookingResult
+          ? 'Your live queue token has been generated.'
+          : `Consult with ${doctor.name}`
+      }
       maxWidth="max-w-lg"
     >
-      {bookingResult ? (
+      {bookingNotice ? (
+        <div className="text-center py-2 space-y-4 animate-fade-in">
+          <div className="w-16 h-16 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <Ticket className="w-8 h-8" />
+          </div>
+
+          <div>
+            <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
+              Chamber Token Notice
+            </span>
+            <h3 className="text-lg font-heading font-extrabold text-forest-800 mt-1">
+              {doctor.name} — {doctor.clinicName}
+            </h3>
+            <p className="text-xs text-brandText-secondary mt-1 px-4 leading-relaxed">
+              {bookingNotice.message}
+            </p>
+          </div>
+
+          <div className="bg-surface-warm p-4 rounded-2xl border border-brandBorder-subtle text-left text-xs space-y-2 text-brandText-main">
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Chamber Location:</span>
+              <span className="font-semibold text-forest-800">{doctor.clinicName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Consultation Fee:</span>
+              <span className="font-semibold text-forest-700">₹{doctor.consultationFee} (Pay at chamber)</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Reception Phone:</span>
+              <span className="font-semibold">{doctor.phone || '+91 98301 22334'}</span>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <Button variant="primary" onClick={resetAndClose} className="w-full">
+              Close Notice
+            </Button>
+          </div>
+        </div>
+      ) : bookingResult ? (
         <div className="text-center py-2 space-y-4">
           <div className="w-16 h-16 bg-emerald-100 text-forest-700 rounded-full flex items-center justify-center mx-auto shadow-inner">
             <CheckCircle2 className="w-8 h-8" />

@@ -4,13 +4,27 @@ import Modal from '../common/Modal';
 import { useLocation } from '../../context/LocationContext';
 
 export const LocationModal = () => {
-  const { selectedLocation, changeLocation, isLocationModalOpen, setIsLocationModalOpen, locations } = useLocation();
+  const {
+    selectedLocation,
+    changeLocation,
+    isLocationModalOpen,
+    setIsLocationModalOpen,
+    locations,
+    isLoadingLocations,
+    searchLocations
+  } = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
 
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchTerm(val);
+    searchLocations(val);
+  };
+
   const filteredLocations = locations.filter(loc =>
-    loc.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    loc.area.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    loc.city.toLowerCase().includes(searchTerm.toLowerCase())
+    loc.label?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    loc.area?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    loc.city?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -29,13 +43,16 @@ export const LocationModal = () => {
             type="text"
             placeholder="Search area, road, or city..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearchChange}
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 focus:ring-1 focus:ring-forest-500"
           />
         </div>
 
         {/* Location List */}
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {isLoadingLocations && (
+            <p className="text-center py-2 text-xs text-brandText-secondary">Searching locations...</p>
+          )}
           {filteredLocations.map((loc) => {
             const isSelected = selectedLocation.id === loc.id;
             return (

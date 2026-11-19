@@ -26,7 +26,25 @@ export const OrdersPage = () => {
   const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'history'
-  const orders = orderService.getUserOrders();
+  const [orders, setOrders] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const data = await orderService.getUserOrders();
+        if (isMounted) setOrders(Array.isArray(data) ? data : []);
+      } catch {
+        if (isMounted) setOrders([]);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const activeOrders = orders.filter((o) => o.status !== 'DELIVERED');
   const pastOrders = orders.filter((o) => o.status === 'DELIVERED');

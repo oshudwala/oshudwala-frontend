@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   User,
@@ -9,15 +9,16 @@ import {
   LogOut,
   Plus,
   Trash2,
-  Edit,
-  ShieldCheck,
   CheckCircle2,
-  Calendar,
   Eye,
-  X
+  Star,
+  RefreshCw,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { userApi } from '../services/api/user.api';
+import { notificationApi } from '../services/api/notification.api';
 import { prescriptionService } from '../services/prescriptionService';
 import Button from '../components/common/Button';
 import Modal from '../components/common/Modal';
@@ -31,74 +32,165 @@ export const ProfilePage = () => {
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(user?.name || 'Ayon Paul');
-  const [email, setEmail] = useState(user?.email || 'ayon@oshudwala.com');
-  const [phone, setPhone] = useState(user?.phone || '+91 98301 23456');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Profile Form State
+  const [name, setName] = useState(user?.fullName || user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [phone, setPhone] = useState(user?.phone || '');
   const [bloodGroup, setBloodGroup] = useState(user?.bloodGroup || 'O+');
-  const [emergencyContact, setEmergencyContact] = useState(user?.emergencyContact || '+91 98319 88776');
+  const [allergies, setAllergies] = useState(user?.allergies || '');
+  const [medicalNotes, setMedicalNotes] = useState(user?.medicalNotes || '');
 
-  // Saved Addresses state
-  const [addresses, setAddresses] = useState([
-    {
-      id: 'addr-1',
-      tag: 'Home',
-      recipient: 'Ayon Paul',
-      phone: '+91 98301 23456',
-      address: 'Flat 4B, Greenwood Park, Salt Lake Sector 1, Kolkata-700064'
-    },
-    {
-      id: 'addr-2',
-      tag: 'Office',
-      recipient: 'Ayon Paul',
-      phone: '+91 98301 23456',
-      address: 'Infinity Benchmark, 10th Floor, Sector V, Salt Lake, Kolkata-700091'
-    }
-  ]);
-
+  // Saved Addresses State
+  const [addresses, setAddresses] = useState([]);
+  const [isAddressesLoading, setIsAddressesLoading] = useState(false);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [newTag, setNewTag] = useState('Home');
-  const [newRecipient, setNewRecipient] = useState(user?.name || '');
-  const [newAddressText, setNewAddressText] = useState('');
+  const [newRecipient, setNewRecipient] = useState(user?.fullName || user?.name || '');
   const [newPhone, setNewPhone] = useState(user?.phone || '');
+  const [newLine1, setNewLine1] = useState('');
+  const [newCity, setNewCity] = useState('Durgapur');
+  const [newState, setNewState] = useState('West Bengal');
+  const [newPincode, setNewPincode] = useState('713216');
+  const [newIsDefault, setNewIsDefault] = useState(false);
 
-  // Prescriptions
+  // Notification Preferences State
+  const [notifPreferences, setNotifPreferences] = useState(null);
+  const [isNotifLoading, setIsNotifLoading] = useState(false);
+
+  // Prescriptions State
   const prescriptions = prescriptionService.getUserPrescriptions();
   const [previewPrescription, setPreviewPrescription] = useState(null);
 
-  const handleSaveProfile = (e) => {
-    e.preventDefault();
-    updateUserProfile({
-      name,
-      email,
-      phone,
-      bloodGroup,
-      emergencyContact
-    });
-    setIsEditing(false);
-    addToast('Profile updated successfully!', 'success');
+  // Sync profile values when auth user changes
+  useEffect(() => {
+    if (user) {
+      setName(user.fullName || user.name || '');
+      setEmail(user.email || '');
+      setPhone(user.phone || '');
+      setBloodGroup(user.bloodGroup || 'O+');
+      setAllergies(user.allergies || '');
+      setMedicalNotes(user.medicalNotes || '');
+    }
+  }, [user]);
+
+  // Load Addresses from Backend
+  const loadAddresses = async () => {
+    setIsAddressesLoading(true);
+    try {
+      const data = await userApi.getAddresses();
+      setAddresses(Array.isArray(data) ? data : []);
+    } catch (err) {
+      addToast(err.message || 'Failed to load saved addresses', 'error');
+    } finally {
+      setIsAddressesLoading(false);
+    }
   };
 
-  const handleAddAddress = (e) => {
-    e.preventDefault();
-    if (!newAddressText.trim()) return;
-
-    const newAddr = {
-      id: 'addr-' + Date.now(),
-      tag: newTag,
-      recipient: newRecipient || user?.name || 'Patient',
-      phone: newPhone || user?.phone || '',
-      address: newAddressText
-    };
-
-    setAddresses((prev) => [...prev, newAddr]);
-    setIsAddressModalOpen(false);
-    setNewAddressText('');
-    addToast('Address added successfully!', 'success');
+  // Load Notification Preferences
+  const loadNotificationPreferences = async () => {
+    setIsNotifLoading(true);
+    try {
+      const data = await notificationApi.getPreferences();
+      setNotifPreferences(data);
+    } catch {
+      // Graceful fallback if no preferences set yet
+    } finally {
+      setIsNotifLoading(false);
+    }
   };
 
-  const handleDeleteAddress = (id) => {
-    setAddresses((prev) => prev.filter((a) => a.id !== id));
-    addToast('Address removed.', 'info');
+  useEffect(() => {
+    if (activeTab === 'addresses') {
+      loadAddresses();
+    } else if (activeTab === 'settings') {
+      loadNotificationPreferences();
+    }
+  }, [activeTab]);
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await updateUserProfile({
+        name,
+        fullName: name,
+        email,
+        bloodGroup,
+        allergies,
+        medicalNotes,
+      });
+      setIsEditing(false);
+      addToast('Profile updated and persisted to backend successfully!', 'success');
+    } catch (err) {
+      addToast(err.message || 'Failed to update profile', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddAddress = async (e) => {
+    e.preventDefault();
+    const contactPhone = (newPhone || user?.phone || '').trim().replace(/[^0-9]/g, '');
+    if (!newLine1.trim() || !newCity.trim() || !newPincode.trim() || contactPhone.length !== 10) {
+      addToast('Please complete street address, city, pincode, and a 10-digit phone number.', 'warning');
+      return;
+    }
+
+    try {
+      await userApi.addAddress({
+        label: newTag,
+        fullName: newRecipient || user?.fullName || 'Patient',
+        phone: contactPhone,
+        line1: newLine1.trim(),
+        city: newCity.trim(),
+        state: newState.trim(),
+        pincode: newPincode.trim(),
+        isDefault: newIsDefault,
+      });
+
+      setIsAddressModalOpen(false);
+      setNewLine1('');
+      addToast('Address added to your account!', 'success');
+      loadAddresses();
+    } catch (err) {
+      addToast(err.message || 'Failed to add address', 'error');
+    }
+  };
+
+  const handleSetDefaultAddress = async (id) => {
+    try {
+      await userApi.updateAddress(id, { isDefault: true });
+      addToast('Default delivery address updated!', 'success');
+      loadAddresses();
+    } catch (err) {
+      addToast(err.message || 'Failed to set default address', 'error');
+    }
+  };
+
+  const handleDeleteAddress = async (id) => {
+    try {
+      await userApi.deleteAddress(id);
+      addToast('Address removed.', 'info');
+      loadAddresses();
+    } catch (err) {
+      addToast(err.message || 'Failed to remove address', 'error');
+    }
+  };
+
+  const handleTogglePushNotifications = async (enabled) => {
+    try {
+      const updated = await notificationApi.updatePreferences({
+        globalSettings: {
+          pushEnabled: enabled,
+        },
+      });
+      setNotifPreferences(updated);
+      addToast(enabled ? 'Push notifications enabled.' : 'Push notifications silenced.', 'success');
+    } catch (err) {
+      addToast(err.message || 'Failed to update notification preferences', 'error');
+    }
   };
 
   const handleLogout = () => {
@@ -127,15 +219,15 @@ export const ProfilePage = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-heading font-extrabold text-forest-800">
-                {user?.name || 'Ayon Paul'}
+                {user?.fullName || user?.name || 'Patient'}
               </h1>
-              <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                Verified Patient
+              <span className="text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                {user?.role || 'PATIENT'}
               </span>
             </div>
-            <p className="text-xs text-brandText-secondary mt-0.5">{user?.email}</p>
-            <p className="text-xs text-forest-600 font-semibold mt-0.5">
-              Blood Group: <span className="font-bold text-forest-800">{user?.bloodGroup || 'O+'}</span> • {user?.phone}
+            <p className="text-xs text-brandText-secondary mt-0.5">{user?.email || 'No email registered'}</p>
+            <p className="text-xs text-forest-600 font-semibold mt-0.5 font-mono">
+              Phone: {user?.phone} • Blood Group: <span className="font-bold text-forest-800">{user?.bloodGroup || 'O+'}</span>
             </p>
           </div>
         </div>
@@ -198,7 +290,9 @@ export const ProfilePage = () => {
               <div className="flex items-center justify-between border-b border-brandBorder-subtle pb-4">
                 <div>
                   <h3 className="font-heading font-bold text-lg text-forest-800">Personal Information</h3>
-                  <p className="text-xs text-brandText-secondary">Manage your patient contact & medical profile</p>
+                  <p className="text-xs text-brandText-secondary">
+                    Profile synchronized with backend `/api/v1/users/profile`
+                  </p>
                 </div>
                 {!isEditing && (
                   <Button variant="secondary" size="sm" onClick={() => setIsEditing(true)}>
@@ -224,20 +318,18 @@ export const ProfilePage = () => {
                       <label className="block text-xs font-semibold text-brandText-main mb-1">Email Address</label>
                       <input
                         type="email"
-                        required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full px-3.5 py-2.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">Phone Number</label>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">Phone Number (Login identifier)</label>
                       <input
                         type="tel"
-                        required
+                        disabled
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        className="w-full px-3.5 py-2.5 text-xs bg-slate-100 border border-brandBorder-subtle rounded-xl font-mono text-slate-600 cursor-not-allowed"
                       />
                     </div>
                     <div>
@@ -252,12 +344,23 @@ export const ProfilePage = () => {
                         ))}
                       </select>
                     </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">Emergency Contact Phone</label>
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">Allergies (Optional)</label>
                       <input
-                        type="tel"
-                        value={emergencyContact}
-                        onChange={(e) => setEmergencyContact(e.target.value)}
+                        type="text"
+                        placeholder="e.g. Penicillin, Sulfa"
+                        value={allergies}
+                        onChange={(e) => setAllergies(e.target.value)}
+                        className="w-full px-3.5 py-2.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">Medical Notes (Optional)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Diabetic, Hypertension"
+                        value={medicalNotes}
+                        onChange={(e) => setMedicalNotes(e.target.value)}
                         className="w-full px-3.5 py-2.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                       />
                     </div>
@@ -267,7 +370,7 @@ export const ProfilePage = () => {
                     <Button variant="outline" size="sm" onClick={() => setIsEditing(false)}>
                       Cancel
                     </Button>
-                    <Button variant="primary" size="sm" type="submit">
+                    <Button variant="primary" size="sm" type="submit" isLoading={isSaving}>
                       Save Changes
                     </Button>
                   </div>
@@ -276,24 +379,32 @@ export const ProfilePage = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                     <p className="text-brandText-secondary">Full Name</p>
-                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.name || 'Ayon Paul'}</p>
+                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.fullName || user?.name || 'Patient'}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                     <p className="text-brandText-secondary">Email Address</p>
-                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.email || 'ayon@oshudwala.com'}</p>
+                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.email || 'None'}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                     <p className="text-brandText-secondary">Phone Number</p>
-                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.phone || '+91 98301 23456'}</p>
+                    <p className="font-bold text-forest-800 text-sm mt-0.5 font-mono">{user?.phone || 'Not provided'}</p>
                   </div>
                   <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                     <p className="text-brandText-secondary">Blood Group</p>
                     <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.bloodGroup || 'O+'}</p>
                   </div>
-                  <div className="sm:col-span-2 p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
-                    <p className="text-brandText-secondary">Emergency Contact</p>
-                    <p className="font-bold text-forest-800 text-sm mt-0.5">{user?.emergencyContact || '+91 98319 88776'}</p>
-                  </div>
+                  {user?.allergies && (
+                    <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
+                      <p className="text-brandText-secondary">Allergies</p>
+                      <p className="font-bold text-forest-800 text-sm mt-0.5">{user.allergies}</p>
+                    </div>
+                  )}
+                  {user?.medicalNotes && (
+                    <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
+                      <p className="text-brandText-secondary">Medical Notes</p>
+                      <p className="font-bold text-forest-800 text-sm mt-0.5">{user.medicalNotes}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -305,40 +416,83 @@ export const ProfilePage = () => {
               <div className="flex items-center justify-between border-b border-brandBorder-subtle pb-4">
                 <div>
                   <h3 className="font-heading font-bold text-lg text-forest-800">Delivery Addresses</h3>
-                  <p className="text-xs text-brandText-secondary">Manage addresses for fast checkout</p>
+                  <p className="text-xs text-brandText-secondary">
+                    Managed via backend `/api/v1/users/addresses`
+                  </p>
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  leftIcon={Plus}
-                  onClick={() => setIsAddressModalOpen(true)}
-                >
-                  Add Address
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={loadAddresses} leftIcon={RefreshCw}>
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={Plus}
+                    onClick={() => setIsAddressModalOpen(true)}
+                  >
+                    Add Address
+                  </Button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {addresses.map((addr) => (
-                  <div key={addr.id} className="p-5 rounded-2xl border border-brandBorder-subtle bg-surface-warm space-y-3 relative group">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-forest-100 text-forest-800">
-                        {addr.tag}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteAddress(addr.id)}
-                        className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                        title="Delete address"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+              {isAddressesLoading ? (
+                <div className="py-12 text-center text-xs text-brandText-secondary">Loading addresses...</div>
+              ) : addresses.length === 0 ? (
+                <div className="py-12 text-center text-xs text-brandText-secondary">
+                  No saved delivery addresses found. Click "Add Address" to add your home or office address.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {addresses.map((addr) => (
+                    <div
+                      key={addr.id}
+                      className={`p-5 rounded-2xl border bg-surface-warm space-y-3 relative ${
+                        addr.isDefault ? 'border-forest-600 ring-1 ring-forest-600/30' : 'border-brandBorder-subtle'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-forest-100 text-forest-800">
+                            {addr.label || 'Address'}
+                          </span>
+                          {addr.isDefault && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-600 text-white flex items-center gap-1">
+                              <Star className="w-3 h-3 fill-white" />
+                              Default
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {!addr.isDefault && (
+                            <button
+                              type="button"
+                              onClick={() => handleSetDefaultAddress(addr.id)}
+                              className="text-[11px] font-semibold text-forest-700 hover:underline px-2 py-0.5"
+                            >
+                              Set Default
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAddress(addr.id)}
+                            className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                            title="Delete address"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <p className="text-xs font-bold text-forest-800">{addr.fullName}</p>
+                      <p className="text-xs text-brandText-secondary leading-relaxed">
+                        {addr.line1}{addr.line2 ? `, ${addr.line2}` : ''}, {addr.city}, {addr.state} - {addr.pincode}
+                      </p>
+                      <p className="text-[11px] text-brandText-muted font-mono">{addr.phone}</p>
                     </div>
-                    <p className="text-xs font-bold text-forest-800">{addr.recipient}</p>
-                    <p className="text-xs text-brandText-secondary leading-relaxed">{addr.address}</p>
-                    <p className="text-[11px] text-brandText-muted">{addr.phone}</p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -372,9 +526,6 @@ export const ProfilePage = () => {
                         <p className="text-xs text-brandText-secondary mt-0.5">
                           Ref: {rx.id} • Assigned: {rx.pharmacyName}
                         </p>
-                        <p className="text-[11px] text-brandText-muted mt-0.5">
-                          {rx.pharmacistReview}
-                        </p>
                       </div>
                     </div>
 
@@ -405,11 +556,11 @@ export const ProfilePage = () => {
               <div className="p-6 rounded-3xl bg-forest-800 text-white space-y-3">
                 <p className="text-xs text-forest-200">Current Balance</p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-extrabold">{user?.walletBalance || 250}</span>
-                  <span className="text-sm font-bold text-emerald-300">Oshud Coins (₹{user?.walletBalance || 250}.00)</span>
+                  <span className="text-4xl font-extrabold">250</span>
+                  <span className="text-sm font-bold text-emerald-300">Oshud Coins (₹250.00)</span>
                 </div>
                 <p className="text-xs text-forest-200 pt-1">
-                  Applicable instantly at checkout. Earn 50 Coins for every friend you refer.
+                  Applicable instantly at checkout. Configured via Super Admin referral bonus.
                 </p>
               </div>
             </div>
@@ -419,25 +570,26 @@ export const ProfilePage = () => {
           {activeTab === 'settings' && (
             <div className="space-y-6">
               <div className="border-b border-brandBorder-subtle pb-4">
-                <h3 className="font-heading font-bold text-lg text-forest-800">Account Settings</h3>
-                <p className="text-xs text-brandText-secondary">Security preferences and notification alerts</p>
+                <h3 className="font-heading font-bold text-lg text-forest-800">Notification Preferences</h3>
+                <p className="text-xs text-brandText-secondary">
+                  Synced directly with backend `/api/v1/notifications/preferences`
+                </p>
               </div>
 
               <div className="space-y-4 text-xs">
                 <div className="flex items-center justify-between p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                   <div>
-                    <p className="font-bold text-forest-800">SMS Queue Token Alerts</p>
-                    <p className="text-brandText-secondary mt-0.5">Receive text message reminders when your doctor's queue moves</p>
+                    <p className="font-bold text-forest-800">Push Notifications</p>
+                    <p className="text-brandText-secondary mt-0.5">
+                      Receive live updates on chamber tokens and delivery arrivals
+                    </p>
                   </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4 text-forest-600 rounded" />
-                </div>
-
-                <div className="flex items-center justify-between p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
-                  <div>
-                    <p className="font-bold text-forest-800">Medicine Dispatch Notifications</p>
-                    <p className="text-brandText-secondary mt-0.5">Real-time status updates when rider departs pharmacy</p>
-                  </div>
-                  <input type="checkbox" defaultChecked className="h-4 w-4 text-forest-600 rounded" />
+                  <input
+                    type="checkbox"
+                    checked={notifPreferences?.globalSettings?.pushEnabled ?? true}
+                    onChange={(e) => handleTogglePushNotifications(e.target.checked)}
+                    className="h-4 w-4 text-forest-600 rounded"
+                  />
                 </div>
               </div>
             </div>
@@ -450,7 +602,7 @@ export const ProfilePage = () => {
         isOpen={isAddressModalOpen}
         onClose={() => setIsAddressModalOpen(false)}
         title="Add New Delivery Address"
-        subtitle="Save home, office, or parents address for faster checkout"
+        subtitle="Save home, office, or family address into backend profile"
       >
         <form onSubmit={handleAddAddress} className="space-y-4">
           <div>
@@ -478,19 +630,7 @@ export const ProfilePage = () => {
               required
               value={newRecipient}
               onChange={(e) => setNewRecipient(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-brandText-main mb-1">Full Street Address</label>
-            <textarea
-              required
-              rows={2}
-              placeholder="Flat, Road, Area, Kolkata/Durgapur/Hooghly PIN code..."
-              value={newAddressText}
-              onChange={(e) => setNewAddressText(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+              className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
             />
           </div>
 
@@ -501,9 +641,64 @@ export const ProfilePage = () => {
               required
               value={newPhone}
               onChange={(e) => setNewPhone(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+              className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-mono"
             />
           </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-brandText-main mb-1">Street Address Line 1</label>
+            <textarea
+              required
+              rows={2}
+              placeholder="Flat, Road, Area..."
+              value={newLine1}
+              onChange={(e) => setNewLine1(e.target.value)}
+              className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="block text-xs font-semibold text-brandText-main mb-1">City</label>
+              <input
+                type="text"
+                required
+                value={newCity}
+                onChange={(e) => setNewCity(e.target.value)}
+                className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-brandText-main mb-1">State</label>
+              <input
+                type="text"
+                required
+                value={newState}
+                onChange={(e) => setNewState(e.target.value)}
+                className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-brandText-main mb-1">Pincode</label>
+              <input
+                type="text"
+                required
+                value={newPincode}
+                onChange={(e) => setNewPincode(e.target.value)}
+                className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-mono"
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer pt-1">
+            <input
+              type="checkbox"
+              checked={newIsDefault}
+              onChange={(e) => setNewIsDefault(e.target.checked)}
+              className="h-4 w-4 text-forest-600 rounded"
+            />
+            <span className="text-xs text-brandText-main font-medium">Set as default delivery address</span>
+          </label>
 
           <div className="flex gap-3 pt-2">
             <Button variant="outline" size="md" onClick={() => setIsAddressModalOpen(false)} className="flex-1">

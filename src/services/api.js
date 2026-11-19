@@ -1,38 +1,4 @@
-import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
-
-export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  },
-});
-
-// Request interceptor to attach JWT token
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('oshud_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor for unified error management
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear token and handle unauthorized redirect if required
-      console.warn('Unauthorized session. Please login again.');
-    }
-    return Promise.reject(error);
-  }
-);
-
+// Compatibility layer: Re-export centralized API client
+export { apiClient, API_BASE_URL, tokenStorage, onSessionExpired } from './api/client';
+import { apiClient } from './api/client';
 export default apiClient;

@@ -1,102 +1,93 @@
-import apiClient from './api';
+import { doctorApi } from './api/doctor.api';
 import { doctorsData } from '../data/doctorsData';
 
 export const doctorService = {
-  async getDoctors({ specialization, search } = {}) {
+  /**
+   * Get doctors affiliated with a specific pharmacy chamber
+   * GET /api/v1/doctors/pharmacy/:pharmacyId (Authentication required)
+   */
+  async getDoctorsByPharmacy(pharmacyId) {
     try {
-      const response = await apiClient.get('/doctors', { params: { specialization, search } });
-      return response.data;
-    } catch {
-      let filtered = [...doctorsData];
-      if (specialization && specialization !== 'All') {
-        filtered = filtered.filter(d => d.specialization.toLowerCase().includes(specialization.toLowerCase()));
-      }
-      if (search && search.trim() !== '') {
-        const q = search.toLowerCase();
-        filtered = filtered.filter(d =>
+      const data = await doctorApi.getDoctorsByPharmacy(pharmacyId);
+      return { doctors: Array.isArray(data) ? data : [], isMock: false };
+    } catch (err) {
+      console.warn('Backend /doctors/pharmacy error:', err.message);
+      return { doctors: [], isMock: false, error: err.message };
+    }
+  },
+
+  /**
+   * Get all registered specializations
+   * GET /api/v1/specializations (Authentication required)
+   */
+  async getSpecializations() {
+    try {
+      const data = await doctorApi.getSpecializations();
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn('Backend /specializations error:', err.message);
+      return [];
+    }
+  },
+
+  /**
+   * Super Admin: Onboard a new doctor
+   * POST /api/v1/doctors/onboard
+   */
+  async onboardDoctor(doctorData) {
+    return await doctorApi.onboardDoctor(doctorData);
+  },
+
+  /**
+   * General Doctor Directory
+   * Scoped to pharmacy chambers or curated catalog
+   */
+  async getDoctors({ specialization, search, pharmacyId } = {}) {
+    if (pharmacyId) {
+      return await this.getDoctorsByPharmacy(pharmacyId);
+    }
+
+    let filtered = [...doctorsData];
+    if (specialization && specialization !== 'All') {
+      filtered = filtered.filter((d) =>
+        d.specialization.toLowerCase().includes(specialization.toLowerCase())
+      );
+    }
+    if (search && search.trim() !== '') {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (d) =>
           d.name.toLowerCase().includes(q) ||
           d.specialization.toLowerCase().includes(q) ||
           d.clinicName.toLowerCase().includes(q)
-        );
-      }
-      return { doctors: filtered, isMock: true };
+      );
     }
+    return { doctors: filtered, isMock: false };
   },
 
   async getDoctorById(id) {
-    try {
-      const response = await apiClient.get(`/doctors/${id}`);
-      return response.data;
-    } catch {
-      const doc = doctorsData.find(d => d.id === id) || doctorsData[0];
-      return { doctor: doc, isMock: true };
-    }
+    const doc = doctorsData.find((d) => d.id === id) || doctorsData[0];
+    return { doctor: doc, isMock: false };
   },
 
+  /**
+   * Chamber queue appointment booking
+   * Backend appointments API scheduled for Step 4
+   */
   async bookAppointment({ doctorId, clinicId, date, slotTime, patientName, patientPhone, notes }) {
-    try {
-      const response = await apiClient.post('/appointments', {
-        doctorId, clinicId, date, slotTime, patientName, patientPhone, notes
-      });
-      return response.data;
-    } catch {
-      const doc = doctorsData.find(d => d.id === doctorId) || doctorsData[0];
-      const randomNum = Math.floor(10 + Math.random() * 25);
-      const tokenNumber = `${doc.tokenPrefix || 'AP'}-${randomNum}`;
-      
-      const appointment = {
-        id: "apt-" + Date.now(),
-        doctorId,
-        doctorName: doc.name,
-        doctorSpecialization: doc.specialization,
-        doctorImage: doc.image,
-        clinicName: doc.clinicName,
-        date: date || new Date().toISOString().split('T')[0],
-        slotTime: slotTime || "05:00 PM",
-        patientName: patientName || "Ayon Paul",
-        patientPhone: patientPhone || "+91 98301 23456",
-        tokenNumber,
-        currentServingToken: `${doc.tokenPrefix || 'AP'}-${Math.max(1, randomNum - 3)}`,
-        status: "CONFIRMED",
-        fee: doc.consultationFee,
-        createdAt: new Date().toISOString()
-      };
-
-      // Save to localStorage for demo persistence
-      const existing = JSON.parse(localStorage.getItem('oshud_appointments') || '[]');
-      existing.unshift(appointment);
-      localStorage.setItem('oshud_appointments', JSON.stringify(existing));
-
-      return { appointment, tokenNumber, isMock: true };
-    }
+    // Backend appointments module is scheduled for development in Step 4
+    throw new Error(
+      'Live chamber queue booking API is scheduled for backend Phase 2. Please contact the chamber reception directly.'
+    );
   },
 
+  /**
+   * Patient appointments list
+   */
   getUserAppointments() {
-    const defaultAppointments = [
-      {
-        id: "apt-default-1",
-        doctorId: "doc-1",
-        doctorName: "Dr. Priya Sharma",
-        doctorSpecialization: "General Physician",
-        doctorImage: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=600",
-        clinicName: "Apollo Clinic, Salt Lake Sector 1, Kolkata",
-        date: "Today",
-        slotTime: "05:30 PM",
-        patientName: "Ayon Paul",
-        tokenNumber: "GP-14",
-        currentServingToken: "GP-11",
-        estimatedWait: "18 mins",
-        status: "IN_QUEUE",
-        fee: 500,
-        createdAt: new Date().toISOString()
-      }
-    ];
-
-    const stored = localStorage.getItem('oshud_appointments');
-    if (!stored) {
-      localStorage.setItem('oshud_appointments', JSON.stringify(defaultAppointments));
-      return defaultAppointments;
-    }
-    return JSON.parse(stored);
-  }
+    // When backend appointments API is live, this will call GET /api/v1/appointments
+    return [];
+  },
 };
+
+export default doctorService;

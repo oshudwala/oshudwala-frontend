@@ -17,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { orderService } from '../services/orderService';
 import { prescriptionService } from '../services/prescriptionService';
+import { userApi } from '../services/api/user.api';
 import Button from '../components/common/Button';
 
 export const CheckoutPage = () => {
@@ -34,29 +35,62 @@ export const CheckoutPage = () => {
   } = useCart();
   const { addToast } = useToast();
 
-  const savedAddresses = [
-    {
-      id: 'addr-1',
-      tag: 'Home',
-      recipient: user?.name || 'Ayon Paul',
-      phone: user?.phone || '+91 98301 23456',
-      address: 'Flat 4B, Greenwood Park, Salt Lake Sector 1, Kolkata-700064'
-    },
-    {
-      id: 'addr-2',
-      tag: 'Office',
-      recipient: user?.name || 'Ayon Paul',
-      phone: user?.phone || '+91 98301 23456',
-      address: 'Infinity Benchmark, 10th Floor, Sector V, Salt Lake, Kolkata-700091'
-    }
-  ];
-
-  const [selectedAddressId, setSelectedAddressId] = useState('addr-1');
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState('');
   const [deliverySlot, setDeliverySlot] = useState('express');
   const [paymentMethod, setPaymentMethod] = useState('cod');
   const [selectedPrescriptionId, setSelectedPrescriptionId] = useState('RX-841920');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [placedOrderResult, setPlacedOrderResult] = useState(null);
+  const [orderNotice, setOrderNotice] = useState(null);
+
+  useEffect(() => {
+    const fetchAddresses = async () => {
+      try {
+        const data = await userApi.getAddresses();
+        if (Array.isArray(data) && data.length > 0) {
+          const formatted = data.map((addr) => ({
+            id: addr.id,
+            tag: addr.label || 'Home',
+            recipient: addr.fullName,
+            phone: addr.phone,
+            address: `${addr.line1}${addr.line2 ? `, ${addr.line2}` : ''}, ${addr.city}, ${addr.state} - ${addr.pincode}`,
+            isDefault: addr.isDefault,
+          }));
+          setSavedAddresses(formatted);
+          const defaultAddr = formatted.find((a) => a.isDefault) || formatted[0];
+          setSelectedAddressId(defaultAddr.id);
+        } else {
+          const fallback = [
+            {
+              id: 'addr-default',
+              tag: 'Default',
+              recipient: user?.fullName || user?.name || 'Patient',
+              phone: user?.phone || '',
+              address: 'City Centre, Durgapur, West Bengal 713216',
+              isDefault: true,
+            },
+          ];
+          setSavedAddresses(fallback);
+          setSelectedAddressId('addr-default');
+        }
+      } catch {
+        const fallback = [
+          {
+            id: 'addr-default',
+            tag: 'Default',
+            recipient: user?.fullName || user?.name || 'Patient',
+            phone: user?.phone || '',
+            address: 'City Centre, Durgapur, West Bengal 713216',
+            isDefault: true,
+          },
+        ];
+        setSavedAddresses(fallback);
+        setSelectedAddressId('addr-default');
+      }
+    };
+    fetchAddresses();
+  }, [user]);
 
   const existingPrescriptions = prescriptionService.getUserPrescriptions();
 
@@ -88,14 +122,23 @@ export const CheckoutPage = () => {
         subtotal,
         deliveryFee,
         discount,
-        total
+        total,
       });
 
-      setPlacedOrderResult(res.order);
-      clearCart();
-      addToast(`Order ${res.order.id} placed successfully!`, 'success');
-    } catch {
-      addToast('Failed to place order. Please try again.', 'error');
+      if (res?.id) {
+        setPlacedOrderResult(res);
+        clearCart();
+        addToast(`Order ${res.id} placed successfully!`, 'success');
+      } else {
+        throw new Error('Online checkout integration pending');
+      }
+    } catch (err) {
+      setOrderNotice({
+        title: 'Online Checkout Notice',
+        message: err.message,
+        total,
+        itemCount: cartItems.length,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -103,7 +146,64 @@ export const CheckoutPage = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
-      {placedOrderResult ? (
+      {orderNotice ? (
+        <div className="bg-surface-pure rounded-3xl p-8 sm:p-12 border border-brandBorder-subtle shadow-card max-w-2xl mx-auto text-center space-y-6 animate-fade-in">
+          <div className="w-20 h-20 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto shadow-inner">
+            <Package className="w-10 h-10" />
+          </div>
+
+          <div>
+            <span className="text-xs font-bold text-amber-700 uppercase tracking-widest">
+              Direct Pharmacy Fulfillment
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-forest-800 mt-1">
+              Order Ready for Dispatch
+            </h1>
+            <p className="text-xs sm:text-sm text-brandText-secondary mt-2 max-w-md mx-auto leading-relaxed">
+              Automated online checkout is scheduled for backend Phase 2 (Step 6).
+              Our registered local pharmacies are fulfilling express deliveries immediately via WhatsApp and direct telephone helpline.
+            </p>
+          </div>
+
+          <div className="bg-forest-50/70 p-5 rounded-2xl border border-forest-100 text-left text-xs space-y-2.5 text-brandText-main">
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Order Value:</span>
+              <span className="font-bold text-forest-800 text-sm">৳{orderNotice.total}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Items in Cart:</span>
+              <span className="font-semibold">{orderNotice.itemCount} Prescribed Medicines / Health Products</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">WhatsApp Delivery Desk:</span>
+              <span className="font-semibold text-forest-700">+880 1700-000000</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-brandText-secondary">Phone Helpline:</span>
+              <span className="font-semibold text-forest-700">09612000000</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <a
+              href={`https://wa.me/8801700000000?text=Hello%20Oshud%20Wala,%20I%20would%20like%20to%20order%20my%20medicines%20worth%20৳${orderNotice.total}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 py-3 px-6 bg-forest-600 hover:bg-forest-700 text-white font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-card transition-all"
+            >
+              Order via WhatsApp Helpline
+            </a>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => setOrderNotice(null)}
+              className="flex-1"
+            >
+              Back to Checkout
+            </Button>
+          </div>
+        </div>
+      ) : placedOrderResult ? (
         /* Order Placed Success View */
         <div className="bg-surface-pure rounded-3xl p-8 sm:p-12 border border-brandBorder-subtle shadow-card max-w-2xl mx-auto text-center space-y-6">
           <div className="w-20 h-20 bg-emerald-100 text-forest-700 rounded-full flex items-center justify-center mx-auto shadow-inner">
