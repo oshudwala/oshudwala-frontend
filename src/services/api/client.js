@@ -1,7 +1,14 @@
 import axios from 'axios';
 
 // Resolve API base URL from Vite environment variable
-const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || 'https://oshudwalla-backend-1.onrender.com';
+let rawBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+
+// Safety guard: If no URL is provided, or if in production build it contains localhost,
+// always fallback to the live production Render backend to prevent ERR_CONNECTION_REFUSED.
+if (!rawBaseUrl || (import.meta.env.PROD && (rawBaseUrl.includes('localhost') || rawBaseUrl.includes('127.0.0.1')))) {
+  rawBaseUrl = 'https://oshudwalla-backend-1.onrender.com';
+}
+
 export const API_BASE_URL = rawBaseUrl.endsWith('/api/v1') 
   ? rawBaseUrl 
   : `${rawBaseUrl.replace(/\/+$/, '')}/api/v1`;
