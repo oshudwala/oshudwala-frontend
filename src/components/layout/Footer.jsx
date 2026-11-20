@@ -10,7 +10,7 @@ export const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 lg:gap-8 pb-12 border-b border-forest-800/80">
           {/* Brand Info */}
           <div className="lg:col-span-1 space-y-4">
-            <Logo variant="light" />
+            <Logo variant="dark" />
             <p className="text-xs text-forest-200/90 leading-relaxed max-w-sm">
               Your trusted healthcare partner for medicines, doctor appointments, and verified pharmacy care. Closer to you, wherever you are.
             </p>

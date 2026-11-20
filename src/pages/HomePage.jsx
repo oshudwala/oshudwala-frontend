@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import HeroBanner from '../components/home/HeroBanner';
 import OrderChannels from '../components/home/OrderChannels';
 import FeaturedDoctors from '../components/home/FeaturedDoctors';
+import FeaturedClinics from '../components/home/FeaturedClinics';
 import FeaturedPharmacies from '../components/home/FeaturedPharmacies';
 import CategoryGrid from '../components/home/CategoryGrid';
 import HowItWorks from '../components/home/HowItWorks';
@@ -9,6 +10,7 @@ import WhyChooseUs from '../components/home/WhyChooseUs';
 import FaqSection from '../components/home/FaqSection';
 import PrescriptionModal from '../components/home/PrescriptionModal';
 import BookingModal from '../components/doctors/BookingModal';
+import FloatingOrderBar from '../components/common/FloatingOrderBar';
 
 export const HomePage = () => {
   const [isPrescriptionModalOpen, setIsPrescriptionModalOpen] = useState(false);
@@ -24,6 +26,11 @@ export const HomePage = () => {
 
       {/* SECTION 4 — FEATURED DOCTORS */}
       <FeaturedDoctors
+        onBookDoctor={(doc) => setSelectedDoctorForBooking(doc)}
+      />
+
+      {/* SECTION 4.5 — FEATURED CLINICS (with doctors available for appointment) */}
+      <FeaturedClinics
         onBookDoctor={(doc) => setSelectedDoctorForBooking(doc)}
       />
 
@@ -53,6 +60,9 @@ export const HomePage = () => {
         doctor={selectedDoctorForBooking}
         onClose={() => setSelectedDoctorForBooking(null)}
       />
+
+      {/* Persistent floating quick-action bar when scrolling */}
+      <FloatingOrderBar onOpenPrescription={() => setIsPrescriptionModalOpen(true)} />
     </div>
   );
 };

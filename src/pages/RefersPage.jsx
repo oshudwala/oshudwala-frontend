@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Gift, Copy, Check, Share2, Wallet, Users, Award, ArrowRight } from 'lucide-react';
+import { Gift, Copy, Check, Share2, Wallet, Users, Award, ArrowRight, QrCode, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Button from '../components/common/Button';
@@ -11,6 +11,7 @@ export const RefersPage = () => {
 
   const referralCode = user?.referralCode || 'OSHUD-CARE-99';
   const referralLink = `https://oshudwala.com/register?ref=${referralCode}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(referralLink)}&color=075C40&bgcolor=FFFFFF`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(referralCode);
@@ -29,10 +30,27 @@ export const RefersPage = () => {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  const handleShareQr = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Join Oshud Wala & Get ₹50',
+          text: `Use my referral code ${referralCode} to get ₹50 off on genuine medicines!`,
+          url: referralLink,
+        });
+        addToast('Referral shared successfully!', 'success');
+      } catch (err) {
+        // User dismissed share
+      }
+    } else {
+      handleCopyLink();
+    }
+  };
+
   const referralHistory = [
     {
       id: 'ref-1',
-      friendName: 'Tanvir Rahman',
+      friendName: 'Snehasish Ganguly',
       date: '12 Nov 2026',
       status: 'Delivered & Credited',
       reward: '+50 Coins',
@@ -40,7 +58,7 @@ export const RefersPage = () => {
     },
     {
       id: 'ref-2',
-      friendName: 'Farhana Sultana',
+      friendName: 'Ruma Chatterjee',
       date: '08 Nov 2026',
       status: 'Delivered & Credited',
       reward: '+50 Coins',
@@ -48,7 +66,7 @@ export const RefersPage = () => {
     },
     {
       id: 'ref-3',
-      friendName: 'Mahmudul Hasan',
+      friendName: 'Abhijit Sen',
       date: '02 Nov 2026',
       status: 'Delivered & Credited',
       reward: '+50 Coins',
@@ -80,7 +98,7 @@ export const RefersPage = () => {
 
       {/* Referral Code & Wallet Summary Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left: Referral Code Box */}
+        {/* Left: Referral Code & QR Box */}
         <div className="lg:col-span-7 bg-surface-pure rounded-3xl p-6 sm:p-8 border border-brandBorder-subtle shadow-subtle space-y-6">
           <div>
             <h2 className="text-lg sm:text-xl font-heading font-bold text-forest-800">
@@ -113,8 +131,53 @@ export const RefersPage = () => {
             </Button>
           </div>
 
+          {/* QR Code Sharing Box */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-forest-50/70 border border-forest-200/80 flex flex-col sm:flex-row items-center gap-5">
+            {/* QR Image Container */}
+            <div className="p-3 bg-white rounded-2xl border border-forest-200 shadow-xs flex flex-col items-center flex-shrink-0">
+              <img
+                src={qrCodeUrl}
+                alt={`Referral QR Code for ${referralCode}`}
+                className="w-32 h-32 sm:w-36 sm:h-36 object-contain rounded-lg"
+              />
+              <span className="text-[10px] font-bold text-forest-700 mt-2 uppercase tracking-wider flex items-center gap-1">
+                <QrCode className="w-3 h-3 text-forest-600" />
+                <span>Scan to Register</span>
+              </span>
+            </div>
+
+            <div className="text-center sm:text-left space-y-2 flex-1">
+              <h3 className="font-heading font-bold text-sm sm:text-base text-forest-800">
+                Shareable Referral QR Code
+              </h3>
+              <p className="text-xs text-brandText-secondary leading-relaxed">
+                Friends can scan this QR code directly with any smartphone camera to open registration with your referral discount applied!
+              </p>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                <a
+                  href={qrCodeUrl}
+                  download={`oshud-wala-referral-${referralCode}.png`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-forest-700 hover:bg-forest-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download QR</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={handleShareQr}
+                  className="px-3.5 py-2 rounded-xl bg-surface-pure hover:bg-forest-100 text-forest-800 font-bold text-xs border border-forest-200 flex items-center gap-1.5 transition-all active:scale-95"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-forest-600" />
+                  <span>Share QR</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Social Share Buttons */}
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3 pt-1">
             <p className="text-xs font-semibold text-brandText-main">
               Share directly with friends:
             </p>
@@ -171,7 +234,7 @@ export const RefersPage = () => {
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div className="p-3.5 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
               <p className="text-brandText-secondary">Total Friends Invited</p>
-              <p className="text-lg font-bold text-forest-800 mt-1">5 Patients</p>
+              <p className="text-lg font-bold text-forest-800 mt-1">5</p>
             </div>
             <div className="p-3.5 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
               <p className="text-brandText-secondary">Total Earned</p>
@@ -193,10 +256,10 @@ export const RefersPage = () => {
               1
             </div>
             <h4 className="font-heading font-bold text-sm text-forest-800">
-              Share Your Referral Code
+              Share Your Referral Code or QR
             </h4>
             <p className="text-xs text-brandText-secondary leading-relaxed">
-              Send your personal invite code to friends, family, or colleagues across Kolkata & West Bengal.
+              Send your personal invite code or QR to friends, family, or colleagues across Kolkata & West Bengal.
             </p>
           </div>
 
@@ -208,7 +271,7 @@ export const RefersPage = () => {
               Friend Places First Order
             </h4>
             <p className="text-xs text-brandText-secondary leading-relaxed">
-              They receive ₹50 off instantly on their first medicine order using your code.
+              They get ₹50 instant discount applied to their first verified medicine order or appointment.
             </p>
           </div>
 
@@ -217,37 +280,52 @@ export const RefersPage = () => {
               3
             </div>
             <h4 className="font-heading font-bold text-sm text-forest-800">
-              You Earn 50 Oshud Coins
+              You Receive 50 Coins
             </h4>
             <p className="text-xs text-brandText-secondary leading-relaxed">
-              As soon as their medicines are delivered safely, 50 Coins get credited into your wallet!
+              50 Oshud Coins (₹50) are immediately credited to your wallet once their medicine delivery completes.
             </p>
           </div>
         </div>
       </div>
 
       {/* Referral History Table */}
-      <div className="bg-surface-pure rounded-3xl p-6 border border-brandBorder-subtle shadow-subtle space-y-4">
-        <h3 className="font-heading font-bold text-base text-forest-800">
-          Referral Activity & Rewards History
-        </h3>
+      <div className="bg-surface-pure rounded-3xl p-6 sm:p-8 border border-brandBorder-subtle shadow-subtle space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-heading font-bold text-base text-forest-800">
+            Referral Activity History
+          </h3>
+          <span className="text-xs text-brandText-secondary">
+            Showing last 3 referrals
+          </span>
+        </div>
 
-        <div className="divide-y divide-brandBorder-subtle">
-          {referralHistory.map((item) => (
-            <div key={item.id} className="py-3.5 flex items-center justify-between text-xs">
-              <div>
-                <p className="font-bold text-forest-800">{item.friendName}</p>
-                <p className="text-[11px] text-brandText-secondary">{item.date}</p>
-              </div>
-
-              <div className="flex items-center gap-4">
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  {item.status}
-                </span>
-                <span className="font-bold text-emerald-700 text-sm">{item.reward}</span>
-              </div>
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead>
+              <tr className="border-b border-brandBorder-subtle text-brandText-secondary">
+                <th className="py-3 px-4 font-semibold">Friend Name</th>
+                <th className="py-3 px-4 font-semibold">Joined Date</th>
+                <th className="py-3 px-4 font-semibold">Order Status</th>
+                <th className="py-3 px-4 font-semibold text-right">Coins Earned</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-brandBorder-light">
+              {referralHistory.map((item) => (
+                <tr key={item.id} className="hover:bg-forest-50/40 transition-colors">
+                  <td className="py-3.5 px-4 font-bold text-forest-800">{item.friendName}</td>
+                  <td className="py-3.5 px-4 text-brandText-secondary">{item.date}</td>
+                  <td className="py-3.5 px-4">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      {item.status}
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-4 text-right font-bold text-emerald-600">{item.reward}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

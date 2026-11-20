@@ -186,8 +186,8 @@ export const ProductDetailPage = () => {
             </div>
 
             {/* Stepper + Add to Cart Button */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center border-2 border-brandBorder-subtle rounded-full bg-surface-warm px-3 py-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+              <div className="flex items-center justify-center border-2 border-brandBorder-subtle rounded-full bg-surface-warm px-3 py-2 self-start sm:self-auto">
                 <button
                   type="button"
                   onClick={() => setQuantity((q) => Math.max(1, q - 1))}
@@ -212,7 +212,7 @@ export const ProductDetailPage = () => {
                 size="lg"
                 leftIcon={ShoppingBag}
                 onClick={handleAddToCart}
-                className="flex-1 shadow-card"
+                className="flex-1 shadow-card w-full sm:w-auto"
               >
                 Add To Cart (₹{product.price * quantity})
               </Button>

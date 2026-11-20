@@ -711,6 +711,33 @@ export const workspaceStore = {
     persistAndNotify();
   },
 
+  addStock(itemData) {
+    const newItem = {
+      id: 'inv-' + Date.now(),
+      name: itemData.name,
+      generic: itemData.generic || '',
+      manufacturer: itemData.manufacturer || 'Certified Pharma',
+      category: itemData.category || 'General',
+      batchNo: itemData.batchNo || 'WB-' + Math.floor(1000 + Math.random() * 9000),
+      expiryDate: itemData.expiryDate || '2027-12-31',
+      daysToExpiry: 450,
+      mrp: Number(itemData.mrp) || 100,
+      sellingPrice: Number(itemData.sellingPrice) || Number(itemData.mrp) || 90,
+      stock: Number(itemData.units) || 50,
+      reorderLevel: 20,
+      status: Number(itemData.units) > 20 ? 'IN_STOCK' : 'LOW_STOCK',
+      pharmacyId: 'pharma-01'
+    };
+    state = { ...state, inventory: [newItem, ...state.inventory], lastUpdated: Date.now() };
+    persistAndNotify();
+    return newItem;
+  },
+
+  removeStock(invId) {
+    state = { ...state, inventory: state.inventory.filter((i) => i.id !== invId), lastUpdated: Date.now() };
+    persistAndNotify();
+  },
+
   // === RIDER STATUS & CASH ACTIONS ===
   toggleRiderOnline(riderId, isOnline) {
     const idx = state.riders.findIndex((r) => r.id === riderId);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   DollarSign,
@@ -7,6 +7,7 @@ import {
   Building2,
   Bike,
   Activity,
+  Stethoscope,
   ArrowRight,
   TrendingUp,
   AlertCircle,
@@ -17,9 +18,38 @@ import {
 import MetricCard from '../../components/workspace/MetricCard';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
+import adminApi from '../../services/api/admin.api';
 
 export const AdminDashboard = () => {
   const { orders, tokens, prescriptions, inventory, riders } = useWorkspaceStore();
+  const [entityCounts, setEntityCounts] = useState({
+    clinics: 6,
+    doctors: 12,
+    pharmacies: 8,
+    riders: 15,
+  });
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const [c, d, p, r] = await Promise.all([
+          adminApi.getClinics(),
+          adminApi.getDoctors(),
+          adminApi.getPharmacies(),
+          adminApi.getRiders(),
+        ]);
+        setEntityCounts({
+          clinics: c.total || c.clinics?.length || 6,
+          doctors: d.total || d.doctors?.length || 12,
+          pharmacies: p.total || p.pharmacies?.length || 8,
+          riders: r.total || r.riders?.length || 15,
+        });
+      } catch (err) {
+        console.warn('Could not fetch real entity counts:', err);
+      }
+    };
+    fetchCounts();
+  }, []);
 
   const totalRevenue = orders
     .filter((o) => o.status !== 'CANCELLED')
@@ -90,6 +120,73 @@ export const AdminDashboard = () => {
           icon={FileCheck}
           colorScheme="rose"
         />
+      </div>
+
+      {/* Management Quick Link Chips */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Link
+          to="/admin/clinics"
+          className="p-3 bg-surface-pure hover:bg-forest-50 border border-brandBorder-subtle hover:border-forest-300 rounded-2xl flex items-center justify-between transition-all group"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-forest-50 text-forest-700 flex items-center justify-center">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-forest-900">Clinics</p>
+              <span className="text-[10px] text-brandText-secondary">{entityCounts.clinics} certified</span>
+            </div>
+          </div>
+          <ArrowRight className="w-3.5 h-3.5 text-brandText-muted group-hover:text-forest-700 group-hover:translate-x-0.5 transition-transform" />
+        </Link>
+
+        <Link
+          to="/admin/doctors"
+          className="p-3 bg-surface-pure hover:bg-forest-50 border border-brandBorder-subtle hover:border-forest-300 rounded-2xl flex items-center justify-between transition-all group"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-forest-50 text-forest-700 flex items-center justify-center">
+              <Stethoscope className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-forest-900">Doctors</p>
+              <span className="text-[10px] text-brandText-secondary">{entityCounts.doctors} specialists</span>
+            </div>
+          </div>
+          <ArrowRight className="w-3.5 h-3.5 text-brandText-muted group-hover:text-forest-700 group-hover:translate-x-0.5 transition-transform" />
+        </Link>
+
+        <Link
+          to="/admin/pharmacies"
+          className="p-3 bg-surface-pure hover:bg-forest-50 border border-brandBorder-subtle hover:border-forest-300 rounded-2xl flex items-center justify-between transition-all group"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-forest-50 text-forest-700 flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-forest-900">Pharmacists</p>
+              <span className="text-[10px] text-brandText-secondary">{entityCounts.pharmacies} stores</span>
+            </div>
+          </div>
+          <ArrowRight className="w-3.5 h-3.5 text-brandText-muted group-hover:text-forest-700 group-hover:translate-x-0.5 transition-transform" />
+        </Link>
+
+        <Link
+          to="/admin/riders"
+          className="p-3 bg-surface-pure hover:bg-forest-50 border border-brandBorder-subtle hover:border-forest-300 rounded-2xl flex items-center justify-between transition-all group"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-forest-50 text-forest-700 flex items-center justify-center">
+              <Bike className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-forest-900">Riders</p>
+              <span className="text-[10px] text-brandText-secondary">{entityCounts.riders} fleet</span>
+            </div>
+          </div>
+          <ArrowRight className="w-3.5 h-3.5 text-brandText-muted group-hover:text-forest-700 group-hover:translate-x-0.5 transition-transform" />
+        </Link>
       </div>
 
       {/* 2-Column Dashboard Grid */}

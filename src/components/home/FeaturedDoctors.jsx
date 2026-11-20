@@ -56,12 +56,12 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
         {/* Doctor Cards Horizontal Container */}
         <div
           ref={scrollContainerRef}
-          className="flex gap-4 sm:gap-5 overflow-x-auto no-scrollbar scroll-smooth pb-4 pt-1"
+          className="flex gap-3 sm:gap-5 overflow-x-auto no-scrollbar scroll-smooth pb-3 sm:pb-4 pt-1 snap-x snap-mandatory"
         >
           {doctorsData.slice(0, 5).map((doctor) => (
             <div
               key={doctor.id}
-              className="w-[260px] sm:w-[280px] flex-shrink-0"
+              className="w-[185px] xs:w-[205px] sm:w-[260px] lg:w-[280px] flex-shrink-0 snap-start"
             >
               <DoctorCard
                 doctor={doctor}

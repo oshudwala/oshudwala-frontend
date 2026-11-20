@@ -186,17 +186,17 @@ export const PrescriptionModal = ({ isOpen, onClose }) => {
             </div>
             <div className="flex justify-between">
               <span className="text-brandText-secondary">WhatsApp Prescription Desk:</span>
-              <span className="font-semibold text-forest-700">+880 1700-000000</span>
+              <span className="font-semibold text-forest-700">+91 98000 00000</span>
             </div>
             <div className="flex justify-between">
               <span className="text-brandText-secondary">Helpline:</span>
-              <span className="font-semibold text-forest-700">09612000000</span>
+              <span className="font-semibold text-forest-700">+91 98000 00000</span>
             </div>
           </div>
 
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
             <a
-              href="https://wa.me/8801700000000?text=Hello%20Oshud%20Wala,%20I%20have%20attached%20my%20prescription%20for%20verification%20and%20order."
+              href="https://wa.me/919800000000?text=Hello%20Oshud%20Wala,%20I%20have%20attached%20my%20prescription%20for%20verification%20and%20order."
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 py-3 px-4 bg-forest-600 hover:bg-forest-700 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-card transition-all"
@@ -422,26 +422,6 @@ export const PrescriptionModal = ({ isOpen, onClose }) => {
               <span>{fileError}</span>
             </div>
           )}
-
-          {/* Preferred Pharmacy Selection */}
-          <div>
-            <label className="block text-xs font-semibold text-brandText-main mb-1.5 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-forest-600" />
-              Choose Preferred Pharmacy (Optional)
-            </label>
-            <select
-              value={preferredPharmacyId}
-              onChange={(e) => setPreferredPharmacyId(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 text-brandText-main"
-            >
-              <option value="">Nearest Verified Partner Pharmacy (Recommended)</option>
-              {pharmaciesData.map((pharm) => (
-                <option key={pharm.id} value={pharm.id}>
-                  {pharm.name} — {pharm.distance} ({pharm.address})
-                </option>
-              ))}
-            </select>
-          </div>
 
           {/* Patient Notes */}
           <div>

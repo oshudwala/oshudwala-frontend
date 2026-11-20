@@ -196,37 +196,6 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
             </div>
           </div>
 
-          {/* Consultation Type Toggle */}
-          <div>
-            <label className="block text-xs font-semibold text-brandText-main mb-1.5">
-              Consultation Mode
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setConsultationType('in-clinic')}
-                className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${
-                  consultationType === 'in-clinic'
-                    ? 'border-forest-600 bg-forest-100 text-forest-800'
-                    : 'border-brandBorder-subtle bg-surface-pure text-brandText-secondary'
-                }`}
-              >
-                In-Clinic Visit
-              </button>
-              <button
-                type="button"
-                onClick={() => setConsultationType('telemedicine')}
-                className={`py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${
-                  consultationType === 'telemedicine'
-                    ? 'border-forest-600 bg-forest-100 text-forest-800'
-                    : 'border-brandBorder-subtle bg-surface-pure text-brandText-secondary'
-                }`}
-              >
-                Video Teleconsultation
-              </button>
-            </div>
-          </div>
-
           {/* Date Selection */}
           <div>
             <label className="block text-xs font-semibold text-brandText-main mb-1.5 flex items-center gap-1.5">

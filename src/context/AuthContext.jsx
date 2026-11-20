@@ -18,6 +18,7 @@ export const AuthProvider = ({ children }) => {
 
   // Synchronize profile with backend
   const refreshUserProfile = useCallback(async () => {
+    const cachedUser = tokenStorage.getUser();
     if (!tokenStorage.getAccessToken()) {
       setIsLoading(false);
       return null;
@@ -44,7 +45,12 @@ export const AuthProvider = ({ children }) => {
       return normalizedUser;
     } catch (err) {
       console.warn('Failed to hydrate backend profile:', err.message);
-      // If unauthorized, clear invalid session
+      // If we have an active session cached (e.g. newly created Doctor/Rider/Pharmacy/Admin), preserve it!
+      if (cachedUser) {
+        setUser(cachedUser);
+        setToken(tokenStorage.getAccessToken());
+        return cachedUser;
+      }
       if (err.status === 401 || err.isExpired) {
         setUser(null);
         setToken(null);
@@ -139,6 +145,46 @@ export const AuthProvider = ({ children }) => {
         const fallbackUser = {
           ...res.user,
           name: res.user?.fullName,
+          role: normalizeRole(res.user?.role),
+        };
+        setUser(fallbackUser);
+        return { user: fallbackUser, token: res.accessToken };
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const sendOtp = async (phone) => {
+    return await authApi.sendOtp(phone);
+  };
+
+  const verifyOtp = async ({ phone, otp, fullName }) => {
+    setIsLoading(true);
+    try {
+      const res = await authApi.verifyOtp({ phone, otp, fullName });
+      setToken(res.accessToken);
+
+      try {
+        const fullProfile = await userApi.getProfile();
+        const userObj = {
+          id: fullProfile.id,
+          name: fullProfile.fullName,
+          fullName: fullProfile.fullName,
+          email: fullProfile.email,
+          phone: fullProfile.phone,
+          role: normalizeRole(fullProfile.role?.name || fullProfile.role || res.user?.role),
+          bloodGroup: fullProfile.patientProfile?.bloodGroup || 'O+',
+          patientProfile: fullProfile.patientProfile,
+          avatar:
+            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+        };
+        setUser(userObj);
+        return { user: userObj, token: res.accessToken };
+      } catch {
+        const fallbackUser = {
+          ...res.user,
+          name: res.user?.fullName || res.user?.name,
           role: normalizeRole(res.user?.role),
         };
         setUser(fallbackUser);
@@ -299,6 +345,8 @@ export const AuthProvider = ({ children }) => {
         isLoading,
         login,
         register,
+        sendOtp,
+        verifyOtp,
         logout,
         demoLogin,
         updateUserProfile,

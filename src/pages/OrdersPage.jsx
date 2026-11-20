@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Package,
@@ -14,9 +14,11 @@ import {
   Ticket
 } from 'lucide-react';
 import { orderService } from '../services/orderService';
+import { useWorkspaceStore } from '../services/workspace/useWorkspaceStore';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 import Button from '../components/common/Button';
+import StatusBadge from '../components/workspace/StatusBadge';
 
 export const OrdersPage = () => {
   const [searchParams] = useSearchParams();
@@ -24,19 +26,27 @@ export const OrdersPage = () => {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { addToast } = useToast();
+  const { orders: storeOrders } = useWorkspaceStore();
 
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'history'
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  React.useEffect(() => {
+  useEffect(() => {
     let isMounted = true;
     (async () => {
       try {
         const data = await orderService.getUserOrders();
-        if (isMounted) setOrders(Array.isArray(data) ? data : []);
+        if (isMounted) {
+          if (Array.isArray(data) && data.length > 0) {
+            setOrders(data);
+          } else {
+            // Fallback to real-time synchronized workspace orders
+            setOrders(storeOrders);
+          }
+        }
       } catch {
-        if (isMounted) setOrders([]);
+        if (isMounted) setOrders(storeOrders);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -44,16 +54,16 @@ export const OrdersPage = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [storeOrders]);
 
-  const activeOrders = orders.filter((o) => o.status !== 'DELIVERED');
-  const pastOrders = orders.filter((o) => o.status === 'DELIVERED');
+  const activeOrders = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED');
+  const pastOrders = orders.filter((o) => o.status === 'DELIVERED' || o.status === 'CANCELLED');
 
   const displayedOrders = activeTab === 'active' ? activeOrders : pastOrders;
 
   const handleReorder = (order) => {
     order.items.forEach((item) => {
-      addToCart(item, item.quantity);
+      addToCart(item, item.quantity || item.qty || 1);
     });
     addToast('Items added to cart for re-ordering!', 'success');
     navigate('/cart');
@@ -68,7 +78,7 @@ export const OrdersPage = () => {
             My Orders & Deliveries
           </h1>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
-            Track active medicine dispatches, assigned riders, and order history
+            Track active medicine dispatches, assigned riders, and order history in real-time
           </p>
         </div>
 
@@ -101,7 +111,7 @@ export const OrdersPage = () => {
 
       {/* Orders List */}
       {displayedOrders.length === 0 ? (
-        <div className="bg-surface-pure rounded-3xl p-12 text-center border border-brandBorder-subtle max-w-md mx-auto space-y-3">
+        <div className="bg-surface-pure rounded-3xl p-8 sm:p-12 text-center border border-brandBorder-subtle max-w-md mx-auto space-y-3">
           <div className="w-16 h-16 rounded-full bg-forest-50 text-forest-600 mx-auto flex items-center justify-center">
             <Package className="w-8 h-8" />
           </div>
@@ -123,6 +133,11 @@ export const OrdersPage = () => {
         <div className="space-y-6">
           {displayedOrders.map((order) => {
             const isHighlighted = highlightedOrderId === order.id;
+            const riderInfo = order.rider || order.assignedRider;
+            const pharmacyName = order.pharmacy?.name || order.pharmacyName || 'MedPlus Pharmacy';
+            const pharmacyAddress = order.pharmacy?.address || order.pharmacyAddress || 'Sector V, Salt Lake, Kolkata';
+            const pharmacyPhone = order.pharmacy?.phone || order.pharmacyPhone || '+91 33 2357 8900';
+
             return (
               <div
                 key={order.id}
@@ -133,29 +148,20 @@ export const OrdersPage = () => {
                 }`}
               >
                 {/* Order Top Bar */}
-                <div className="p-5 sm:p-6 bg-surface-warm border-b border-brandBorder-subtle flex flex-wrap items-center justify-between gap-4">
+                <div className="p-4 sm:p-6 bg-surface-warm border-b border-brandBorder-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-3">
-                      <span className="font-heading font-extrabold text-base sm:text-lg text-forest-800">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                      <span className="font-mono font-extrabold text-base sm:text-lg text-forest-800">
                         {order.id}
                       </span>
-                      <span
-                        className={`text-xs font-bold px-3 py-1 rounded-full ${
-                          order.status === 'DELIVERED'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800 animate-pulse'
-                        }`}
-                      >
-                        {order.status === 'DELIVERED' ? 'Delivered' : 'Out for Delivery'}
-                      </span>
+                      <StatusBadge status={order.status} />
                     </div>
-                    <p className="text-xs text-brandText-secondary">
-                      Placed on {new Date(order.placedAt).toLocaleDateString()} at{' '}
-                      {new Date(order.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <p className="text-[11px] sm:text-xs text-brandText-secondary">
+                      Placed on {new Date(order.placedAt || order.createdAt || Date.now()).toLocaleDateString('en-IN')}
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-0 border-brandBorder-subtle">
                     {order.deliveryOtp && order.status !== 'DELIVERED' && (
                       <div className="bg-forest-900 text-white px-3.5 py-1.5 rounded-xl text-center">
                         <p className="text-[9px] uppercase tracking-wider text-forest-200">Delivery OTP</p>
@@ -163,47 +169,45 @@ export const OrdersPage = () => {
                       </div>
                     )}
                     <div className="text-right">
-                      <p className="text-xs text-brandText-secondary">Total Paid</p>
-                      <p className="font-heading font-extrabold text-forest-800 text-lg">₹{order.total}</p>
+                      <p className="text-[11px] text-brandText-secondary">Total Amount</p>
+                      <p className="font-heading font-extrabold text-forest-800 text-base sm:text-lg">
+                        ₹{Number(order.total).toFixed(2)}
+                      </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Main Order Details Body */}
-                <div className="p-5 sm:p-6 space-y-6">
+                <div className="p-4 sm:p-6 space-y-6">
                   {/* Visual Multi-Stage Delivery Timeline */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-bold text-forest-800 uppercase tracking-wider">
-                      Delivery Progress Tracker
-                    </h4>
+                  {order.timeline && order.timeline.length > 0 && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold text-forest-800 uppercase tracking-wider">
+                        Delivery Progress Tracker
+                      </h4>
 
-                    <div className="relative pt-2 pb-4">
-                      {/* Timeline Steps Bar */}
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                        {(order.timeline || []).map((step, idx) => {
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+                        {order.timeline.map((step, idx) => {
                           const isDone = step.completed;
-                          const isCurrent = step.current;
-
                           return (
-                            <div key={idx} className="flex sm:flex-col items-center sm:text-center gap-3 sm:gap-2">
-                              {/* Step circle */}
+                            <div
+                              key={idx}
+                              className="flex items-center gap-3 p-2.5 rounded-xl bg-surface-warm/60 border border-brandBorder-subtle"
+                            >
                               <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 transition-all ${
+                                className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
                                   isDone
                                     ? 'bg-forest-600 text-white'
-                                    : isCurrent
-                                    ? 'bg-amber-500 text-white ring-4 ring-amber-100'
-                                    : 'bg-slate-100 text-slate-400'
+                                    : 'bg-slate-200 text-slate-500'
                                 }`}
                               >
                                 {isDone ? <CheckCircle2 className="w-4 h-4" /> : idx + 1}
                               </div>
-
-                              <div className="text-left sm:text-center">
-                                <p className={`text-xs font-bold ${isCurrent ? 'text-amber-800' : isDone ? 'text-forest-800' : 'text-slate-400'}`}>
-                                  {step.title}
+                              <div className="min-w-0">
+                                <p className={`text-xs font-bold truncate ${isDone ? 'text-forest-900' : 'text-brandText-muted'}`}>
+                                  {step.status || step.title}
                                 </p>
-                                <p className="text-[11px] text-brandText-muted mt-0.5">
+                                <p className="text-[10px] text-brandText-secondary truncate">
                                   {step.time}
                                 </p>
                               </div>
@@ -212,49 +216,55 @@ export const OrdersPage = () => {
                         })}
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Rider & Pharmacy Info Cards */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Assigned Pharmacy */}
-                    <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle space-y-2">
+                    <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle space-y-1.5">
                       <div className="flex items-center gap-2 text-forest-700">
                         <Building2 className="w-4 h-4" />
                         <h5 className="font-heading font-bold text-xs">Fulfilling Pharmacy</h5>
                       </div>
-                      <p className="text-xs font-bold text-forest-900">{order.pharmacy.name}</p>
-                      <p className="text-xs text-brandText-secondary">{order.pharmacy.address}</p>
-                      {order.pharmacy.phone && (
-                        <p className="text-xs text-forest-600 font-semibold">{order.pharmacy.phone}</p>
+                      <p className="text-xs font-bold text-forest-900">{pharmacyName}</p>
+                      <p className="text-xs text-brandText-secondary">{pharmacyAddress}</p>
+                      {pharmacyPhone && (
+                        <p className="text-xs text-forest-600 font-semibold">{pharmacyPhone}</p>
                       )}
                     </div>
 
                     {/* Assigned Rider */}
-                    {order.rider ? (
-                      <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100 space-y-2">
+                    {riderInfo ? (
+                      <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-100 space-y-1.5">
                         <div className="flex items-center justify-between text-forest-700">
                           <div className="flex items-center gap-2">
                             <Truck className="w-4 h-4" />
                             <h5 className="font-heading font-bold text-xs">Assigned Delivery Rider</h5>
                           </div>
-                          <a
-                            href={`tel:${order.rider.phone}`}
-                            className="text-xs font-bold text-forest-700 hover:text-forest-900 flex items-center gap-1"
-                          >
-                            <Phone className="w-3.5 h-3.5" /> Call Rider
-                          </a>
+                          {riderInfo.phone && (
+                            <a
+                              href={`tel:${riderInfo.phone}`}
+                              className="text-xs font-bold text-forest-700 hover:text-forest-900 flex items-center gap-1"
+                            >
+                              <Phone className="w-3.5 h-3.5" /> Call Rider
+                            </a>
+                          )}
                         </div>
-                        <p className="text-xs font-bold text-forest-900">{order.rider.name}</p>
-                        <p className="text-xs text-brandText-secondary">{order.rider.vehicle}</p>
+                        <p className="text-xs font-bold text-forest-900">{riderInfo.name}</p>
+                        <p className="text-xs text-brandText-secondary">{riderInfo.vehicle}</p>
                         <p className="text-[11px] text-emerald-800 font-medium">
-                          📍 {order.rider.currentLocation}
+                          📍 Express Delivery Partner &bull; Active on Route
                         </p>
                       </div>
                     ) : (
                       <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle space-y-1">
                         <h5 className="font-heading font-bold text-xs text-forest-800">Delivery Status</h5>
-                        <p className="text-xs text-emerald-700 font-bold">Successfully Delivered</p>
-                        <p className="text-xs text-brandText-secondary">Delivered to: {order.address}</p>
+                        <p className="text-xs text-forest-700 font-bold">
+                          {order.status === 'DELIVERED' ? 'Successfully Delivered' : 'Pharmacy Preparing Package'}
+                        </p>
+                        <p className="text-xs text-brandText-secondary">
+                          Delivering to: {order.address || 'Your saved delivery address'}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -262,18 +272,18 @@ export const OrdersPage = () => {
                   {/* Medicines List In Order */}
                   <div className="border-t border-brandBorder-subtle pt-4">
                     <h5 className="text-xs font-bold text-forest-800 uppercase tracking-wider mb-3">
-                      Ordered Medicines & Items
+                      Ordered Medicines & Items ({order.items?.length || 0})
                     </h5>
                     <div className="divide-y divide-brandBorder-light">
-                      {order.items.map((item, idx) => (
+                      {(order.items || []).map((item, idx) => (
                         <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-bold text-forest-800">{item.name}</span>
-                            <span className="text-brandText-secondary ml-2">({item.packaging || 'Pack'})</span>
-                            <span className="text-brandText-muted ml-2">x{item.quantity}</span>
+                          <div className="min-w-0 pr-3">
+                            <span className="font-bold text-forest-900">{item.name}</span>
+                            <span className="text-brandText-secondary ml-2">({item.form || item.packaging || 'Pack'})</span>
+                            <span className="text-brandText-muted ml-2">x{item.qty || item.quantity || 1}</span>
                           </div>
-                          <span className="font-bold text-forest-700">
-                            ₹{item.price * item.quantity}
+                          <span className="font-bold text-forest-800 flex-shrink-0">
+                            ₹{((item.price || 0) * (item.qty || item.quantity || 1)).toFixed(2)}
                           </span>
                         </div>
                       ))}
@@ -287,6 +297,7 @@ export const OrdersPage = () => {
                       size="sm"
                       leftIcon={RotateCcw}
                       onClick={() => handleReorder(order)}
+                      className="text-xs font-bold"
                     >
                       Reorder Items
                     </Button>

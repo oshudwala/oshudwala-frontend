@@ -26,16 +26,16 @@ export const HowItWorks = () => {
   ];
 
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+    <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-14">
       {/* Centered Heading */}
-      <div className="text-center mb-10">
-        <h2 className="text-xl sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight">
+      <div className="text-center mb-6 sm:mb-10">
+        <h2 className="text-lg sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight">
           How It Works
         </h2>
       </div>
 
-      {/* 4 Steps Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 relative">
+      {/* 4 Steps Row (2x2 on Mobile, 4 in a row on Desktop) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 relative">
         {steps.map((item, idx) => {
           const Icon = item.icon;
           return (

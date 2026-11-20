@@ -48,8 +48,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
           {
             title: 'Overview',
             items: [
-              { label: 'Dashboard', path: '/admin', icon: LayoutDashboard },
-              { label: 'Analytics', path: '/admin/analytics', icon: BarChart3 },
+              { label: 'Dashboard', path: '/admin', icon: LayoutDashboard }
             ],
           },
           {
@@ -57,31 +56,28 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             items: [
               { label: 'Orders', path: '/admin/orders', icon: ShoppingBag, badge: pendingOrdersCount },
               { label: 'Prescriptions', path: '/admin/prescriptions', icon: FileText, badge: pendingRxCount },
-              { label: 'Rider Dispatch', path: '/admin/riders', icon: Bike },
-              { label: 'Cash Collection', path: '/admin/cash', icon: Coins },
             ],
           },
           {
             title: 'Management',
             items: [
-              { label: 'Users', path: '/admin/users', icon: Users },
-              { label: 'Doctors', path: '/admin/doctors', icon: Stethoscope },
-              { label: 'Pharmacies', path: '/admin/pharmacies', icon: Building2 },
               { label: 'Clinics', path: '/admin/clinics', icon: Activity },
+              { label: 'Doctors', path: '/admin/doctors', icon: Stethoscope },
+              { label: 'Pharmacists', path: '/admin/pharmacies', icon: Building2 },
+              { label: 'Riders', path: '/admin/riders', icon: Bike },
+              { label: 'Users (Patients)', path: '/admin/users', icon: Users },
             ],
           },
           {
             title: 'Commerce & Stock',
             items: [
-              { label: 'Products', path: '/admin/products', icon: Package },
               { label: 'Inventory', path: '/admin/inventory', icon: Layers, badge: expiringStockCount },
             ],
           },
           {
-            title: 'Finance & System',
+            title: 'Finance',
             items: [
               { label: 'Settlements & Wallet', path: '/admin/finance', icon: Wallet },
-              { label: 'Audit Logs & Settings', path: '/admin/settings', icon: Settings },
             ],
           },
         ];
@@ -189,17 +185,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
         {/* Brand Header */}
         <div className="h-16 border-b border-brandBorder-subtle px-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 overflow-hidden">
-            <img src="/logo-light.png" alt="Oshud Wala Logo" className="h-8 w-auto flex-shrink-0" />
-            {!isCollapsed && (
-              <div className="min-w-0">
-                <p className="font-heading font-extrabold text-sm text-forest-900 tracking-tight leading-none">
-                  Oshud Wala
-                </p>
-                <p className="text-[10px] text-forest-700 font-semibold tracking-wider uppercase mt-0.5">
-                  Workspace OS
-                </p>
-              </div>
-            )}
+            <img src="/logo-light.png" alt="Oshud Wala Logo" className="h-8 w-auto flex-shrink-0" />  
           </Link>
         </div>
 

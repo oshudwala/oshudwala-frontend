@@ -67,7 +67,7 @@ export const Modal = ({
           )}
 
           {/* Content */}
-          <div className="p-6">
+          <div className="p-4 sm:p-6 max-h-[calc(88vh-80px)] overflow-y-auto">
             {children}
           </div>
         </div>

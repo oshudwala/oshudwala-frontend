@@ -79,7 +79,7 @@ export const RegisterPage = () => {
     <div className="min-h-[85vh] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md bg-surface-pure rounded-3xl p-6 sm:p-8 border border-brandBorder-subtle shadow-card space-y-6">
         <div className="text-center space-y-2">
-          <Logo className="justify-center" />
+          <Logo className="justify-center" variant="light"/>
           <h1 className="text-xl sm:text-2xl font-heading font-extrabold text-forest-800 pt-2">
             Create Patient Account
           </h1>

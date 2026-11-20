@@ -23,13 +23,9 @@ import NotFoundPage from '../pages/NotFoundPage';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import AdminOrdersPage from '../pages/admin/AdminOrdersPage';
 import AdminPrescriptionsPage from '../pages/admin/AdminPrescriptionsPage';
-import AdminRidersPage from '../pages/admin/AdminRidersPage';
-import AdminCashCollectionPage from '../pages/admin/AdminCashCollectionPage';
-import AdminUsersPage from '../pages/admin/AdminUsersPage';
 import AdminEntitiesPage from '../pages/admin/AdminEntitiesPage';
 import AdminProductsPage from '../pages/admin/AdminProductsPage';
 import AdminFinancePage from '../pages/admin/AdminFinancePage';
-import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 
 // Doctor Workspace Pages
 import DoctorOverview from '../pages/doctor/DoctorOverview';
@@ -69,7 +65,14 @@ export const AppRoutes = () => {
         <Route path="shop" element={<ShopPage />} />
         <Route path="product/:id" element={<ProductDetailPage />} />
         <Route path="cart" element={<CartPage />} />
-        <Route path="refers" element={<RefersPage />} />
+        <Route
+          path="refers"
+          element={
+            <ProtectedRoute>
+              <RefersPage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
@@ -114,16 +117,20 @@ export const AppRoutes = () => {
         <Route path="analytics" element={<AdminDashboard />} />
         <Route path="orders" element={<AdminOrdersPage />} />
         <Route path="prescriptions" element={<AdminPrescriptionsPage />} />
-        <Route path="riders" element={<AdminRidersPage />} />
-        <Route path="cash" element={<AdminCashCollectionPage />} />
-        <Route path="users" element={<AdminUsersPage />} />
+        
+        {/* Dedicated Management Pages & Tabs */}
+        <Route path="clinics" element={<AdminEntitiesPage initialTab="clinics" />} />
         <Route path="doctors" element={<AdminEntitiesPage initialTab="doctors" />} />
         <Route path="pharmacies" element={<AdminEntitiesPage initialTab="pharmacies" />} />
-        <Route path="clinics" element={<AdminEntitiesPage initialTab="clinics" />} />
-        <Route path="products" element={<AdminProductsPage />} />
+        <Route path="riders" element={<AdminEntitiesPage initialTab="riders" />} />
+        <Route path="users" element={<AdminEntitiesPage initialTab="users" />} />
+
+        {/* Commerce & Stock: Only Inventory */}
         <Route path="inventory" element={<AdminProductsPage />} />
+        <Route path="products" element={<Navigate to="/admin/inventory" replace />} />
+
+        {/* Finance: Settlements & Wallet */}
         <Route path="finance" element={<AdminFinancePage />} />
-        <Route path="settings" element={<AdminSettingsPage />} />
       </Route>
 
       {/* 3. Doctor Workspace */}

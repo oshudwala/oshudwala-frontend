@@ -13,7 +13,8 @@ import {
   Eye,
   Star,
   RefreshCw,
-  Bell
+  Bell,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -254,10 +255,37 @@ export const ProfilePage = () => {
         </div>
       </div>
 
+      {/* Super Admin Workspace Quick Action Banner */}
+      {user?.role === 'SUPER_ADMIN' && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-forest-900 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-card border border-forest-800">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm sm:text-base font-bold font-heading">
+                Super Admin Operations Console
+              </h2>
+              <p className="text-xs text-forest-200">
+                You have platform super admin privileges. Access live order dispatch, entity management, inventory, and finance.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate('/admin')}
+            className="text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-forest-950 py-2.5 px-4 shadow-sm whitespace-nowrap"
+          >
+            Go to Admin Dashboard &rarr;
+          </Button>
+        </div>
+      )}
+
       {/* Main Grid: Tabs on Left, Content on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Navigation Sidebar */}
-        <div className="lg:col-span-4 bg-surface-pure rounded-3xl p-4 border border-brandBorder-subtle shadow-subtle space-y-1">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        {/* Navigation Sidebar: Horizontal swipeable tabs on mobile, vertical sidebar on desktop */}
+        <div className="lg:col-span-4 bg-surface-pure rounded-3xl p-2 sm:p-4 border border-brandBorder-subtle shadow-subtle flex lg:flex-col gap-1.5 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isCurrent = activeTab === tab.id;
@@ -269,13 +297,13 @@ export const ProfilePage = () => {
                   setActiveTab(tab.id);
                   setIsEditing(false);
                 }}
-                className={`w-full px-4 py-3 rounded-2xl text-left text-xs sm:text-sm font-bold flex items-center gap-3 transition-all ${
+                className={`px-4 py-2.5 sm:py-3 rounded-2xl text-left text-xs sm:text-sm font-bold flex items-center gap-2.5 transition-all whitespace-nowrap flex-shrink-0 lg:flex-shrink lg:w-full ${
                   isCurrent
                     ? 'bg-forest-600 text-white shadow-sm'
-                    : 'text-brandText-secondary hover:bg-forest-50 hover:text-forest-700'
+                    : 'text-brandText-secondary hover:bg-forest-50 hover:text-forest-700 bg-surface-warm lg:bg-transparent'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isCurrent ? 'text-white' : 'text-forest-600'}`} />
+                <Icon className={`w-4 h-4 flex-shrink-0 ${isCurrent ? 'text-white' : 'text-forest-600'}`} />
                 <span>{tab.label}</span>
               </button>
             );

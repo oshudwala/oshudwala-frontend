@@ -168,7 +168,7 @@ export const CheckoutPage = () => {
           <div className="bg-forest-50/70 p-5 rounded-2xl border border-forest-100 text-left text-xs space-y-2.5 text-brandText-main">
             <div className="flex justify-between">
               <span className="text-brandText-secondary">Order Value:</span>
-              <span className="font-bold text-forest-800 text-sm">৳{orderNotice.total}</span>
+              <span className="font-bold text-forest-800 text-sm">₹{orderNotice.total}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-brandText-secondary">Items in Cart:</span>
@@ -176,17 +176,19 @@ export const CheckoutPage = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-brandText-secondary">WhatsApp Delivery Desk:</span>
-              <span className="font-semibold text-forest-700">+880 1700-000000</span>
+              <span className="font-semibold text-forest-700">+91 98000 00000</span>
             </div>
             <div className="flex justify-between">
               <span className="text-brandText-secondary">Phone Helpline:</span>
-              <span className="font-semibold text-forest-700">09612000000</span>
+              <span className="font-semibold text-forest-700">+91 98000 00000 (Toll-Free)</span>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <a
-              href={`https://wa.me/8801700000000?text=Hello%20Oshud%20Wala,%20I%20would%20like%20to%20order%20my%20medicines%20worth%20৳${orderNotice.total}`}
+              href={`https://wa.me/919800000000?text=${encodeURIComponent(
+                `Hello Oshud Wala! I would like to order my medicines worth ₹${orderNotice.total}`
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex-1 py-3 px-6 bg-forest-600 hover:bg-forest-700 text-white font-bold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 shadow-card transition-all"

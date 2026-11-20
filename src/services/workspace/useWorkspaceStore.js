@@ -25,6 +25,8 @@ export const useWorkspaceStore = () => {
     verifyPrescription: workspaceStore.verifyPrescription.bind(workspaceStore),
     rejectPrescription: workspaceStore.rejectPrescription.bind(workspaceStore),
     adjustStock: workspaceStore.adjustStock.bind(workspaceStore),
+    addStock: workspaceStore.addStock.bind(workspaceStore),
+    removeStock: workspaceStore.removeStock.bind(workspaceStore),
     toggleRiderOnline: workspaceStore.toggleRiderOnline.bind(workspaceStore),
     reconcileCash: workspaceStore.reconcileCash.bind(workspaceStore),
     resetDefaults: workspaceStore.resetDefaults.bind(workspaceStore),
