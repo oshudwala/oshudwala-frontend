@@ -24,6 +24,7 @@ import {
   Shield,
   Activity,
   History,
+  UserPlus,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -155,6 +156,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             title: 'Clinic Roster',
             items: [
               { label: 'Doctor Availability', path: '/receptionist/doctors', icon: Stethoscope },
+              { label: 'Add / Remove Doctors', path: '/receptionist/manage-doctors', icon: UserPlus },
             ],
           },
         ];
@@ -200,13 +202,17 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
               )}
               {group.items.map((item) => {
                 const Icon = item.icon;
+                const currentFullPath = `${location.pathname}${location.search}`;
                 const isActive =
                   item.path === location.pathname ||
+                  item.path === currentFullPath ||
                   (item.path !== '/admin' &&
                     item.path !== '/doctor' &&
                     item.path !== '/pharmacy' &&
                     item.path !== '/rider' &&
                     item.path !== '/receptionist' &&
+                    item.path !== '/receptionist/doctors' &&
+                    item.path !== '/receptionist/manage-doctors' &&
                     location.pathname.startsWith(item.path));
 
                 return (

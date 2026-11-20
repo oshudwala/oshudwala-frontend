@@ -169,14 +169,16 @@ const initialOrders = [
   },
 ];
 
-// Initial Live Token Queue for Doctor (Dr. Priya Sharma) & Receptionist (Apollo Clinic)
+// Initial Live Token Queue for Doctor (Dr. Priya Sharma, Dr. Rohit Mehta, Dr. Sneha Das) & Receptionist (Apollo Clinic)
 const initialTokens = [
+  // Chamber 204: Dr. Priya Sharma (General Medicine)
   {
     tokenNumber: 12,
     patientName: 'Subhasis Deb',
     patientPhone: '+91 98301 77889',
     age: 48,
     gender: 'Male',
+    doctorId: 'doc-01',
     doctorName: 'Dr. Priya Sharma',
     clinicName: 'Apollo Clinic, Salt Lake Kolkata',
     room: 'Room 204',
@@ -194,6 +196,7 @@ const initialTokens = [
     patientPhone: '+91 98312 99001',
     age: 32,
     gender: 'Female',
+    doctorId: 'doc-01',
     doctorName: 'Dr. Priya Sharma',
     clinicName: 'Apollo Clinic, Salt Lake Kolkata',
     room: 'Room 204',
@@ -211,6 +214,7 @@ const initialTokens = [
     patientPhone: '+91 98366 11234',
     age: 55,
     gender: 'Male',
+    doctorId: 'doc-01',
     doctorName: 'Dr. Priya Sharma',
     clinicName: 'Apollo Clinic, Salt Lake Kolkata',
     room: 'Room 204',
@@ -228,6 +232,7 @@ const initialTokens = [
     patientPhone: '+91 94321 00987',
     age: 27,
     gender: 'Female',
+    doctorId: 'doc-01',
     doctorName: 'Dr. Priya Sharma',
     clinicName: 'Apollo Clinic, Salt Lake Kolkata',
     room: 'Room 204',
@@ -245,6 +250,7 @@ const initialTokens = [
     patientPhone: '+91 98300 44556',
     age: 63,
     gender: 'Male',
+    doctorId: 'doc-01',
     doctorName: 'Dr. Priya Sharma',
     clinicName: 'Apollo Clinic, Salt Lake Kolkata',
     room: 'Room 204',
@@ -258,6 +264,100 @@ const initialTokens = [
       medicines: ['Metformin 500mg SR (1-0-1)', 'Glimepiride 1mg (1-0-0)'],
       advice: 'Repeat fasting blood sugar after 15 days. Maintain low GI diet.',
     },
+  },
+
+  // Chamber 206: Dr. Rohit Mehta (Cardiology)
+  {
+    tokenNumber: 21,
+    patientName: 'Amitava Sen',
+    patientPhone: '+91 98302 99887',
+    age: 61,
+    gender: 'Male',
+    doctorId: 'doc-02',
+    doctorName: 'Dr. Rohit Mehta',
+    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
+    room: 'Room 206',
+    type: 'APPOINTMENT',
+    slot: '10:30 AM - 10:50 AM',
+    status: 'SERVING',
+    vitals: { bp: '138/88', pulse: '78 bpm', temp: '98.4°F', weight: '76 kg' },
+    symptoms: 'Post-angioplasty annual cardiac review and ECG checkup',
+    arrivedAt: '10:25 AM',
+    prescription: null,
+  },
+  {
+    tokenNumber: 22,
+    patientName: 'Shreya Roy',
+    patientPhone: '+91 98314 33221',
+    age: 38,
+    gender: 'Female',
+    doctorId: 'doc-02',
+    doctorName: 'Dr. Rohit Mehta',
+    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
+    room: 'Room 206',
+    type: 'APPOINTMENT',
+    slot: '10:50 AM - 11:10 AM',
+    status: 'NEXT',
+    vitals: { bp: '124/80', pulse: '80 bpm', temp: '98.6°F', weight: '62 kg' },
+    symptoms: 'Mild palpitation during aerobic exercise and anxiety',
+    arrivedAt: '10:40 AM',
+    prescription: null,
+  },
+  {
+    tokenNumber: 23,
+    patientName: 'Tapas Paul',
+    patientPhone: '+91 94330 66778',
+    age: 52,
+    gender: 'Male',
+    doctorId: 'doc-02',
+    doctorName: 'Dr. Rohit Mehta',
+    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
+    room: 'Room 206',
+    type: 'WALK_IN',
+    slot: 'Queue Walk-in',
+    status: 'WAITING',
+    vitals: { bp: '144/92', pulse: '86 bpm', temp: '98.2°F', weight: '81 kg' },
+    symptoms: 'Chest heaviness on climbing stairs',
+    arrivedAt: '10:50 AM',
+    prescription: null,
+  },
+
+  // Chamber 208: Dr. Sneha Das (Dermatology)
+  {
+    tokenNumber: 31,
+    patientName: 'Moumita Dutta',
+    patientPhone: '+91 98319 77881',
+    age: 29,
+    gender: 'Female',
+    doctorId: 'doc-03',
+    doctorName: 'Dr. Sneha Das',
+    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
+    room: 'Room 208',
+    type: 'WALK_IN',
+    slot: 'Queue Walk-in',
+    status: 'WAITING',
+    vitals: { bp: '116/74', pulse: '72 bpm', temp: '98.4°F', weight: '55 kg' },
+    symptoms: 'Severe dry skin allergy and rash after seasonal weather change',
+    arrivedAt: '10:45 AM',
+    prescription: null,
+  },
+  {
+    tokenNumber: 32,
+    patientName: 'Rajiv Bose',
+    patientPhone: '+91 98305 11442',
+    age: 44,
+    gender: 'Male',
+    doctorId: 'doc-03',
+    doctorName: 'Dr. Sneha Das',
+    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
+    room: 'Room 208',
+    type: 'APPOINTMENT',
+    slot: '11:15 AM - 11:30 AM',
+    status: 'WAITING',
+    vitals: { bp: '122/78', pulse: '74 bpm', temp: '98.6°F', weight: '70 kg' },
+    symptoms: 'Fungal patch on forearm, itchy at night',
+    arrivedAt: '10:52 AM',
+    prescription: null,
   },
 ];
 
@@ -559,8 +659,20 @@ export const workspaceStore = {
     return this.updateOrderStatus(orderId, 'DELIVERED', { paymentStatus });
   },
 
-  // === TOKEN QUEUE ACTIONS (Doctor & Receptionist Synchronized) ===
-  generateToken({ patientName, patientPhone, age, gender, symptoms, type = 'WALK_IN' }) {
+  // === TOKEN QUEUE ACTIONS (Doctor & Receptionist Synchronized — Doctor-Wise Engine) ===
+  generateToken({
+    patientName,
+    patientPhone,
+    age,
+    gender,
+    symptoms,
+    type = 'WALK_IN',
+    doctorId = 'doc-01',
+    doctorName = 'Dr. Priya Sharma',
+    clinicName = 'Apollo Clinic, Salt Lake Kolkata',
+    room = 'Room 204',
+    slot = null,
+  }) {
     const nextTokenNum = Math.max(...state.tokens.map((t) => t.tokenNumber), 10) + 1;
     const newToken = {
       tokenNumber: nextTokenNum,
@@ -568,11 +680,12 @@ export const workspaceStore = {
       patientPhone,
       age: Number(age) || 30,
       gender: gender || 'Other',
-      doctorName: 'Dr. Priya Sharma',
-      clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-      room: 'Room 204',
+      doctorId,
+      doctorName,
+      clinicName,
+      room,
       type,
-      slot: type === 'WALK_IN' ? 'Walk-in Queue' : 'Booked',
+      slot: slot || (type === 'WALK_IN' ? 'Walk-in Queue' : 'Booked'),
       status: 'WAITING',
       vitals: { bp: '120/80', pulse: '75 bpm', temp: '98.4°F', weight: '65 kg' },
       symptoms: symptoms || 'General Checkup',
@@ -589,32 +702,68 @@ export const workspaceStore = {
     return newToken;
   },
 
-  callNextToken() {
-    // Find current serving token and complete it or move it
-    const servingIdx = state.tokens.findIndex((t) => t.status === 'SERVING');
-    const nextIdx = state.tokens.findIndex((t) => t.status === 'NEXT');
-    const waitingIdx = state.tokens.findIndex((t) => t.status === 'WAITING');
+  callNextToken(doctorId = null) {
+    // If doctorId is provided, filter queue specifically for that doctor
+    // Otherwise determine target doctor from currently active or waiting tokens
+    let targetDoctorId = doctorId;
+
+    if (!targetDoctorId) {
+      const activeToken = state.tokens.find((t) => ['SERVING', 'NEXT', 'WAITING'].includes(t.status));
+      if (activeToken) {
+        targetDoctorId = activeToken.doctorId || activeToken.doctorName;
+      }
+    }
 
     const nextTokens = state.tokens.map((t) => ({ ...t }));
 
-    if (servingIdx !== -1) {
-      nextTokens[servingIdx].status = 'COMPLETED';
+    // Doctor-wise token list
+    const doctorTokens = nextTokens.filter((t) => {
+      if (!targetDoctorId) return true;
+      return (
+        t.doctorId === targetDoctorId ||
+        (t.doctorName && String(targetDoctorId).toLowerCase().includes(String(t.doctorName).toLowerCase())) ||
+        (t.doctorName && String(t.doctorName).toLowerCase().includes(String(targetDoctorId).toLowerCase()))
+      );
+    });
+
+    const servingToken = doctorTokens.find((t) => t.status === 'SERVING');
+    const nextToken = doctorTokens.find((t) => t.status === 'NEXT');
+    const waitingTokens = doctorTokens.filter((t) => t.status === 'WAITING');
+
+    // 1. Complete current serving token for this doctor
+    if (servingToken) {
+      const globalServingIdx = nextTokens.findIndex((t) => t.tokenNumber === servingToken.tokenNumber);
+      if (globalServingIdx !== -1) {
+        nextTokens[globalServingIdx].status = 'COMPLETED';
+      }
     }
 
-    if (nextIdx !== -1) {
-      nextTokens[nextIdx].status = 'SERVING';
-      // Promote the first waiting patient to NEXT
-      if (waitingIdx !== -1) {
-        nextTokens[waitingIdx].status = 'NEXT';
+    // 2. Advance NEXT to SERVING, and promote first WAITING to NEXT
+    if (nextToken) {
+      const globalNextIdx = nextTokens.findIndex((t) => t.tokenNumber === nextToken.tokenNumber);
+      if (globalNextIdx !== -1) {
+        nextTokens[globalNextIdx].status = 'SERVING';
       }
-    } else if (waitingIdx !== -1) {
-      nextTokens[waitingIdx].status = 'SERVING';
-      // promote subsequent
-      const subsequentIdx = nextTokens.findIndex(
-        (t, idx) => idx > waitingIdx && t.status === 'WAITING'
-      );
-      if (subsequentIdx !== -1) {
-        nextTokens[subsequentIdx].status = 'NEXT';
+
+      if (waitingTokens.length > 0) {
+        const globalWaitIdx = nextTokens.findIndex((t) => t.tokenNumber === waitingTokens[0].tokenNumber);
+        if (globalWaitIdx !== -1) {
+          nextTokens[globalWaitIdx].status = 'NEXT';
+        }
+      }
+    } else if (waitingTokens.length > 0) {
+      // If no NEXT was staged, move first waiting directly to SERVING
+      const globalWaitIdx = nextTokens.findIndex((t) => t.tokenNumber === waitingTokens[0].tokenNumber);
+      if (globalWaitIdx !== -1) {
+        nextTokens[globalWaitIdx].status = 'SERVING';
+      }
+
+      // Promote second waiting to NEXT
+      if (waitingTokens.length > 1) {
+        const globalNextIdx = nextTokens.findIndex((t) => t.tokenNumber === waitingTokens[1].tokenNumber);
+        if (globalNextIdx !== -1) {
+          nextTokens[globalNextIdx].status = 'NEXT';
+        }
       }
     }
 
