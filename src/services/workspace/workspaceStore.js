@@ -525,12 +525,59 @@ const initialRiders = [
   },
 ];
 
+// Initial Rider Handover Audit Log (Tracks which driver picks which order items)
+const initialHandovers = [
+  {
+    handoverId: 'HND-89216',
+    orderId: 'OW-89216',
+    customerName: 'Amitava Banerjee',
+    destination: 'Gariahat, Kolkata',
+    riderId: 'usr-rider-02',
+    riderName: 'Sourav Mondal',
+    riderPhone: '+91 98308 11990',
+    riderVehicle: 'Honda Activa (WB-04-EK-1120)',
+    items: [
+      { name: 'Glucophage 500mg Tablet', qty: 3, price: 82.0 },
+      { name: 'Telma 40 Tablet', qty: 2, price: 210.0 },
+    ],
+    qrToken: 'PICKUP-89216-GPK',
+    handoverTime: '10:25 AM, Today',
+    status: 'OUT_FOR_DELIVERY',
+  },
+  {
+    handoverId: 'HND-89217',
+    orderId: 'OW-89217',
+    customerName: 'Rina Sen',
+    destination: 'Lake Gardens, Kolkata',
+    riderId: 'usr-rider-01',
+    riderName: 'Rahul Das',
+    riderPhone: '+91 98304 55667',
+    riderVehicle: 'Hero Electric (WB-02-AZ-4921)',
+    items: [
+      { name: 'Volini Gel 50g', qty: 1, price: 145.0 },
+      { name: 'Combiflam Tablet', qty: 1, price: 42.0 },
+    ],
+    qrToken: 'PICKUP-89217-SEC5',
+    handoverTime: '09:30 AM, Today',
+    status: 'DELIVERED',
+  },
+];
+
 // Helper to load or initialize state
 const loadInitialState = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return {
+        orders: parsed.orders || initialOrders,
+        tokens: parsed.tokens || initialTokens,
+        prescriptions: parsed.prescriptions || initialPrescriptions,
+        inventory: parsed.inventory || initialInventory,
+        riders: parsed.riders || initialRiders,
+        handovers: parsed.handovers || initialHandovers,
+        lastUpdated: parsed.lastUpdated || Date.now(),
+      };
     }
   } catch (err) {
     console.warn('Workspace store load fallback:', err);
@@ -541,6 +588,7 @@ const loadInitialState = () => {
     prescriptions: initialPrescriptions,
     inventory: initialInventory,
     riders: initialRiders,
+    handovers: initialHandovers,
     lastUpdated: Date.now(),
   };
 };
@@ -581,6 +629,7 @@ export const workspaceStore = {
       prescriptions: initialPrescriptions,
       inventory: initialInventory,
       riders: initialRiders,
+      handovers: initialHandovers,
       lastUpdated: Date.now(),
     };
     persistAndNotify();
@@ -657,6 +706,108 @@ export const workspaceStore = {
     }
 
     return this.updateOrderStatus(orderId, 'DELIVERED', { paymentStatus });
+  },
+
+  createOrder(orderData) {
+    const newOrderId = orderData.id || `OW-${Math.floor(10000 + Math.random() * 90000)}`;
+    const newOrder = {
+      id: newOrderId,
+      customerName: orderData.customerName || 'Walk-in Customer',
+      customerPhone: orderData.customerPhone || '+91 98000 00000',
+      address: orderData.address || 'In-Store Counter Dispensation',
+      landmark: orderData.landmark || '',
+      area: orderData.area || 'Counter / Express Pickup',
+      city: orderData.city || 'Kolkata',
+      pharmacyId: orderData.pharmacyId || 'pharma-01',
+      pharmacyName: orderData.pharmacyName || 'Oshud Wala Partner Pharmacy',
+      pharmacyAddress: orderData.pharmacyAddress || 'Sector V, Salt Lake, Kolkata',
+      pharmacyPhone: orderData.pharmacyPhone || '+91 33 2357 8900',
+      items: orderData.items || [],
+      subtotal: Number(orderData.subtotal) || 0,
+      deliveryFee: Number(orderData.deliveryFee) || 0,
+      discount: Number(orderData.discount) || 0,
+      total: Number(orderData.total) || 0,
+      status: orderData.status || 'READY_FOR_PICKUP',
+      paymentMethod: orderData.paymentMethod || 'COD',
+      paymentStatus: orderData.paymentStatus || (orderData.paymentMethod === 'COD' ? 'PENDING_COLLECTION' : 'PAID'),
+      assignedRider: orderData.assignedRider || null,
+      pickupQrCode: orderData.pickupQrCode || `PICKUP-${newOrderId.replace('OW-', '')}-SEC`,
+      deliveryOtp: orderData.deliveryOtp || String(Math.floor(1000 + Math.random() * 9000)),
+      isManualInStore: Boolean(orderData.isManualInStore),
+      prescriptionId: orderData.prescriptionId || null,
+      timeline: [
+        { status: 'Order Created', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), completed: true },
+        { status: (orderData.status || 'READY_FOR_PICKUP').replace(/_/g, ' '), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), completed: true },
+      ],
+      createdAt: new Date().toISOString(),
+    };
+
+    state = {
+      ...state,
+      orders: [newOrder, ...state.orders],
+      lastUpdated: Date.now(),
+    };
+    persistAndNotify();
+    return newOrder;
+  },
+
+  recordHandover(handoverData) {
+    const newHandover = {
+      handoverId: handoverData.handoverId || `HND-${Date.now().toString().slice(-5)}`,
+      orderId: handoverData.orderId,
+      customerName: handoverData.customerName || 'Customer',
+      destination: handoverData.destination || 'Delivery Address',
+      riderId: handoverData.riderId || 'usr-rider-unknown',
+      riderName: handoverData.riderName || 'Assigned Rider',
+      riderPhone: handoverData.riderPhone || '',
+      riderVehicle: handoverData.riderVehicle || '',
+      items: handoverData.items || [],
+      qrToken: handoverData.qrToken || '',
+      handoverTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', Today',
+      status: 'OUT_FOR_DELIVERY',
+      timestamp: Date.now(),
+    };
+
+    const nextHandovers = [newHandover, ...(state.handovers || [])];
+
+    // Also update order status to OUT_FOR_DELIVERY and set assignedRider
+    let nextOrders = [...state.orders];
+    const orderIndex = nextOrders.findIndex((o) => o.id === handoverData.orderId);
+    if (orderIndex !== -1) {
+      const currentOrder = nextOrders[orderIndex];
+      nextOrders[orderIndex] = {
+        ...currentOrder,
+        status: 'OUT_FOR_DELIVERY',
+        assignedRider: {
+          id: handoverData.riderId,
+          name: handoverData.riderName,
+          phone: handoverData.riderPhone,
+          vehicle: handoverData.riderVehicle,
+        },
+        timeline: [
+          ...currentOrder.timeline,
+          {
+            status: 'Picked Up by Rider',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            completed: true,
+          },
+          {
+            status: 'Out for Delivery',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            completed: true,
+          },
+        ],
+      };
+    }
+
+    state = {
+      ...state,
+      handovers: nextHandovers,
+      orders: nextOrders,
+      lastUpdated: Date.now(),
+    };
+    persistAndNotify();
+    return newHandover;
   },
 
   // === TOKEN QUEUE ACTIONS (Doctor & Receptionist Synchronized — Doctor-Wise Engine) ===
@@ -810,6 +961,32 @@ export const workspaceStore = {
   },
 
   // === PRESCRIPTION ACTIONS ===
+  addPrescription(rxData) {
+    const newRx = {
+      id: rxData.id || `RX-${Math.floor(1000 + Math.random() * 9000)}`,
+      patientName: rxData.patientName || 'Patient',
+      patientPhone: rxData.patientPhone || '+91 98000 00000',
+      patientAge: Number(rxData.patientAge) || 35,
+      patientGender: rxData.patientGender || 'Other',
+      doctorName: rxData.doctorName || 'Attending Physician',
+      clinicName: rxData.clinicName || 'In-Store Prescription Desk',
+      rxDate: rxData.rxDate || new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      status: rxData.status || 'PENDING_VERIFICATION',
+      imageUrl: rxData.imageUrl || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=800',
+      extractedMedicines: rxData.extractedMedicines || [],
+      notes: rxData.notes || 'Submitted for validation',
+      submittedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', Today',
+    };
+
+    state = {
+      ...state,
+      prescriptions: [newRx, ...state.prescriptions],
+      lastUpdated: Date.now(),
+    };
+    persistAndNotify();
+    return newRx;
+  },
+
   verifyPrescription(rxId, verifiedMedicines, notes) {
     const idx = state.prescriptions.findIndex((p) => p.id === rxId);
     if (idx === -1) return;

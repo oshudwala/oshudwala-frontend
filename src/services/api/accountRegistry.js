@@ -84,9 +84,13 @@ export const accountRegistry = {
     const cleanPhone = cleanId.replace(/[^0-9]/g, '');
 
     return accounts.find((a) => {
+      const matchId = a.id && String(a.id).toLowerCase() === cleanId;
       const matchEmail = a.email && a.email.toLowerCase() === cleanId;
-      const matchPhone = cleanPhone.length >= 10 && a.phone && a.phone.replace(/[^0-9]/g, '') === cleanPhone;
-      return matchEmail || matchPhone;
+      const matchPhone =
+        cleanPhone.length >= 10 &&
+        a.phone &&
+        a.phone.replace(/[^0-9]/g, '').slice(-10) === cleanPhone.slice(-10);
+      return matchId || matchEmail || matchPhone;
     });
   },
 

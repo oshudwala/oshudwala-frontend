@@ -97,7 +97,6 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
           {
             title: 'Practice & Schedule',
             items: [
-              { label: 'Consultation Schedule', path: '/doctor/schedule', icon: CalendarCheck },
               { label: 'Associated Clinics', path: '/doctor/clinics', icon: Building2 },
             ],
           },

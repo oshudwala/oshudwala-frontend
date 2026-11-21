@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Button from '../components/common/Button';
 import Logo from '../components/common/Logo';
+import accountRegistry from '../services/api/accountRegistry';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -138,7 +139,10 @@ export const LoginPage = () => {
     setIsLoading(true);
     try {
       const result = await login({ identifier: cleanIdentifier, password });
-      const userRole = result.user?.role || (activeTab === 'patient' ? 'PATIENT' : 'STAFF');
+      const localStaff = accountRegistry.findAccount(cleanIdentifier);
+      const userRole = (localStaff && localStaff.role !== 'PATIENT')
+        ? localStaff.role
+        : (result.user?.role || (activeTab === 'patient' ? 'PATIENT' : 'STAFF'));
       addToast(`Signed in successfully as ${userRole.replace('_', ' ')}`, 'success');
 
       const defaultPath = getRoleDefaultPath(userRole);

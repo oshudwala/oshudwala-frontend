@@ -24,6 +24,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
 import { clinicApi } from '../../services/api/clinic.api';
+import doctorApi from '../../services/api/doctor.api';
 
 export const ReceptionistDoctorsPage = ({ initialTab = 'roster' }) => {
   const { user } = useAuth();
@@ -135,8 +136,10 @@ export const ReceptionistDoctorsPage = ({ initialTab = 'roster' }) => {
     };
 
     window.addEventListener('oshud_clinic_doctors_updated', handleRosterUpdate);
+    window.addEventListener('oshud_doctor_status_changed', handleRosterUpdate);
     return () => {
       window.removeEventListener('oshud_clinic_doctors_updated', handleRosterUpdate);
+      window.removeEventListener('oshud_doctor_status_changed', handleRosterUpdate);
     };
   }, [user]);
 
@@ -348,17 +351,25 @@ export const ReceptionistDoctorsPage = ({ initialTab = 'roster' }) => {
                         </p>
                       </div>
 
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          serving
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : doc.status === 'ON_BREAK'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}
-                      >
-                        {serving ? 'CONSULTING' : doc.status ? doc.status.replace('_', ' ') : 'AVAILABLE'}
-                      </span>
+                      {(() => {
+                        const effectiveStatus = doctorApi.getDutyStatus(doc.id || doc.doctorId) || doc.status || 'AVAILABLE';
+                        const isConsulting = Boolean(serving) || effectiveStatus === 'IN_CONSULTATION';
+                        return (
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                              isConsulting
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : effectiveStatus === 'ON_BREAK'
+                                ? 'bg-amber-100 text-amber-800'
+                                : effectiveStatus === 'OFFLINE'
+                                ? 'bg-slate-100 text-slate-700'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            {isConsulting ? 'IN CONSULTATION' : effectiveStatus.replace('_', ' ')}
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     <div className="p-3.5 bg-surface-warm rounded-2xl border border-brandBorder-subtle flex items-center justify-between text-xs">

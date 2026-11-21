@@ -14,6 +14,8 @@ export const useWorkspaceStore = () => {
   return {
     ...storeState,
     updateOrderStatus: workspaceStore.updateOrderStatus.bind(workspaceStore),
+    createOrder: workspaceStore.createOrder.bind(workspaceStore),
+    recordHandover: workspaceStore.recordHandover.bind(workspaceStore),
     assignRider: workspaceStore.assignRider.bind(workspaceStore),
     verifyPickup: workspaceStore.verifyPickup.bind(workspaceStore),
     completeDelivery: workspaceStore.completeDelivery.bind(workspaceStore),
@@ -22,6 +24,7 @@ export const useWorkspaceStore = () => {
     skipToken: workspaceStore.skipToken.bind(workspaceStore),
     recallToken: workspaceStore.recallToken.bind(workspaceStore),
     completeConsultation: workspaceStore.completeConsultation.bind(workspaceStore),
+    addPrescription: workspaceStore.addPrescription.bind(workspaceStore),
     verifyPrescription: workspaceStore.verifyPrescription.bind(workspaceStore),
     rejectPrescription: workspaceStore.rejectPrescription.bind(workspaceStore),
     adjustStock: workspaceStore.adjustStock.bind(workspaceStore),

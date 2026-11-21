@@ -408,16 +408,37 @@ export const clinicApi = {
         fee: Number(doctorData.fee) || 500,
         status: 'AVAILABLE',
       };
+
+      // Always register in accountRegistry with DOCTOR role
+      accountRegistry.registerAccount({
+        id: newDoctorObj.id,
+        fullName: newDoctorObj.fullName,
+        email: newDoctorObj.email,
+        phone: newDoctorObj.phone,
+        password: doctorData.password || 'Doctor123',
+        role: 'DOCTOR',
+        entityData: {
+          room: newDoctorObj.room,
+          chamber: newDoctorObj.chamber,
+          shift: newDoctorObj.shift,
+          fee: newDoctorObj.fee,
+          registrationNumber: newDoctorObj.registrationNumber,
+          qualifications: newDoctorObj.qualifications,
+          specialization: newDoctorObj.specialization,
+        },
+      });
     } else {
       // Mode B: Onboarding a new doctor
       const cleanPhone = String(doctorData.phone || '').replace(/[^0-9]/g, '');
-      const cleanEmail = doctorData.email ? doctorData.email.trim().toLowerCase() : null;
+      const validEmail = doctorData.email && doctorData.email.includes('@')
+        ? doctorData.email.trim().toLowerCase()
+        : `dr.${cleanPhone || Date.now()}@oshudwala.local`;
 
       // Duplicate check: verify doctor phone or email is not already in clinic
       const isDuplicate = currentDoctors.some(
         (d) =>
           (cleanPhone && d.phone && d.phone.replace(/[^0-9]/g, '') === cleanPhone) ||
-          (cleanEmail && d.email && d.email.toLowerCase() === cleanEmail)
+          (validEmail && d.email && d.email.toLowerCase() === validEmail)
       );
 
       if (isDuplicate) {
@@ -431,10 +452,10 @@ export const clinicApi = {
       try {
         dbDoctor = await adminApi.createDoctor({
           fullName: doctorData.fullName || doctorData.name,
-          email: doctorData.email,
+          email: validEmail,
           phone: doctorData.phone,
           password: doctorData.password || 'Doctor123',
-          specialization: doctorData.specialization || doctorData.specialty || 'General Physician',
+          specialization: doctorData.specialization || doctorData.specialty || 'General Medicine',
           qualifications: doctorData.qualifications || 'MBBS',
           registrationNumber: doctorData.registrationNumber || 'WBMC-REG',
           consultationFeePaise: (Number(doctorData.fee) || 500) * 100,
@@ -459,11 +480,31 @@ export const clinicApi = {
         chamber: doctorData.room || 'Room 214',
         shift: doctorData.shift || '09:30 AM – 01:30 PM',
         phone: doctorData.phone || '',
-        email: doctorData.email || '',
+        email: validEmail,
         phoneExt: doctorData.phoneExt || 'Ext 214',
         fee: Number(doctorData.fee) || 500,
         status: 'AVAILABLE',
       };
+
+      // Always register in accountRegistry with DOCTOR role
+      accountRegistry.registerAccount({
+        id: generatedId,
+        fullName: newDoctorObj.fullName,
+        email: newDoctorObj.email,
+        phone: newDoctorObj.phone,
+        password: doctorData.password || 'Doctor123',
+        role: 'DOCTOR',
+        entityData: {
+          room: newDoctorObj.room,
+          chamber: newDoctorObj.chamber,
+          shift: newDoctorObj.shift,
+          fee: newDoctorObj.fee,
+          registrationNumber: newDoctorObj.registrationNumber,
+          qualifications: newDoctorObj.qualifications,
+          specialization: newDoctorObj.specialization,
+          experienceYears: Number(doctorData.experienceYears) || 5,
+        },
+      });
     }
 
     // Add to clinic roster, update cache and dispatch event

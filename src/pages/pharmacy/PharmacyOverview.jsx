@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Building2,
@@ -11,19 +11,102 @@ import {
   ArrowRight,
   Clock,
   Bike,
+  RefreshCw,
+  Phone,
+  MapPin,
+  ShieldCheck,
 } from 'lucide-react';
 import MetricCard from '../../components/workspace/MetricCard';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { pharmacyApi } from '../../services/api/pharmacy.api';
+import { accountRegistry } from '../../services/api/accountRegistry';
 import Button from '../../components/common/Button';
 
 export const PharmacyOverview = () => {
   const { user } = useAuth();
   const { orders, prescriptions, inventory, updateOrderStatus } = useWorkspaceStore();
   const { addToast } = useToast();
-  const [storeStatus, setStoreStatus] = useState('OPEN'); // OPEN | BUSY | CLOSED
+
+  const [pharmacyDetails, setPharmacyDetails] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [storeStatus, setStoreStatus] = useState(() =>
+    pharmacyApi.getPharmacyStatus(user?.pharmacyId || user?.id)
+  );
+
+  // Load real pharmacy data from backend & account registry
+  const loadPharmacyData = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Try backend /pharmacies/my or /pharmacies
+      let realPharm = null;
+      try {
+        const myRes = await pharmacyApi.getMyPharmacy();
+        if (myRes && !myRes.unmounted && myRes.id) {
+          realPharm = myRes;
+        }
+      } catch (err) {
+        console.warn('Backend /pharmacies/my note:', err);
+      }
+
+      // 2. Check registered pharmacies in account registry
+      if (!realPharm) {
+        const registeredPharmacies = accountRegistry.getEntities().pharmacies || [];
+        // Match by user email, phone, or owner ID
+        const matched = registeredPharmacies.find(
+          (p) =>
+            p.id === user?.id ||
+            p.email?.toLowerCase() === user?.email?.toLowerCase() ||
+            (user?.phone && p.phone && p.phone.replace(/[^0-9]/g, '') === user.phone.replace(/[^0-9]/g, ''))
+        );
+        if (matched) {
+          realPharm = matched;
+        } else if (registeredPharmacies.length > 0) {
+          realPharm = registeredPharmacies[0];
+        }
+      }
+
+      // 3. Fallback to user context or primary partner pharmacy info
+      if (!realPharm) {
+        realPharm = {
+          id: user?.id || 'pharma-01',
+          name: user?.pharmacyName || user?.entityData?.name || (user?.fullName ? `${user.fullName} Pharmacy` : 'Oshud Wala Partner Pharmacy'),
+          licenseNumber: user?.entityData?.licenseNumber || 'WB-PHARM-2026-ACTIVE',
+          line1: user?.entityData?.line1 || 'Sector V, Salt Lake',
+          city: user?.entityData?.city || 'Kolkata',
+          state: user?.entityData?.state || 'West Bengal',
+          pincode: user?.entityData?.pincode || '700091',
+          phone: user?.phone || '+91 33 2357 8900',
+        };
+      }
+
+      setPharmacyDetails(realPharm);
+      const currentStatus = pharmacyApi.getPharmacyStatus(realPharm.id);
+      setStoreStatus(currentStatus);
+    } catch (e) {
+      console.warn('Error loading pharmacy data:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPharmacyData();
+  }, [user]);
+
+  const handleStatusChange = async (newStatus) => {
+    const pharmId = pharmacyDetails?.id || user?.id || 'pharma-01';
+    setStoreStatus(newStatus);
+    await pharmacyApi.updatePharmacyStatus(pharmId, newStatus);
+    const messages = {
+      OPEN: 'Pharmacy set to OPEN: Patients can place orders and request express delivery.',
+      BUSY: 'Pharmacy set to HIGH VOLUME: Patients will see a high volume delay notice.',
+      CLOSED: 'Pharmacy set to CLOSED: Delivery orders temporarily paused for store maintenance.',
+    };
+    addToast(messages[newStatus] || `Status updated to ${newStatus}`, newStatus === 'CLOSED' ? 'info' : 'success');
+  };
 
   const myOrders = orders;
   const pendingRx = prescriptions.filter((p) => p.status === 'PENDING_VERIFICATION');
@@ -31,73 +114,111 @@ export const PharmacyOverview = () => {
   const readyPickupOrders = myOrders.filter((o) => o.status === 'READY_FOR_PICKUP');
   const expiringStock = inventory.filter((i) => i.status === 'EXPIRING_SOON');
 
+  const pharmacyDisplayName =
+    pharmacyDetails?.name || user?.pharmacyName || user?.fullName || 'Oshud Wala Partner Pharmacy';
+  const pharmacyLicense = pharmacyDetails?.licenseNumber || 'WB-DL-ACTIVE-2026';
+  const pharmacyLocation = `${pharmacyDetails?.line1 || 'Main Market'}, ${pharmacyDetails?.city || 'Kolkata'}${
+    pharmacyDetails?.pincode ? ` - ${pharmacyDetails.pincode}` : ''
+  }`;
+
   return (
     <div className="space-y-6">
-      {/* Top Banner / Pharmacy Info & Status */}
+      {/* Top Banner / Real Pharmacy Info & Status */}
       <div className="bg-surface-pure rounded-3xl p-6 border border-brandBorder-subtle shadow-card flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-800 flex-shrink-0 shadow-sm">
             <Building2 className="w-8 h-8" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl sm:text-2xl font-heading font-extrabold text-forest-900">
-                MedPlus Pharmacy — Sector V
+                {pharmacyDisplayName}
               </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase">
-                {storeStatus}
+              <span
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
+                  storeStatus === 'OPEN'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : storeStatus === 'BUSY'
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                    : 'bg-rose-100 text-rose-800 border border-rose-300'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    storeStatus === 'OPEN'
+                      ? 'bg-emerald-600 animate-pulse'
+                      : storeStatus === 'BUSY'
+                      ? 'bg-amber-600'
+                      : 'bg-rose-600'
+                  }`}
+                />
+                <span>{storeStatus === 'OPEN' ? 'Open for Delivery' : storeStatus === 'BUSY' ? 'High Volume' : 'Closed'}</span>
               </span>
             </div>
-            <p className="text-xs text-forest-700 font-semibold mt-0.5">
-              License: WB-BIO-2023-9942 &bull; Salt Lake Sector V, Kolkata
+            <p className="text-xs text-forest-700 font-semibold mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>License: {pharmacyLicense}</span>
+              <span>&bull;</span>
+              <MapPin className="w-3.5 h-3.5 text-brandText-muted" />
+              <span>{pharmacyLocation}</span>
             </p>
             <p className="text-[11px] text-brandText-secondary mt-0.5">
-              Pharmacist on Duty: <strong>{user?.name || 'Subhash Bose (Reg. Pharmacist)'}</strong>
+              Pharmacist on Duty: <strong>{user?.fullName || user?.name || 'Licensed In-Charge Pharmacist'}</strong>
+              {user?.phone ? ` • Phone: ${user.phone}` : ''}
             </p>
           </div>
         </div>
 
-        {/* Operating Status Selector */}
-        <div className="flex items-center gap-2 bg-surface-warm p-1.5 rounded-2xl border border-brandBorder-subtle">
-          <button
-            onClick={() => {
-              setStoreStatus('OPEN');
-              addToast('Pharmacy store status set to Open for express deliveries', 'success');
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              storeStatus === 'OPEN'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-brandText-secondary hover:text-emerald-700'
-            }`}
+        {/* Operating Status Selector & Refresh */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="flex items-center gap-1 bg-surface-warm p-1.5 rounded-2xl border border-brandBorder-subtle shadow-sm">
+            <button
+              type="button"
+              onClick={() => handleStatusChange('OPEN')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                storeStatus === 'OPEN'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-brandText-secondary hover:text-emerald-700'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-300" />
+              <span>Open for Delivery</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStatusChange('BUSY')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                storeStatus === 'BUSY'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-brandText-secondary hover:text-amber-700'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-300" />
+              <span>High Volume</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStatusChange('CLOSED')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                storeStatus === 'CLOSED'
+                  ? 'bg-rose-700 text-white shadow-sm'
+                  : 'text-brandText-secondary hover:text-rose-700'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-300" />
+              <span>Closed</span>
+            </button>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadPharmacyData}
+            title="Refresh from Backend"
+            className="p-2 sm:px-3 text-xs"
           >
-            Open for Delivery
-          </button>
-          <button
-            onClick={() => {
-              setStoreStatus('BUSY');
-              addToast('Pharmacy status set to High Volume / Busy', 'warning');
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              storeStatus === 'BUSY'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-brandText-secondary hover:text-amber-700'
-            }`}
-          >
-            High Volume
-          </button>
-          <button
-            onClick={() => {
-              setStoreStatus('CLOSED');
-              addToast('Pharmacy closed for offline orders', 'info');
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              storeStatus === 'CLOSED'
-                ? 'bg-rose-700 text-white shadow-sm'
-                : 'text-brandText-secondary hover:text-rose-700'
-            }`}
-          >
-            Closed
-          </button>
+            <RefreshCw className={`w-4 h-4 text-forest-700 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 

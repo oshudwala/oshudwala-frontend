@@ -79,13 +79,28 @@ export const authApi = {
       });
       const data = response.data?.data || response.data;
       if (data?.accessToken) {
+        // Cross reference local account registry to ensure staff accounts (Doctor, Rider, Pharmacy, Admin)
+        // are never downgraded to PATIENT by backend default role mapping
+        const localAccount = accountRegistry.findAccount(cleanId);
+        const resolvedRole = (localAccount && localAccount.role !== 'PATIENT')
+          ? localAccount.role
+          : (data.user?.role || 'PATIENT');
+
+        const resolvedUser = {
+          ...data.user,
+          role: resolvedRole,
+        };
+
         tokenStorage.setSession({
           accessToken: data.accessToken,
           refreshToken: data.refreshToken,
           sessionId: data.sessionId,
-          user: data.user,
+          user: resolvedUser,
         });
-        return data;
+        return {
+          ...data,
+          user: resolvedUser,
+        };
       }
     } catch (backendErr) {
       console.warn('Backend login attempt returned notice:', backendErr.message);

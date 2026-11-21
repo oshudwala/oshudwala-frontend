@@ -1,17 +1,70 @@
-import React, { useState } from 'react';
-import { Calendar, Clock, User, Phone, CheckCircle, Search, Filter } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, Clock, User, Phone, CheckCircle, Search, Filter, Play, Check } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import Button from '../../components/common/Button';
+import { clinicApi } from '../../services/api/clinic.api';
+import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 
 export const DoctorAppointmentsPage = () => {
-  const appointments = [
-    { id: 'APT-1001', patientName: 'Subhasis Deb', phone: '+91 98301 77889', age: 48, gender: 'Male', time: '10:30 AM - 10:45 AM', type: 'IN_CLINIC', clinic: 'Apollo Clinic Salt Lake', status: 'COMPLETED' },
-    { id: 'APT-1002', patientName: 'Debarati Ganguly', phone: '+91 98312 99001', age: 32, gender: 'Female', time: '10:45 AM - 11:00 AM', type: 'IN_CLINIC', clinic: 'Apollo Clinic Salt Lake', status: 'SERVING' },
-    { id: 'APT-1003', patientName: 'Priyanka Roy', phone: '+91 94321 00987', age: 27, gender: 'Female', time: '11:00 AM - 11:15 AM', type: 'IN_CLINIC', clinic: 'Apollo Clinic Salt Lake', status: 'WAITING' },
-    { id: 'APT-1004', patientName: 'Dr. Indranil Bose', phone: '+91 98305 11992', age: 52, gender: 'Male', time: '11:30 AM - 11:45 AM', type: 'VIDEO_CONSULT', clinic: 'Tele-Consultation Portal', status: 'WAITING' },
-    { id: 'APT-1005', patientName: 'Madhumita Das', phone: '+91 98318 66771', age: 41, gender: 'Female', time: '11:45 AM - 12:00 PM', type: 'IN_CLINIC', clinic: 'Apollo Clinic Salt Lake', status: 'WAITING' },
-  ];
+  const { user } = useAuth();
+  const { callNextToken, tokens } = useWorkspaceStore();
+  const { addToast } = useToast();
+
+  const doctorId = user?.id || 'default';
+  const doctorName = user?.fullName || user?.name || 'Dr. Priya Sharma';
+
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('ALL');
+
+  const loadAppointments = async () => {
+    setLoading(true);
+    try {
+      const allAppts = await clinicApi.getClinicAppointments('default');
+      // Relevant to this doctor or general chamber appointments
+      const forDoctor = allAppts.filter(
+        (a) =>
+          !a.doctorId ||
+          a.doctorId === doctorId ||
+          a.doctorId === 'doc-01' ||
+          (a.doctor && doctorName && a.doctor.toLowerCase().includes(doctorName.toLowerCase())) ||
+          (a.doctorName && doctorName && a.doctorName.toLowerCase().includes(doctorName.toLowerCase()))
+      );
+      setAppointments(forDoctor.length > 0 ? forDoctor : allAppts);
+    } catch (e) {
+      console.warn('Error loading appointments:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAppointments();
+    const handleUpdate = () => loadAppointments();
+    window.addEventListener('oshud_clinic_appointments_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('oshud_clinic_appointments_updated', handleUpdate);
+    };
+  }, [user]);
+
+  const handleCallPatient = (appt) => {
+    callNextToken(doctorId);
+    addToast(`Called ${appt.patientName} (${appt.slot || 'Chamber Slot'}) to chamber!`, 'success');
+  };
+
+  const handleUpdateStatus = (apptId, nextStatus) => {
+    const updated = appointments.map((a) => (a.id === apptId ? { ...a, status: nextStatus } : a));
+    setAppointments(updated);
+    addToast(`Appointment ${apptId} marked as ${nextStatus}!`, 'info');
+  };
+
+  const filteredAppointments = appointments.filter((a) => {
+    if (filterStatus === 'ALL') return true;
+    return a.status === filterStatus;
+  });
 
   const columns = [
     {
@@ -21,11 +74,11 @@ export const DoctorAppointmentsPage = () => {
     },
     {
       header: 'Time Slot',
-      key: 'time',
+      key: 'slot',
       render: (row) => (
         <div className="flex items-center gap-1.5 text-xs font-semibold text-forest-900">
           <Clock className="w-3.5 h-3.5 text-forest-600" />
-          <span>{row.time}</span>
+          <span>{row.slot || row.time || '10:30 AM'}</span>
         </div>
       ),
     },
@@ -35,45 +88,100 @@ export const DoctorAppointmentsPage = () => {
       render: (row) => (
         <div>
           <p className="font-bold text-xs text-forest-900">{row.patientName}</p>
-          <p className="text-[11px] text-brandText-secondary">{row.gender}, {row.age} yrs &bull; {row.phone}</p>
+          <p className="text-[11px] text-brandText-secondary">
+            {row.gender || 'Patient'}, {row.age || 35} yrs &bull; {row.phone}
+          </p>
         </div>
       ),
     },
     {
-      header: 'Consultation Mode',
-      key: 'type',
+      header: 'Chamber Room',
+      key: 'room',
       render: (row) => (
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 text-forest-800 border border-forest-100">
-          {row.type === 'VIDEO_CONSULT' ? '📹 Video Consult' : '🏥 In-Clinic'}
+        <span className="text-xs text-brandText-secondary font-medium">
+          {row.room || 'Room 204 (2nd Floor)'}
         </span>
       ),
-    },
-    {
-      header: 'Clinic Chamber',
-      key: 'clinic',
-      render: (row) => <span className="text-xs text-brandText-secondary">{row.clinic}</span>,
     },
     {
       header: 'Status',
       key: 'status',
       render: (row) => <StatusBadge status={row.status} />,
     },
+    {
+      header: 'Action',
+      key: 'action',
+      align: 'right',
+      render: (row) => (
+        <div className="flex items-center justify-end gap-1.5">
+          {row.status !== 'COMPLETED' && (
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={Play}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCallPatient(row);
+              }}
+              className="text-[10px] font-bold py-1 px-2.5 text-forest-800 hover:bg-forest-50"
+            >
+              Call In
+            </Button>
+          )}
+          {row.status !== 'COMPLETED' ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUpdateStatus(row.id, 'COMPLETED');
+              }}
+              className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-50 text-[11px] font-bold"
+              title="Mark Completed"
+            >
+              <Check className="w-4 h-4" />
+            </button>
+          ) : (
+            <span className="text-[11px] text-brandText-muted italic">Finished</span>
+          )}
+        </div>
+      ),
+    },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-heading font-extrabold text-forest-900">
-          Booked Appointments Schedule
-        </h1>
-        <p className="text-xs text-brandText-secondary mt-0.5">
-          Confirmed patient appointments scheduled for today at Apollo Clinic & Tele-Consults.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-heading font-extrabold text-forest-900">
+            Booked Consultations Schedule
+          </h1>
+          <p className="text-xs text-brandText-secondary mt-0.5">
+            Confirmed patient appointments for today across affiliated clinics and chambers.
+          </p>
+        </div>
+
+        {/* Status Filter Pills */}
+        <div className="flex items-center gap-1.5 bg-surface-warm p-1 rounded-xl border border-brandBorder-subtle text-xs">
+          {['ALL', 'SERVING', 'SCHEDULED', 'COMPLETED'].map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setFilterStatus(status)}
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
+                filterStatus === status
+                  ? 'bg-forest-800 text-white shadow-sm'
+                  : 'text-brandText-secondary hover:text-forest-900'
+              }`}
+            >
+              {status}
+            </button>
+          ))}
+        </div>
       </div>
 
       <DataTable
         columns={columns}
-        data={appointments}
+        data={filteredAppointments}
         searchKey="patientName"
         searchPlaceholder="Search patient by name or phone..."
       />

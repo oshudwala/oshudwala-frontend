@@ -12,7 +12,7 @@ import accountRegistry from './accountRegistry';
  */
 async function registerUserInDatabase({ fullName, phone, email, password, roleName }) {
   const cleanPhone = String(phone).replace(/[^0-9]/g, '');
-  const cleanEmail = email && email.includes('@') ? email.trim().toLowerCase() : null;
+  const cleanEmail = email && email.includes('@') ? email.trim().toLowerCase() : `${roleName.toLowerCase()}.${cleanPhone}@oshudwala.local`;
   const cleanPassword = password || 'Password123';
   const cleanName = fullName ? fullName.trim() : 'User';
 
@@ -125,11 +125,15 @@ export const adminApi = {
       }
     });
 
-    const filtered = allUsers.filter(
-      (u) =>
-        (!params.roleName || u.role?.name === params.roleName || u.role === params.roleName) &&
-        !accountRegistry.isEntityRemoved(u.id)
-    );
+    const filtered = allUsers.filter((u) => {
+      if (accountRegistry.isEntityRemoved(u.id)) return false;
+      const regAccount = accountRegistry.findAccount(u.phone || u.email);
+      if (regAccount && regAccount.role !== 'PATIENT') return false;
+      if (u.doctor || u.riderProfile || (u.pharmacyStaff && u.pharmacyStaff.length > 0)) return false;
+      if (u.role?.name && u.role.name !== 'PATIENT') return false;
+      if (typeof u.fullName === 'string' && u.fullName.startsWith('Dr.')) return false;
+      return !params.roleName || u.role?.name === params.roleName || u.role === params.roleName;
+    });
 
     return { users: filtered, total: filtered.length };
   },
@@ -239,22 +243,71 @@ export const adminApi = {
   },
 
   async createDoctor(data) {
-    // 1. Register User in PostgreSQL and assign DOCTOR role
-    const registered = await registerUserInDatabase({
-      fullName: data.fullName,
-      phone: data.phone,
-      email: data.email,
-      password: data.password,
-      roleName: 'DOCTOR',
-    });
+    let dbDoctor = null;
+    let userId = null;
 
-    // 2. Also register in local storage registry
+    const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    const validEmail = (data.email && data.email.includes('@'))
+      ? data.email.trim().toLowerCase()
+      : `dr.${cleanPhone || Date.now()}@oshudwala.local`;
+
+    // 1. Try dedicated doctor endpoint first (which directly sets roleId: DOCTOR in PostgreSQL)
+    try {
+      const resp = await apiClient.post('/admin/doctors', {
+        fullName: data.fullName,
+        email: validEmail,
+        phone: cleanPhone,
+        password: data.password || 'Doctor123',
+        registrationNumber: data.registrationNumber || 'WBMC-REG',
+        qualifications: data.qualifications || 'MBBS',
+        experienceYears: Number(data.experienceYears) || 5,
+        specialization: data.specialization || 'General Physician',
+        consultationFeePaise: Number(data.consultationFeePaise) || 50000,
+        clinicId: data.clinicId,
+      });
+      dbDoctor = resp.data?.data || resp.data;
+      userId = dbDoctor?.userId || dbDoctor?.user?.id || dbDoctor?.id;
+    } catch (err) {
+      console.warn('POST /admin/doctors attempt notice:', err.message);
+    }
+
+    // 2. If not created via /admin/doctors, register user in database
+    if (!userId) {
+      const registered = await registerUserInDatabase({
+        fullName: data.fullName,
+        phone: cleanPhone,
+        email: validEmail,
+        password: data.password,
+        roleName: 'DOCTOR',
+      });
+      userId = registered?.userId;
+    }
+
+    // 3. Try onboard endpoint to link/promote doctor in PostgreSQL
+    try {
+      const pharmRes = await apiClient.get('/pharmacies');
+      const pharms = pharmRes.data?.data || pharmRes.data;
+      if (Array.isArray(pharms) && pharms.length > 0) {
+        await apiClient.post('/doctors/onboard', {
+          pharmacyId: pharms[0].id,
+          fullName: data.fullName,
+          phone: cleanPhone,
+          email: validEmail,
+          registrationNumber: data.registrationNumber || 'WBMC-REG',
+          specializationId: data.specializationId || pharms[0].id,
+        });
+      }
+    } catch {}
+
+    const generatedId = userId || `doc_${Date.now()}`;
+
+    // 4. Always register in accountRegistry with DOCTOR role
     accountRegistry.registerAccount({
-      id: registered.userId,
-      fullName: registered.fullName,
-      email: registered.email,
-      phone: registered.phone,
-      password: data.password,
+      id: generatedId,
+      fullName: data.fullName,
+      email: validEmail,
+      phone: cleanPhone,
+      password: data.password || 'Doctor123',
       role: 'DOCTOR',
       entityData: {
         registrationNumber: data.registrationNumber || 'WBMC-REG',
@@ -266,38 +319,18 @@ export const adminApi = {
       },
     });
 
-    // 3. Try dedicated doctor endpoint or onboard endpoint if available
-    try {
-      await apiClient.post('/admin/doctors', data);
-    } catch {
-      try {
-        const pharmRes = await apiClient.get('/pharmacies');
-        const pharms = pharmRes.data?.data || pharmRes.data;
-        if (Array.isArray(pharms) && pharms.length > 0) {
-          await apiClient.post('/doctors/onboard', {
-            pharmacyId: pharms[0].id,
-            fullName: registered.fullName,
-            phone: registered.phone,
-            email: registered.email,
-            registrationNumber: data.registrationNumber || 'WBMC-REG',
-            specializationId: data.specializationId || pharms[0].id,
-          });
-        }
-      } catch {}
-    }
-
     return {
-      id: registered.userId,
-      userId: registered.userId,
-      fullName: registered.fullName,
-      email: registered.email,
-      phone: registered.phone,
+      id: generatedId,
+      userId: generatedId,
+      fullName: data.fullName,
+      email: validEmail,
+      phone: cleanPhone,
       registrationNumber: data.registrationNumber || 'WBMC-REG',
       qualifications: data.qualifications || 'MBBS',
       experienceYears: data.experienceYears || 5,
       specialization: data.specialization || 'General Physician',
       clinicName: data.clinicName || 'Apollo Clinic',
-      user: { id: registered.userId, email: registered.email, phone: registered.phone, status: 'ACTIVE' },
+      user: { id: generatedId, email: validEmail, phone: cleanPhone, status: 'ACTIVE' },
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
     };

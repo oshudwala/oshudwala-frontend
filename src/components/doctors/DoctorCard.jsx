@@ -37,16 +37,34 @@ export const DoctorCard = ({ doctor, onBook, onSelect }) => {
 
           {/* Availability Badge */}
           <div className="pt-1.5 sm:pt-2">
-            {doctor.availableToday ? (
-              <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] xs:text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Available Today
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] xs:text-[10px] sm:text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                Tomorrow
-              </span>
-            )}
+            {(() => {
+              const liveStatus = doctor.id ? localStorage.getItem(`oshud_doctor_status_${doctor.id}`) : null;
+              if (liveStatus === 'ON_BREAK') {
+                return (
+                  <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] xs:text-[10px] sm:text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    On Break
+                  </span>
+                );
+              }
+              if (liveStatus === 'OFFLINE') {
+                return (
+                  <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] xs:text-[10px] sm:text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                    Chamber Offline
+                  </span>
+                );
+              }
+              return doctor.availableToday !== false ? (
+                <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] xs:text-[10px] sm:text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {liveStatus === 'IN_CONSULTATION' ? 'In Consultation' : 'Available Today'}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] xs:text-[10px] sm:text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                  Tomorrow
+                </span>
+              );
+            })()}
           </div>
         </div>
       </div>

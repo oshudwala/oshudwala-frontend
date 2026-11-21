@@ -1,7 +1,24 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Star, ArrowRight, MapPin, Clock } from 'lucide-react';
+import { pharmacyApi } from '../../services/api/pharmacy.api';
 
 export const PharmacyCard = ({ pharmacy, onSelect }) => {
+  const [liveStatus, setLiveStatus] = useState(() => {
+    return pharmacyApi.getPharmacyStatus(pharmacy?.id);
+  });
+
+  useEffect(() => {
+    const handleStatusSync = (e) => {
+      const { pharmacyId, status } = e.detail || {};
+      if (!pharmacyId || pharmacyId === 'current' || pharmacyId === pharmacy?.id) {
+        setLiveStatus(status || 'OPEN');
+      }
+    };
+
+    window.addEventListener('oshud_pharmacy_status_changed', handleStatusSync);
+    return () => window.removeEventListener('oshud_pharmacy_status_changed', handleStatusSync);
+  }, [pharmacy?.id]);
+
   return (
     <div
       onClick={() => onSelect && onSelect(pharmacy)}
@@ -33,10 +50,26 @@ export const PharmacyCard = ({ pharmacy, onSelect }) => {
           <span className="text-brandText-secondary">({pharmacy.reviewCount})</span>
         </div>
 
-        {/* Delivery Availability Status */}
-        <div className="pt-1.5 sm:pt-2 flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs text-emerald-700 font-semibold">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span>Delivery Available</span>
+        {/* Delivery Availability Status - Live Connected */}
+        <div className="pt-1.5 sm:pt-2 flex items-center gap-1.5 text-[10px] sm:text-xs font-semibold">
+          {liveStatus === 'OPEN' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-emerald-700 font-bold">Open for Delivery</span>
+            </>
+          )}
+          {liveStatus === 'BUSY' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              <span className="text-amber-700 font-bold">High Volume (Delays Expected)</span>
+            </>
+          )}
+          {liveStatus === 'CLOSED' && (
+            <>
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span className="text-rose-700 font-bold">Closed for Delivery</span>
+            </>
+          )}
         </div>
       </div>
 
