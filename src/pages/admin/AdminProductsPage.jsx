@@ -10,31 +10,29 @@ import {
   CheckCircle2,
   X,
   Filter,
-  TrendingDown
+  TrendingDown,
+  Database,
+  Sparkles,
 } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import Button from '../../components/common/Button';
 import { useToast } from '../../context/ToastContext';
-import { productsData } from '../../data/productsData';
+import StockCatalogExplorer from '../../components/workspace/StockCatalogExplorer';
 
 export const AdminProductsPage = () => {
   const { inventory, adjustStock, addStock, removeStock } = useWorkspaceStore();
   const { addToast } = useToast();
 
+  const [activeTab, setActiveTab] = useState('active'); // 'active' | 'catalog'
+
   // Adjust stock state
   const [selectedItem, setSelectedItem] = useState(null);
   const [stockDelta, setStockDelta] = useState(10);
 
-  // Add stock state
+  // Add stock modal state (Master Catalog Picker)
   const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [productSearch, setProductSearch] = useState('');
-  const [addUnits, setAddUnits] = useState(50);
-  const [batchNo, setBatchNo] = useState(`WB-${Math.floor(1000 + Math.random() * 9000)}`);
-  const [expiryDate, setExpiryDate] = useState('2027-10-31');
 
   // Delete confirmation
   const [itemToDelete, setItemToDelete] = useState(null);
@@ -46,48 +44,21 @@ export const AdminProductsPage = () => {
     { label: 'Out of Stock', value: 'OUT_OF_STOCK' },
   ];
 
-  // Distinct categories from productsData
-  const categories = ['ALL', ...new Set(productsData.map((p) => p.categoryName || p.category))];
-
-  // Filtered product catalog for stock addition
-  const filteredProducts = productsData.filter((p) => {
-    const matchesCategory = selectedCategory === 'ALL' || (p.categoryName || p.category) === selectedCategory;
-    const matchesQuery =
-      !productSearch ||
-      p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      (p.genericName && p.genericName.toLowerCase().includes(productSearch.toLowerCase())) ||
-      (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase()));
-    return matchesCategory && matchesQuery;
-  });
-
-  const handleAddStockSubmit = (e) => {
-    e.preventDefault();
-    if (!selectedProduct) {
-      addToast('Please select a medicine from the list to add stock.', 'error');
-      return;
-    }
-
-    if (!addUnits || Number(addUnits) <= 0) {
-      addToast('Please enter a valid positive number of units.', 'error');
-      return;
-    }
-
+  const handleInwardFromCatalog = (payload) => {
     const newItem = addStock({
-      name: selectedProduct.name,
-      generic: selectedProduct.genericName || selectedProduct.strength || '',
-      manufacturer: selectedProduct.brand || 'Certified Pharma',
-      category: selectedProduct.categoryName || selectedProduct.category || 'General',
-      batchNo: batchNo || `WB-${Math.floor(1000 + Math.random() * 9000)}`,
-      expiryDate: expiryDate || '2027-12-31',
-      mrp: selectedProduct.mrp || 100,
-      sellingPrice: selectedProduct.price || selectedProduct.mrp || 90,
-      units: Number(addUnits),
+      name: payload.name,
+      generic: payload.generic,
+      manufacturer: payload.manufacturer,
+      category: payload.category,
+      batchNo: payload.batchNo,
+      expiryDate: payload.expiryDate,
+      mrp: payload.mrp,
+      sellingPrice: payload.sellingPrice,
+      units: payload.units,
     });
 
-    addToast(`Successfully added ${addUnits} units of ${selectedProduct.name} to Inventory!`, 'success');
+    addToast(`Successfully added ${payload.units} units of ${payload.name} (Batch: ${payload.batchNo}) to Central Inventory!`, 'success');
     setIsAddStockModalOpen(false);
-    setSelectedProduct(null);
-    setAddUnits(50);
   };
 
   const handleDeleteConfirm = () => {
@@ -112,7 +83,11 @@ export const AdminProductsPage = () => {
     {
       header: 'Category',
       key: 'category',
-      render: (row) => <span className="text-xs text-forest-800 font-medium">{row.category}</span>,
+      render: (row) => (
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-surface-warm text-forest-800 border border-brandBorder-subtle">
+          {row.category || 'General'}
+        </span>
+      ),
     },
     {
       header: 'Batch & Expiry',
@@ -173,7 +148,7 @@ export const AdminProductsPage = () => {
           <button
             type="button"
             onClick={() => setItemToDelete(row)}
-            className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
+            className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors border border-rose-200"
             title="Delete from stock"
           >
             <Trash2 className="w-4 h-4" />
@@ -189,41 +164,80 @@ export const AdminProductsPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-forest-900 tracking-tight">
-            Inventory Management
+            Inventory & Stock Control
           </h1>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
-            Real-time stock ledger, batch tracking, expiry monitoring, and stock additions.
+            Central stock ledger, batch tracking, expiry monitoring, and 2.5L+ Master Catalog access.
           </p>
         </div>
 
-        <div>
+        <div className="flex items-center gap-2">
           <Button
             variant="primary"
             size="sm"
             leftIcon={Plus}
-            onClick={() => {
-              setBatchNo(`WB-${Math.floor(1000 + Math.random() * 9000)}`);
-              setIsAddStockModalOpen(true);
-            }}
+            onClick={() => setIsAddStockModalOpen(true)}
             className="text-xs shadow-card font-bold py-2 px-4"
           >
-            + Add Stock
+            + Add Stock from 2.5L Catalog
           </Button>
         </div>
       </div>
 
-      {/* Main Inventory DataTable */}
-      <DataTable
-        columns={columns}
-        data={inventory}
-        searchKey="name"
-        searchPlaceholder="Search product name, generic, or batch number..."
-        filterOptions={filterOptions}
-        filterKey="status"
-      />
+      {/* Navigation View Tabs */}
+      <div className="flex items-center gap-2 border-b border-brandBorder-subtle pb-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab('active')}
+          className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
+            activeTab === 'active'
+              ? 'bg-forest-800 text-white shadow-sm'
+              : 'bg-surface-pure border border-brandBorder-subtle text-forest-800 hover:bg-forest-50'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Active Warehouse Stock ({inventory.length} items)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('catalog')}
+          className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
+            activeTab === 'catalog'
+              ? 'bg-forest-800 text-white shadow-sm'
+              : 'bg-surface-pure border border-brandBorder-subtle text-forest-800 hover:bg-forest-50'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          <span>Master 2.5L+ Medicine Database</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-500 text-white font-bold">
+            254k
+          </span>
+        </button>
+      </div>
+
+      {/* TAB 1: ACTIVE INVENTORY TABLE */}
+      {activeTab === 'active' && (
+        <DataTable
+          columns={columns}
+          data={inventory}
+          searchKey="name"
+          searchPlaceholder="Search active stock by name, generic formula or batch..."
+          filterOptions={filterOptions}
+          filterKey="status"
+        />
+      )}
+
+      {/* TAB 2: MASTER 2.5L+ MEDICINE STOCK EXPLORER */}
+      {activeTab === 'catalog' && (
+        <StockCatalogExplorer
+          title="Super Admin Master Medicine Database (2.5 Lakhs Dataset)"
+          onSelectMedicine={handleInwardFromCatalog}
+        />
+      )}
 
       {/* ============================================================== */}
-      {/* MODAL: ADD STOCK (CATEGORY-WISE PRODUCT SELECTION + UNITS)     */}
+      {/* MODAL: ADD STOCK VIA 2.5L+ MASTER CATALOG EXPLORER             */}
       {/* ============================================================== */}
       {isAddStockModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -232,18 +246,18 @@ export const AdminProductsPage = () => {
             onClick={() => setIsAddStockModalOpen(false)}
           />
           <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center">
-            <div className="w-full max-w-2xl bg-surface-pure rounded-3xl p-5 sm:p-7 shadow-floating border border-brandBorder-subtle text-left relative overflow-hidden animate-scale-up my-6 space-y-4">
+            <div className="w-full max-w-4xl bg-surface-pure rounded-3xl p-5 sm:p-6 shadow-floating border border-brandBorder-subtle text-left relative overflow-hidden animate-scale-up my-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-brandBorder-subtle">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-2xl bg-forest-50 border border-forest-100 flex items-center justify-center text-forest-700">
-                    <Layers className="w-5 h-5" />
+                  <div className="w-9 h-9 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700">
+                    <Database className="w-5 h-5" />
                   </div>
                   <div>
                     <h2 className="text-lg font-heading font-extrabold text-forest-900">
-                      Add Stock to Inventory
+                      Add Stock to Central Inventory
                     </h2>
                     <p className="text-xs text-brandText-secondary">
-                      Select a product category-wise and enter stock quantity to add.
+                      Select any medicine from the 2.5L+ catalog by category, set units, batch & expiry.
                     </p>
                   </div>
                 </div>
@@ -257,155 +271,11 @@ export const AdminProductsPage = () => {
                 </button>
               </div>
 
-              {/* Category Pills & Search */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                        selectedCategory === cat
-                          ? 'bg-forest-800 text-white shadow-xs'
-                          : 'bg-surface-warm text-brandText-secondary hover:text-forest-800'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="relative">
-                  <Search className="w-4 h-4 text-brandText-muted absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
-                    placeholder="Search medicine by brand or generic name..."
-                    className="w-full pl-9 pr-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Product Selection List */}
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 border border-brandBorder-subtle rounded-2xl p-2 bg-surface-warm/40">
-                {filteredProducts.length === 0 ? (
-                  <p className="text-xs text-brandText-secondary text-center py-6">
-                    No medicines found matching your search.
-                  </p>
-                ) : (
-                  filteredProducts.map((p) => {
-                    const isSelected = selectedProduct?.id === p.id;
-                    return (
-                      <div
-                        key={p.id}
-                        onClick={() => setSelectedProduct(p)}
-                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-forest-100/80 border-forest-500 shadow-xs'
-                            : 'bg-surface-pure border-brandBorder-subtle hover:border-forest-300'
-                        }`}
-                      >
-                        <div>
-                          <p className="font-bold text-xs text-forest-900">{p.name}</p>
-                          <p className="text-[11px] text-brandText-secondary">
-                            {p.genericName} &bull; {p.brand}
-                          </p>
-                          <span className="text-[10px] font-semibold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded">
-                            {p.categoryName || p.category}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-bold text-xs text-forest-900">₹{p.price}</span>
-                          <p className="text-[10px] text-brandText-muted">MRP ₹{p.mrp}</p>
-                          {isSelected && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 mt-0.5">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Selected
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Selected Product Summary & Units Input */}
-              {selectedProduct ? (
-                <form onSubmit={handleAddStockSubmit} className="space-y-3 pt-2 border-t border-brandBorder-subtle">
-                  <div className="p-3 bg-forest-50/70 border border-forest-100 rounded-2xl flex items-center justify-between text-xs">
-                    <div>
-                      <span className="text-brandText-secondary text-[11px]">Selected Item:</span>
-                      <p className="font-bold text-forest-900 text-sm">{selectedProduct.name}</p>
-                      <p className="text-[11px] text-forest-700">{selectedProduct.genericName}</p>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-bold text-xs text-forest-900">MRP ₹{selectedProduct.mrp}</span>
-                      <p className="text-[11px] text-brandText-muted">Rate: ₹{selectedProduct.price}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">
-                        Units to Add *
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        required
-                        value={addUnits}
-                        onChange={(e) => setAddUnits(e.target.value)}
-                        placeholder="e.g. 50"
-                        className="w-full px-3 py-2 text-xs font-bold text-forest-900 bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">
-                        Batch Number
-                      </label>
-                      <input
-                        type="text"
-                        value={batchNo}
-                        onChange={(e) => setBatchNo(e.target.value)}
-                        className="w-full px-3 py-2 text-xs font-mono font-bold text-forest-900 bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">
-                        Expiry Date
-                      </label>
-                      <input
-                        type="date"
-                        value={expiryDate}
-                        onChange={(e) => setExpiryDate(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2 flex items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsAddStockModalOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" variant="primary" size="sm" className="font-bold shadow-card px-5">
-                      Confirm & Add to Stock
-                    </Button>
-                  </div>
-                </form>
-              ) : (
-                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-center text-xs text-amber-800 font-medium">
-                  Please click and select a medicine from the list above to set the units.
-                </div>
-              )}
+              {/* Embedded Explorer with zero freeze */}
+              <StockCatalogExplorer
+                title="Select Medicine from 2.5L+ Catalog to Inward"
+                onSelectMedicine={handleInwardFromCatalog}
+              />
             </div>
           </div>
         </div>

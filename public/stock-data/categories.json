@@ -1,0 +1,107 @@
+[
+  {
+    "name": "Antibiotics & antibacterials",
+    "slug": "antibiotics-antibacterials",
+    "count": 62236
+  },
+  {
+    "name": "Pain, Fever & Anti-inflammatory",
+    "slug": "pain-fever-anti-inflammatory",
+    "count": 29688
+  },
+  {
+    "name": "Gastrointestinal & liver medicines",
+    "slug": "gastrointestinal-liver-medicines",
+    "count": 26919
+  },
+  {
+    "name": "General & Allopathic Medicines",
+    "slug": "general-allopathic-medicines",
+    "count": 25631
+  },
+  {
+    "name": "Cardiovascular & blood pressure medicines",
+    "slug": "cardiovascular-blood-pressure-medicines",
+    "count": 18224
+  },
+  {
+    "name": "Neurology & mental health medicines",
+    "slug": "neurology-mental-health-medicines",
+    "count": 16683
+  },
+  {
+    "name": "Allergy & antihistamines",
+    "slug": "allergy-antihistamines",
+    "count": 13272
+  },
+  {
+    "name": "Diabetes medicines",
+    "slug": "diabetes-medicines",
+    "count": 11552
+  },
+  {
+    "name": "Antifungals",
+    "slug": "antifungals",
+    "count": 8445
+  },
+  {
+    "name": "Respiratory & Cough / Cold",
+    "slug": "respiratory-cough-cold",
+    "count": 7635
+  },
+  {
+    "name": "Medical Devices, Consumables & Wellness",
+    "slug": "medical-devices-consumables-wellness",
+    "count": 5714
+  },
+  {
+    "name": "Eye, Ear, Nose & Throat (ENT)",
+    "slug": "eye-ear-nose-throat-ent",
+    "count": 5234
+  },
+  {
+    "name": "Hormonal & endocrine medicines",
+    "slug": "hormonal-endocrine-medicines",
+    "count": 4492
+  },
+  {
+    "name": "Antiparasitics & antimalarials",
+    "slug": "antiparasitics-antimalarials",
+    "count": 4473
+  },
+  {
+    "name": "Skin & dermatology medicines",
+    "slug": "skin-dermatology-medicines",
+    "count": 4108
+  },
+  {
+    "name": "Women's Health & Gynaecology",
+    "slug": "womens-health-gynaecology",
+    "count": 3115
+  },
+  {
+    "name": "Blood, clotting & emergency medicines",
+    "slug": "blood-clotting-emergency-medicines",
+    "count": 2365
+  },
+  {
+    "name": "Urology & Men's Health",
+    "slug": "urology-mens-health",
+    "count": 2139
+  },
+  {
+    "name": "Oncology & immunosuppressant medicines",
+    "slug": "oncology-immunosuppressant-medicines",
+    "count": 1092
+  },
+  {
+    "name": "Antivirals & antiretrovirals",
+    "slug": "antivirals-antiretrovirals",
+    "count": 763
+  },
+  {
+    "name": "Vaccines & Immunologicals",
+    "slug": "vaccines-immunologicals",
+    "count": 592
+  }
+]
