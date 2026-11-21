@@ -17,6 +17,8 @@ import ProfilePage from '../pages/ProfilePage';
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import ForgotPasswordPage from '../pages/ForgotPasswordPage';
+import PrivacyPolicyPage from '../pages/PrivacyPolicyPage';
+import TermsConditionsPage from '../pages/TermsConditionsPage';
 import NotFoundPage from '../pages/NotFoundPage';
 
 // Super Admin Workspace Pages
@@ -78,6 +80,10 @@ export const AppRoutes = () => {
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="privacy" element={<PrivacyPolicyPage />} />
+        <Route path="terms-conditions" element={<TermsConditionsPage />} />
+        <Route path="terms" element={<TermsConditionsPage />} />
 
         {/* Protected Patient Routes */}
         <Route

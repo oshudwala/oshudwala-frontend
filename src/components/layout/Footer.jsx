@@ -128,14 +128,14 @@ export const Footer = () => {
                 </a>
               </li>
               <li>
-                <span className="text-forest-400 cursor-not-allowed">
+                <Link to="/terms-conditions" className="hover:text-emerald-300 transition-colors">
                   Terms & Conditions
-                </span>
+                </Link>
               </li>
               <li>
-                <span className="text-forest-400 cursor-not-allowed">
+                <Link to="/privacy-policy" className="hover:text-emerald-300 transition-colors">
                   Privacy Policy
-                </span>
+                </Link>
               </li>
             </ul>
           </div>
@@ -183,7 +183,17 @@ export const Footer = () => {
 
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-forest-300 gap-3">
-          <p>© 2025 Oshud Wala. All rights reserved.</p>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <p>© 2026 Oshud Wala. All rights reserved.</p>
+            <span className="hidden sm:inline text-forest-700">•</span>
+            <Link to="/privacy-policy" className="hover:text-emerald-300 transition-colors underline-offset-2 hover:underline">
+              Privacy Policy
+            </Link>
+            <span className="hidden sm:inline text-forest-700">•</span>
+            <Link to="/terms-conditions" className="hover:text-emerald-300 transition-colors underline-offset-2 hover:underline">
+              Terms & Conditions
+            </Link>
+          </div>
           <p className="text-emerald-400 font-medium">Better Healthcare. A Healthier Tomorrow.</p>
         </div>
       </div>

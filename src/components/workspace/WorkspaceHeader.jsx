@@ -110,14 +110,14 @@ export const WorkspaceHeader = ({ roleTitle, onToggleSidebar, isSidebarCollapsed
           <span>Reset Sync State</span>
         </button>
 
-        {/* "Back to Patient Website" Button */}
+        {/* "Back to Main Website" Button */}
         <Link
           to="/"
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-forest-50 hover:bg-forest-100 border border-forest-200 text-forest-800 text-xs font-bold transition-all hover:scale-[1.02]"
           title="Return to the public patient store and appointments"
         >
           <Globe className="w-3.5 h-3.5 text-forest-600" />
-          <span className="hidden sm:inline">Back to Patient Website</span>
+          <span className="hidden sm:inline">Back to Main Website</span>
           <span className="sm:hidden">Store</span>
         </Link>
 

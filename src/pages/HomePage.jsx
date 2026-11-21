@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ShieldCheck, ArrowRight } from 'lucide-react';
 import HeroBanner from '../components/home/HeroBanner';
 import OrderChannels from '../components/home/OrderChannels';
 import FeaturedDoctors from '../components/home/FeaturedDoctors';
@@ -48,6 +50,39 @@ export const HomePage = () => {
 
       {/* SECTION 9 — FAQ */}
       <FaqSection />
+
+      {/* SECTION 10 — HEALTHCARE SAFETY & LEGAL COMPLIANCE BAR */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="bg-forest-50/80 border border-brandBorder-subtle rounded-3xl p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-forest-100 text-forest-800 flex items-center justify-center flex-shrink-0 shadow-xs">
+              <ShieldCheck className="w-6 h-6 text-forest-700" />
+            </div>
+            <div>
+              <p className="font-heading font-extrabold text-forest-900 text-sm">
+                Certified Patient Safety &amp; Data Confidentiality
+              </p>
+              <p className="text-brandText-secondary text-[11px] sm:text-xs mt-0.5 max-w-xl">
+                Every prescription is verified by registered pharmacists. Medical consultations and deliveries are governed by official healthcare standards and privacy safeguards.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 flex-shrink-0 w-full sm:w-auto justify-end">
+            <Link
+              to="/privacy-policy"
+              className="px-4 py-2 rounded-xl bg-surface-pure hover:bg-forest-100 border border-brandBorder-subtle text-forest-900 font-bold text-xs transition-colors shadow-xs"
+            >
+              Privacy Policy
+            </Link>
+            <Link
+              to="/terms-conditions"
+              className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-900 text-white font-bold text-xs transition-colors shadow-xs"
+            >
+              Terms &amp; Conditions
+            </Link>
+          </div>
+        </div>
+      </div>
 
       {/* MODALS */}
       <PrescriptionModal
