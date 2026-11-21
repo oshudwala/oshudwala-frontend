@@ -127,7 +127,14 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
           {
             title: 'Fleet Operations',
             items: [
-              { label: 'Active Deliveries', path: '/rider', icon: Bike, badge: orders.filter((o) => ['READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'].includes(o.status)).length, highlight: true },
+              { label: 'Rider Dashboard', path: '/rider', icon: LayoutDashboard },
+              {
+                label: 'Active Deliveries',
+                path: '/rider/deliveries',
+                icon: Bike,
+                badge: orders.filter((o) => ['READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'].includes(o.status)).length,
+                highlight: true,
+              },
               { label: 'Completed Deliveries', path: '/rider/history', icon: History },
             ],
           },
@@ -136,6 +143,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             items: [
               { label: 'Cash in Hand (COD)', path: '/rider/cash', icon: Coins },
               { label: 'Earnings & Payouts', path: '/rider/earnings', icon: Wallet },
+              { label: 'Rider Profile', path: '/rider/profile', icon: UserCheck },
             ],
           },
         ];

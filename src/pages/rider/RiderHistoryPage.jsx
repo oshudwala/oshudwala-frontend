@@ -1,12 +1,24 @@
 import React from 'react';
-import { History, CheckCircle, MapPin, Building2, Clock } from 'lucide-react';
+import { History, CheckCircle, MapPin, Building2, Clock, Bike } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
+import { useAuth } from '../../context/AuthContext';
 
 export const RiderHistoryPage = () => {
+  const { user } = useAuth();
   const { orders } = useWorkspaceStore();
-  const completedOrders = orders.filter((o) => o.status === 'DELIVERED');
+
+  const targetId = user?.id || 'usr-rider-01';
+  const completedOrders = orders.filter((o) => {
+    if (o.status !== 'DELIVERED') return false;
+    if (!o.assignedRider) return true;
+    return (
+      o.assignedRider.id === targetId ||
+      o.assignedRider.name?.toLowerCase().includes(user?.name?.toLowerCase() || '') ||
+      (o.assignedRider.phone && user?.phone && o.assignedRider.phone.replace(/[^0-9]/g, '') === user.phone.replace(/[^0-9]/g, ''))
+    );
+  });
 
   const columns = [
     {

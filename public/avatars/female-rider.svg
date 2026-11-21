@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <defs>
+    <linearGradient id="femaleBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCE8E6"/>
+      <stop offset="100%" stop-color="#F9D8D5"/>
+    </linearGradient>
+    <linearGradient id="femaleCap" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="femaleShirt" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#047857"/>
+      <stop offset="100%" stop-color="#065F46"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Circle -->
+  <circle cx="60" cy="60" r="58" fill="url(#femaleBg)" stroke="#10B981" stroke-width="2.5"/>
+
+  <!-- Ponytail / Hair Back -->
+  <path d="M37 54 C 33 66, 34 82, 40 88 C 43 85, 45 74, 43 64 Z" fill="#3E2723"/>
+
+  <!-- Shoulders / Torso -->
+  <path d="M28 108 C 28 89, 40 80, 60 80 C 80 80, 92 89, 92 108 Z" fill="url(#femaleShirt)"/>
+
+  <!-- Shirt Collar -->
+  <polygon points="60,90 52,80 60,76 68,80" fill="#F8FAFC"/>
+  <polygon points="60,90 56,78 60,76 64,78" fill="#10B981"/>
+
+  <!-- Neck -->
+  <rect x="53" y="64" width="14" height="18" rx="4" fill="#FADBD8"/>
+  <path d="M53 71 C 56 75, 64 75, 67 71 L 67 78 L 53 78 Z" fill="#E59866" opacity="0.25"/>
+
+  <!-- Head / Face -->
+  <ellipse cx="60" cy="51" rx="18" ry="20" fill="#FADBD8"/>
+
+  <!-- Ears & Earrings -->
+  <circle cx="42" cy="53" r="4" fill="#FADBD8"/>
+  <circle cx="78" cy="53" r="4" fill="#FADBD8"/>
+  <circle cx="42" cy="57" r="1.5" fill="#F59E0B"/>
+  <circle cx="78" cy="57" r="1.5" fill="#F59E0B"/>
+
+  <!-- Hair (Side Tufts) -->
+  <path d="M42 49 C 41 38, 48 30, 60 30 C 72 30, 79 38, 78 49 C 76 58, 74 65, 72 68 C 72 62, 74 54, 73 50 C 70 46, 66 43, 60 43 C 54 43, 50 46, 47 50 C 46 54, 48 62, 48 68 C 46 65, 44 58, 42 49 Z" fill="#3E2723"/>
+
+  <!-- Courier Cap -->
+  <path d="M40 43 C 41 27, 50 21, 60 21 C 70 21, 79 27, 80 43 Z" fill="url(#femaleCap)"/>
+  <!-- Cap Visor -->
+  <path d="M38 43 C 48 39, 72 39, 82 43 C 85 44, 83 47, 77 47 C 68 47, 52 47, 43 47 C 37 47, 35 44, 38 43 Z" fill="#065F46"/>
+  <!-- Cap Badge (Oshud Wala Medical Cross) -->
+  <circle cx="60" cy="32" r="4" fill="#FFFFFF"/>
+  <rect x="58.5" y="30" width="3" height="4" rx="0.5" fill="#10B981"/>
+  <rect x="57" y="31.5" width="6" height="1" rx="0.5" fill="#10B981"/>
+
+  <!-- Eyebrows -->
+  <path d="M49 46 Q 53 43 56 46" stroke="#3E2723" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+  <path d="M64 46 Q 67 43 71 46" stroke="#3E2723" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+
+  <!-- Eyes & Lashes -->
+  <circle cx="53" cy="50" r="2.2" fill="#1E293B"/>
+  <circle cx="67" cy="50" r="2.2" fill="#1E293B"/>
+  <circle cx="52.2" cy="49.2" r="0.7" fill="#FFFFFF"/>
+  <circle cx="66.2" cy="49.2" r="0.7" fill="#FFFFFF"/>
+  <!-- Subtle Eyelash -->
+  <path d="M50 49 L 48.5 47.5" stroke="#3E2723" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M70 49 L 71.5 47.5" stroke="#3E2723" stroke-width="1.2" stroke-linecap="round"/>
+
+  <!-- Soft Blush -->
+  <ellipse cx="48" cy="55" rx="3" ry="1.8" fill="#F87171" opacity="0.35"/>
+  <ellipse cx="72" cy="55" rx="3" ry="1.8" fill="#F87171" opacity="0.35"/>
+
+  <!-- Nose -->
+  <path d="M60 49 L 59.5 54 L 61.5 54" stroke="#D97706" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.5"/>
+
+  <!-- Pleasant Smile with lip tint -->
+  <path d="M54 59 Q 60 64 66 59" stroke="#E11D48" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+</svg>

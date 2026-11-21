@@ -482,7 +482,7 @@ const initialInventory = [
   },
 ];
 
-// Initial Riders Fleet
+// Initial Riders Fleet (Zero demo values for cash and deliveries, accumulated dynamically)
 const initialRiders = [
   {
     id: 'usr-rider-01',
@@ -492,10 +492,10 @@ const initialRiders = [
     zone: 'Kolkata South & Salt Lake',
     isOnline: true,
     activeOrderId: 'OW-89214',
-    cashInHand: 697.0, // Collected from previous or pending deliveries
-    cashRemittedToday: 1420.0,
+    cashInHand: 0.0,
+    cashRemittedToday: 0.0,
     rating: 4.9,
-    deliveriesToday: 7,
+    deliveriesToday: 0,
   },
   {
     id: 'usr-rider-02',
@@ -505,10 +505,10 @@ const initialRiders = [
     zone: 'Gariahat & Ballygunge',
     isOnline: true,
     activeOrderId: 'OW-89216',
-    cashInHand: 606.0,
-    cashRemittedToday: 850.0,
+    cashInHand: 0.0,
+    cashRemittedToday: 0.0,
     rating: 4.8,
-    deliveriesToday: 5,
+    deliveriesToday: 0,
   },
   {
     id: 'usr-rider-03',
@@ -519,9 +519,9 @@ const initialRiders = [
     isOnline: false,
     activeOrderId: null,
     cashInHand: 0.0,
-    cashRemittedToday: 1100.0,
+    cashRemittedToday: 0.0,
     rating: 4.7,
-    deliveriesToday: 4,
+    deliveriesToday: 0,
   },
 ];
 
@@ -676,8 +676,8 @@ export const workspaceStore = {
   verifyPickup(orderId, qrInput) {
     const order = state.orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found');
-    if (order.pickupQrCode !== qrInput.trim()) {
-      throw new Error(`Invalid QR / Verification Code. Expected: ${order.pickupQrCode}`);
+    if (!qrInput || order.pickupQrCode.trim().toLowerCase() !== qrInput.trim().toLowerCase()) {
+      throw new Error('Invalid Pickup QR or verification code. Please scan the QR code on the sealed pharmacy package.');
     }
     return this.updateOrderStatus(orderId, 'OUT_FOR_DELIVERY');
   },
@@ -685,8 +685,8 @@ export const workspaceStore = {
   completeDelivery(orderId, otpInput, codAmountCollected = 0) {
     const order = state.orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found');
-    if (order.deliveryOtp !== otpInput.trim()) {
-      throw new Error(`Incorrect Customer OTP. Expected: ${order.deliveryOtp}`);
+    if (!otpInput || order.deliveryOtp.trim() !== otpInput.trim()) {
+      throw new Error('Invalid 4-digit Delivery OTP. Please verify the code with the customer.');
     }
 
     // If COD, mark payment as collected and add to rider's cashInHand

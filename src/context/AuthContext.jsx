@@ -262,9 +262,10 @@ export const AuthProvider = ({ children }) => {
         email: 'rahul.rider@oshudwala.in',
         phone: '+91 98304 55667',
         role: 'RIDER',
+        gender: 'male',
         vehicle: 'Hero Electric (WB-02-AZ-4921)',
         zone: 'Kolkata South & Salt Lake',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+        avatar: '/avatars/male-rider.svg',
       },
       RECEPTIONIST: {
         id: 'usr-recep-01',

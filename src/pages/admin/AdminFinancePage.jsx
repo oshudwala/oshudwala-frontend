@@ -22,6 +22,7 @@ import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import Button from '../../components/common/Button';
 import { useToast } from '../../context/ToastContext';
+import { riderApi } from '../../services/api/rider.api';
 
 export const AdminFinancePage = () => {
   const { addToast } = useToast();
@@ -188,6 +189,15 @@ export const AdminFinancePage = () => {
       return;
     }
 
+    const refNo = `NEFT-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    // Sync with Rider Portal and persistent wallet
+    try {
+      riderApi.recordSuperAdminPayout(selectedRider.id, amount, refNo);
+    } catch (err) {
+      console.warn('Error recording superadmin payout in riderApi:', err);
+    }
+
     const updatedRiders = ridersPayments.map((r) => {
       if (r.id === selectedRider.id) {
         const nextDue = Math.max(0, r.dueAmount - amount);
@@ -198,7 +208,7 @@ export const AdminFinancePage = () => {
         const updatedDaily = r.dailyBreakdown.map((d) => ({
           ...d,
           status: 'PAID',
-          ref: d.ref === 'Pending' ? `NEFT-${Math.floor(100000 + Math.random() * 900000)}` : d.ref,
+          ref: d.ref === 'Pending' ? refNo : d.ref,
         }));
 
         const updatedRider = {
@@ -218,7 +228,7 @@ export const AdminFinancePage = () => {
     setRidersPayments(updatedRiders);
     setIsDisbursing(false);
     setDisburseAmount('');
-    addToast(`Disbursed ₹${amount.toLocaleString('en-IN')} to ${selectedRider.name} successfully!`, 'success');
+    addToast(`Disbursed ₹${amount.toLocaleString('en-IN')} to ${selectedRider.name} successfully! (Ref: ${refNo})`, 'success');
   };
 
   const riderColumns = [

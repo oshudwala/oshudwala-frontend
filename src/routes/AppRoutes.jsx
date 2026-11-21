@@ -43,7 +43,9 @@ import QRPickupVerificationPage from '../pages/pharmacy/QRPickupVerificationPage
 import PharmacyInventoryPage from '../pages/pharmacy/PharmacyInventoryPage';
 
 // Rider Workspace Pages
+import RiderDashboardPage from '../pages/rider/RiderDashboardPage';
 import RiderDeliveriesPage from '../pages/rider/RiderDeliveriesPage';
+import RiderProfilePage from '../pages/rider/RiderProfilePage';
 import RiderHistoryPage from '../pages/rider/RiderHistoryPage';
 import RiderCashPage from '../pages/rider/RiderCashPage';
 import RiderEarningsPage from '../pages/rider/RiderEarningsPage';
@@ -175,7 +177,9 @@ export const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        <Route index element={<RiderDeliveriesPage />} />
+        <Route index element={<RiderDashboardPage />} />
+        <Route path="deliveries" element={<RiderDeliveriesPage />} />
+        <Route path="profile" element={<RiderProfilePage />} />
         <Route path="history" element={<RiderHistoryPage />} />
         <Route path="cash" element={<RiderCashPage />} />
         <Route path="earnings" element={<RiderEarningsPage />} />
