@@ -1,27 +1,30 @@
 import React from 'react';
 import { Search, UploadCloud, ShoppingCart, Truck, ArrowRight } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const HowItWorks = () => {
+  const { t } = useLanguage();
+
   const steps = [
     {
       step: 1,
       icon: Search,
-      title: "Choose your medicine or healthcare service",
+      title: t('how_step_1', 'Choose your medicine or healthcare service'),
     },
     {
       step: 2,
       icon: UploadCloud,
-      title: "Upload prescription or select a service",
+      title: t('how_step_2', 'Upload prescription or select a service'),
     },
     {
       step: 3,
       icon: ShoppingCart,
-      title: "Confirm your order or appointment",
+      title: t('how_step_3', 'Confirm your order or appointment'),
     },
     {
       step: 4,
       icon: Truck,
-      title: "Track your order or appointment",
+      title: t('how_step_4', 'Track your order or appointment'),
     },
   ];
 
@@ -30,7 +33,7 @@ export const HowItWorks = () => {
       {/* Centered Heading */}
       <div className="text-center mb-6 sm:mb-10">
         <h2 className="text-lg sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight">
-          How It Works
+          {t('how_it_works_title', 'How It Works')}
         </h2>
       </div>
 

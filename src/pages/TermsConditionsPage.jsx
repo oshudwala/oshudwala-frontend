@@ -125,10 +125,10 @@ export const TermsConditionsPage = () => {
               <div className="pt-4 border-t border-brandBorder-subtle text-xs text-brandText-muted">
                 <p>Questions regarding our terms?</p>
                 <a
-                  href="mailto:support@oshudwala.in"
+                  href="mailto:oshudwala@gmail.com"
                   className="text-forest-700 font-bold hover:underline block mt-0.5"
                 >
-                  support@oshudwala.in
+                  oshudwala@gmail.com
                 </a>
               </div>
             </div>
@@ -327,7 +327,7 @@ export const TermsConditionsPage = () => {
                 These Terms shall be governed by, construed, and enforced in accordance with the substantive laws of the Republic of India. Any dispute, controversy, or claim arising out of or relating to these Terms or the breach thereof shall be subject to the exclusive jurisdiction of the competent civil courts in <strong>Kolkata, West Bengal, India</strong>.
               </p>
               <p className="text-xs text-brandText-secondary pt-2">
-                For legal notices or service inquiries: <strong>Oshud Wala Health Technologies Pvt. Ltd., Sector V, Salt Lake, Kolkata, WB - 700091</strong> &bull; Email: <a href="mailto:legal@oshudwala.in" className="text-forest-700 font-bold hover:underline">legal@oshudwala.in</a>
+                For legal notices or service inquiries: <strong>Oshud Wala Health Technologies Pvt. Ltd., Sector V, Salt Lake, Kolkata, WB - 700091</strong> &bull; Email: <a href="mailto:oshudwala@gmail.com" className="text-forest-700 font-bold hover:underline">oshudwala@gmail.com</a>
               </p>
             </section>
           </div>

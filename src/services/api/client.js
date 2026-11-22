@@ -125,8 +125,17 @@ apiClient.interceptors.response.use(
       return Promise.reject(normalizedError);
     }
 
+    const currentToken = tokenStorage.getAccessToken();
     const refreshToken = tokenStorage.getRefreshToken();
     const sessionId = tokenStorage.getSessionId();
+
+    // If local or mock session token (e.g. oshud_patient_token_), never clear session or attempt remote JWT refresh
+    if (
+      (currentToken && currentToken.startsWith('oshud_')) ||
+      (refreshToken && refreshToken.startsWith('oshud_'))
+    ) {
+      return Promise.reject(normalizedError);
+    }
 
     // If no refresh credentials exist, clear session and reject
     if (!refreshToken || !sessionId) {

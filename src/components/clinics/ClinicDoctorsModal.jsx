@@ -1,8 +1,10 @@
 import React from 'react';
 import { X, Building2, MapPin, Clock, Phone, Star, Calendar, ArrowRight, ShieldCheck } from 'lucide-react';
 import Button from '../common/Button';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) => {
+  const { t } = useLanguage();
   if (!isOpen || !clinic) return null;
 
   return (
@@ -63,7 +65,7 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
                 <span className="flex items-center gap-1">
                   <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                   <span className="font-bold text-brandText-main">{clinic.rating}</span>
-                  <span>({clinic.reviewCount} reviews)</span>
+                  <span>({clinic.reviewCount} {t('reviews', 'reviews')})</span>
                 </span>
               </div>
             </div>
@@ -74,14 +76,14 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-heading font-bold text-base text-forest-800">
-                  Consultation Doctors at this Clinic
+                  {t('clinic_doctors_title', 'Consultation Doctors at this Clinic')}
                 </h3>
                 <p className="text-xs text-brandText-secondary mt-0.5">
-                  Select a doctor to book your chamber appointment or queue token
+                  {t('clinic_doctors_subtitle', 'Select a doctor to book your chamber appointment or queue token')}
                 </p>
               </div>
               <span className="text-xs font-bold text-forest-700 bg-forest-50 px-2.5 py-1 rounded-full border border-forest-200/60">
-                {clinic.doctors.length} {clinic.doctors.length === 1 ? 'Doctor' : 'Doctors'}
+                {clinic.doctors.length} {clinic.doctors.length === 1 ? t('doctor_available', 'Doctor') : t('doctors_available', 'Doctors')}
               </span>
             </div>
 
@@ -104,17 +106,17 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
                         {doctor.name}
                       </h4>
                       <p className="text-xs font-semibold text-forest-600">
-                        {doctor.specialization}
+                        {t(doctor.specialization, doctor.specialization)}
                       </p>
                       <p className="text-[11px] text-brandText-secondary mt-0.5">
                         {doctor.degrees} • {doctor.experience}
                       </p>
                       <div className="flex items-center gap-2 mt-1.5 text-xs">
                         <span className="font-bold text-forest-800">
-                          Fee: ₹{doctor.consultationFee}
+                          {t('consultation_fee', 'Fee')}: ₹{doctor.consultationFee}
                         </span>
                         <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          Available Today
+                          {t('available_today', 'Available Today')}
                         </span>
                       </div>
                     </div>
@@ -131,7 +133,7 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
                       }}
                       className="text-xs py-2 px-4 shadow-sm font-bold"
                     >
-                      Book Appointment
+                      {t('book_appointment', 'Book Appointment')}
                     </Button>
                   </div>
                 </div>
@@ -143,10 +145,10 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
           <div className="mt-5 pt-3.5 border-t border-brandBorder-subtle flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-brandText-secondary">
             <span className="flex items-center gap-1.5 text-[11px]">
               <ShieldCheck className="w-4 h-4 text-forest-600" />
-              <span>Verified chamber consultation under Oshud Wala Quality Protocol</span>
+              <span>{t('quality_protocol', 'Verified chamber consultation under Oshud Wala Quality Protocol')}</span>
             </span>
             <Button variant="outline" size="sm" onClick={onClose} className="text-xs py-1.5 px-4 w-full sm:w-auto">
-              Close
+              {t('close', 'Close')}
             </Button>
           </div>
         </div>

@@ -1,7 +1,10 @@
 import React from 'react';
 import { Star, MapPin, Clock, Building2, User, ArrowRight, Stethoscope } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const ClinicCard = ({ clinic, onSelect }) => {
+  const { t } = useLanguage();
+
   return (
     <div
       onClick={() => onSelect && onSelect(clinic)}
@@ -44,7 +47,7 @@ export const ClinicCard = ({ clinic, onSelect }) => {
           </div>
           <span className="text-emerald-700 font-semibold text-[10px] sm:text-xs flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            Open Today
+            {t('open_today', 'Open Today')}
           </span>
         </div>
 
@@ -56,15 +59,15 @@ export const ClinicCard = ({ clinic, onSelect }) => {
             </div>
             <div>
               <p className="font-bold text-forest-800 text-[11px] sm:text-xs">
-                {clinic.doctors.length} {clinic.doctors.length === 1 ? 'Doctor' : 'Doctors'} Available
+                {clinic.doctors.length} {clinic.doctors.length === 1 ? t('doctor_available', 'Doctor Available') : t('doctors_available', 'Doctors Available')}
               </p>
               <p className="text-[10px] text-brandText-secondary">
-                In-person chamber consultations
+                {t('chamber_consultations', 'In-person chamber consultations')}
               </p>
             </div>
           </div>
           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
-            Tokens Open
+            {t('tokens_open', 'Tokens Open')}
           </span>
         </div>
       </div>
@@ -79,7 +82,7 @@ export const ClinicCard = ({ clinic, onSelect }) => {
           }}
           className="w-full py-2 px-3.5 rounded-xl sm:rounded-2xl bg-forest-700 hover:bg-forest-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all group-hover:scale-[1.01]"
         >
-          <span>View Doctors & Book</span>
+          <span>{t('view_doctors_book', 'View Doctors & Book')}</span>
           <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
         </button>
       </div>

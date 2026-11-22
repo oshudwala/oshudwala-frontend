@@ -33,11 +33,13 @@ export const LoginPage = () => {
   // Patient OTP Login States
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [isNewUser, setIsNewUser] = useState(false);
   const [otpStep, setOtpStep] = useState('phone'); // 'phone' | 'otp'
   const [resendTimer, setResendTimer] = useState(0);
-  const [isPatientPasswordMode, setIsPatientPasswordMode] = useState(false);
 
-  // Password Login States (Staff or Patient with password)
+  // Password Login States (Staff only)
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -59,7 +61,7 @@ export const LoginPage = () => {
 
   // Handle Requesting OTP
   const handleRequestOtp = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setErrorMessage('');
 
     const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
@@ -71,12 +73,16 @@ export const LoginPage = () => {
     setIsLoading(true);
     try {
       const res = await sendOtp(cleanPhone);
+      setIsNewUser(Boolean(res.isNewUser));
       setOtpStep('otp');
       setResendTimer(30);
-      addToast(res.message || `OTP sent to +91 ${cleanPhone}`, 'success');
-      if (res.devOtp) {
-        addToast(`Development OTP: ${res.devOtp}`, 'info');
-      }
+      setOtp('');
+      const successNotice =
+        res.message ||
+        (res.isNewUser
+          ? `Verification OTP sent to +91 ${cleanPhone}. Please enter your name to register.`
+          : `Login OTP sent to +91 ${cleanPhone}`);
+      addToast(successNotice, 'success');
     } catch (err) {
       const msg = err.message || 'Failed to send verification code. Please check your number and try again.';
       setErrorMessage(msg);
@@ -94,15 +100,37 @@ export const LoginPage = () => {
     const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
     const cleanOtp = otp.trim();
 
-    if (!cleanOtp || cleanOtp.length < 4) {
+    if (isNewUser) {
+      if (!fullName.trim() || fullName.trim().length < 2) {
+        setErrorMessage('Please enter your full name (minimum 2 characters).');
+        return;
+      }
+    }
+
+    if (!cleanOtp || cleanOtp.length !== 6) {
       setErrorMessage('Please enter the 6-digit verification OTP received on your mobile.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const res = await verifyOtp({ phone: cleanPhone, otp: cleanOtp });
-      addToast('Signed in successfully!', 'success');
+      if (isNewUser) {
+        await verifyOtp({
+          phone: cleanPhone,
+          otp: cleanOtp,
+          fullName: fullName.trim(),
+          email: email.trim() || undefined,
+          isNewUser: true,
+        });
+        addToast('Account created and signed in successfully!', 'success');
+      } else {
+        await verifyOtp({
+          phone: cleanPhone,
+          otp: cleanOtp,
+          isNewUser: false,
+        });
+        addToast('Signed in successfully!', 'success');
+      }
 
       // Navigate to patient home or previous protected location
       const fromPath = location.state?.from?.pathname;
@@ -121,13 +149,9 @@ export const LoginPage = () => {
     e.preventDefault();
     setErrorMessage('');
 
-    const cleanIdentifier = (isPatientPasswordMode ? phone : identifier).trim();
+    const cleanIdentifier = identifier.trim();
     if (!cleanIdentifier) {
-      setErrorMessage(
-        activeTab === 'patient'
-          ? 'Please enter your registered mobile number.'
-          : 'Please enter your registered staff email address or phone.'
-      );
+      setErrorMessage('Please enter your registered staff email address or phone.');
       return;
     }
 
@@ -140,9 +164,13 @@ export const LoginPage = () => {
     try {
       const result = await login({ identifier: cleanIdentifier, password });
       const localStaff = accountRegistry.findAccount(cleanIdentifier);
-      const userRole = (localStaff && localStaff.role !== 'PATIENT')
+      const rawRole = (localStaff && localStaff.role !== 'PATIENT')
         ? localStaff.role
-        : (result.user?.role || (activeTab === 'patient' ? 'PATIENT' : 'STAFF'));
+        : (typeof result.user?.role === 'object' ? result.user?.role?.name : result.user?.role || 'STAFF');
+      
+      let userRole = String(rawRole || '').trim().toUpperCase();
+      if (userRole === 'ADMIN' || userRole === 'SUPERADMIN') userRole = 'SUPER_ADMIN';
+
       addToast(`Signed in successfully as ${userRole.replace('_', ' ')}`, 'success');
 
       const defaultPath = getRoleDefaultPath(userRole);
@@ -187,7 +215,6 @@ export const LoginPage = () => {
             onClick={() => {
               setActiveTab('patient');
               setErrorMessage('');
-              setIsPatientPasswordMode(false);
             }}
             className={`py-2 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'patient'
@@ -227,7 +254,7 @@ export const LoginPage = () => {
         {/* ============================================================== */}
         {/* PATIENT LOGIN SECTION (OTP-BASED FLOW)                         */}
         {/* ============================================================== */}
-        {activeTab === 'patient' && !isPatientPasswordMode && (
+        {activeTab === 'patient' && (
           <div className="space-y-4">
             {otpStep === 'phone' ? (
               /* Step 1: Mobile Number Input */
@@ -276,8 +303,17 @@ export const LoginPage = () => {
               <form onSubmit={handleVerifyOtp} className="space-y-4 animate-fade-in">
                 <div className="p-3 bg-forest-50 rounded-2xl border border-forest-100 flex items-center justify-between text-xs">
                   <div>
-                    <span className="text-brandText-secondary">OTP sent to:</span>
-                    <p className="font-bold text-forest-800">+91 {phone}</p>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                        isNewUser
+                          ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                          : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                      }`}>
+                        {isNewUser ? 'New Patient Registration' : 'Patient Sign In'}
+                      </span>
+                    </div>
+                    <span className="text-brandText-secondary">OTP sent to: </span>
+                    <strong className="text-forest-800 font-bold">+91 {phone}</strong>
                   </div>
                   <button
                     type="button"
@@ -291,6 +327,52 @@ export const LoginPage = () => {
                     Change Number
                   </button>
                 </div>
+
+                {/* If first-time user: collect Full Name and optional Email */}
+                {isNewUser && (
+                  <div className="space-y-3 pt-1 animate-fade-in">
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1.5">
+                        Full Name <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-brandText-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          required
+                          disabled={isLoading}
+                          value={fullName}
+                          onChange={(e) => {
+                            setFullName(e.target.value);
+                            if (errorMessage) setErrorMessage('');
+                          }}
+                          placeholder="e.g. Rahul Sharma"
+                          className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1.5">
+                        Email Address <span className="text-brandText-muted font-normal">(Optional)</span>
+                      </label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-brandText-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="email"
+                          disabled={isLoading}
+                          value={email}
+                          onChange={(e) => {
+                            setEmail(e.target.value);
+                            if (errorMessage) setErrorMessage('');
+                          }}
+                          placeholder="e.g. rahul@example.com"
+                          className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-brandText-main mb-1.5">
@@ -309,7 +391,7 @@ export const LoginPage = () => {
                         setOtp(e.target.value.replace(/[^0-9]/g, ''));
                         if (errorMessage) setErrorMessage('');
                       }}
-                      placeholder="e.g. 123456"
+                      placeholder="6-digit code"
                       className="w-full pl-10 pr-4 py-2.5 text-center text-base sm:text-lg font-mono font-bold tracking-widest bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                     />
                   </div>
@@ -339,117 +421,17 @@ export const LoginPage = () => {
                   variant="primary"
                   size="lg"
                   isLoading={isLoading}
-                  disabled={isLoading || otp.length < 4}
+                  disabled={isLoading || otp.length !== 6 || (isNewUser && (!fullName.trim() || fullName.trim().length < 2))}
                   rightIcon={CheckCircle2}
                   className="w-full shadow-card font-bold py-2.5 text-xs sm:text-sm"
                 >
-                  {isLoading ? 'Verifying Code...' : 'Verify & Sign In'}
+                  {isLoading
+                    ? (isNewUser ? 'Creating Account...' : 'Verifying Code...')
+                    : (isNewUser ? 'Verify OTP & Complete Registration' : 'Verify OTP & Sign In')}
                 </Button>
               </form>
             )}
-
-            {/* Toggle: Sign in with Password */}
-            <div className="pt-2 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPatientPasswordMode(true);
-                  setErrorMessage('');
-                }}
-                className="text-xs font-semibold text-forest-700 hover:underline"
-              >
-                Prefer to sign in with password? Click here
-              </button>
-            </div>
           </div>
-        )}
-
-        {/* ============================================================== */}
-        {/* PATIENT PASSWORD MODE (OPTIONAL FALLBACK FOR REGISTERED USERS)  */}
-        {/* ============================================================== */}
-        {activeTab === 'patient' && isPatientPasswordMode && (
-          <form onSubmit={handlePasswordLogin} className="space-y-4 animate-fade-in">
-            <div>
-              <label className="block text-xs font-semibold text-brandText-main mb-1.5">
-                Registered Mobile Number
-              </label>
-              <div className="relative flex items-center">
-                <span className="absolute left-3.5 text-xs font-bold text-forest-800 border-r border-brandBorder-subtle pr-2 pointer-events-none">
-                  +91
-                </span>
-                <input
-                  type="tel"
-                  required
-                  maxLength={10}
-                  disabled={isLoading}
-                  value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value.replace(/[^0-9]/g, ''));
-                    if (errorMessage) setErrorMessage('');
-                  }}
-                  placeholder="Enter 10-digit mobile number"
-                  className="w-full pl-16 pr-4 py-2.5 text-xs sm:text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold text-brandText-main">Password</label>
-                <Link to="/forgot-password" className="text-[11px] font-semibold text-forest-700 hover:underline">
-                  Forgot?
-                </Link>
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-brandText-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  disabled={isLoading}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (errorMessage) setErrorMessage('');
-                  }}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-brandText-muted hover:text-brandText-main p-1"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              isLoading={isLoading}
-              disabled={isLoading}
-              rightIcon={ArrowRight}
-              className="w-full shadow-card font-bold py-2.5 text-xs sm:text-sm"
-            >
-              {isLoading ? 'Signing In...' : 'Sign In with Password'}
-            </Button>
-
-            <div className="text-center pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPatientPasswordMode(false);
-                  setErrorMessage('');
-                }}
-                className="text-xs font-semibold text-forest-700 hover:underline"
-              >
-                &larr; Back to OTP Login
-              </button>
-            </div>
-          </form>
         )}
 
         {/* ============================================================== */}

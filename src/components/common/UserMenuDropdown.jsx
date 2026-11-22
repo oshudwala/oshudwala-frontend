@@ -1,10 +1,12 @@
 import React, { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, LogOut } from 'lucide-react';
+import { User, LogOut, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const UserMenuDropdown = ({ isOpen, onClose }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, isPatient, getRoleDefaultPath } = useAuth();
+  const { t, isBengali } = useLanguage();
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
@@ -39,7 +41,7 @@ export const UserMenuDropdown = ({ isOpen, onClose }) => {
             {user?.fullName || user?.name || "User"}
           </p>
           <span className="inline-block text-[9px] font-bold text-forest-700 bg-forest-100 px-1.5 py-0.5 rounded uppercase tracking-wider mt-0.5">
-            {user?.role || 'PATIENT'}
+            {typeof user?.role === 'object' ? user?.role?.name : user?.role || 'PATIENT'}
           </span>
           <p className="text-[10px] text-brandText-secondary truncate mt-0.5">
             {user?.email || user?.phone}
@@ -47,8 +49,23 @@ export const UserMenuDropdown = ({ isOpen, onClose }) => {
         </div>
       </div>
 
-      {/* Menu Actions: Only My Profile & Logout */}
+      {/* Menu Actions: Workspace Dashboard, My Profile & Logout */}
       <div className="p-1.5 space-y-1">
+        {/* Workspace Dashboard for Staff/Admin */}
+        {!isPatient && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              navigate(getRoleDefaultPath(user?.role));
+            }}
+            className="w-full px-3 py-2 text-left text-xs font-bold text-white bg-forest-800 hover:bg-forest-900 rounded-xl flex items-center gap-2.5 transition-colors shadow-xs"
+          >
+            <LayoutDashboard className="w-4 h-4 text-emerald-300" />
+            <span>{isBengali ? 'ড্যাশবোর্ড কনসোল' : 'Go to Dashboard'}</span>
+          </button>
+        )}
+
         {/* My Profile */}
         <button
           type="button"
@@ -59,7 +76,7 @@ export const UserMenuDropdown = ({ isOpen, onClose }) => {
           className="w-full px-3 py-2 text-left text-xs font-bold text-forest-800 hover:bg-forest-50 hover:text-forest-700 rounded-xl flex items-center gap-2.5 transition-colors"
         >
           <User className="w-4 h-4 text-forest-600" />
-          <span>My Profile</span>
+          <span>{isBengali ? 'আমার প্রোফাইল' : 'My Profile'}</span>
         </button>
 
         {/* Logout */}
@@ -73,7 +90,7 @@ export const UserMenuDropdown = ({ isOpen, onClose }) => {
           className="w-full px-3 py-2 text-left text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-2.5 transition-colors border-t border-brandBorder-light"
         >
           <LogOut className="w-4 h-4 text-rose-500" />
-          <span>Logout</span>
+          <span>{isBengali ? 'লগআউট' : 'Logout'}</span>
         </button>
       </div>
     </div>

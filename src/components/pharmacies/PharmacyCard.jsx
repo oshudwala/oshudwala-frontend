@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Star, ArrowRight, MapPin, Clock } from 'lucide-react';
 import { pharmacyApi } from '../../services/api/pharmacy.api';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const PharmacyCard = ({ pharmacy, onSelect }) => {
+  const { t } = useLanguage();
   const [liveStatus, setLiveStatus] = useState(() => {
     return pharmacyApi.getPharmacyStatus(pharmacy?.id);
   });
@@ -55,19 +57,19 @@ export const PharmacyCard = ({ pharmacy, onSelect }) => {
           {liveStatus === 'OPEN' && (
             <>
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-emerald-700 font-bold">Open for Delivery</span>
+              <span className="text-emerald-700 font-bold">{t('open_for_delivery', 'Open for Delivery')}</span>
             </>
           )}
           {liveStatus === 'BUSY' && (
             <>
               <span className="w-2 h-2 rounded-full bg-amber-500" />
-              <span className="text-amber-700 font-bold">High Volume (Delays Expected)</span>
+              <span className="text-amber-700 font-bold">{t('high_volume_delays', 'High Volume (Delays Expected)')}</span>
             </>
           )}
           {liveStatus === 'CLOSED' && (
             <>
               <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span className="text-rose-700 font-bold">Closed for Delivery</span>
+              <span className="text-rose-700 font-bold">{t('closed_for_delivery', 'Closed for Delivery')}</span>
             </>
           )}
         </div>
@@ -83,7 +85,7 @@ export const PharmacyCard = ({ pharmacy, onSelect }) => {
           }}
           className="w-full py-1.5 xs:py-2 sm:py-2 px-2.5 sm:px-3.5 rounded-xl sm:rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 font-bold text-[10px] xs:text-[11px] sm:text-xs flex items-center justify-center gap-1 sm:gap-1.5 transition-colors border border-forest-100"
         >
-          <span>View Pharmacy</span>
+          <span>{t('view_pharmacy', 'View Pharmacy')}</span>
           <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-0.5 transition-transform" />
         </button>
       </div>

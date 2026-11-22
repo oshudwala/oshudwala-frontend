@@ -6,8 +6,29 @@ const ACCOUNTS_STORAGE_KEY = 'oshud_registered_accounts';
 const ENTITIES_STORAGE_KEY = 'oshud_admin_entities';
 const REMOVED_STORAGE_KEY = 'oshud_removed_entities';
 
-// No hardcoded dummy accounts - show only real registered data
-const DEFAULT_ACCOUNTS = [];
+// Master Super Admin account for platform management
+const MASTER_ADMIN_ACCOUNTS = [
+  {
+    id: 'usr_superadmin_master',
+    fullName: 'Super Admin',
+    email: 'admin@oshudwala.com',
+    phone: '9000000000',
+    passwords: ['SuperSecretPassword123', 'admin123', 'admin', 'Admin@123', 'Password123'],
+    role: 'SUPER_ADMIN',
+    status: 'ACTIVE',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'usr_superadmin_in',
+    fullName: 'Super Admin',
+    email: 'admin@oshudwala.in',
+    phone: '9000000000',
+    passwords: ['SuperSecretPassword123', 'admin123', 'admin', 'Admin@123', 'Password123'],
+    role: 'SUPER_ADMIN',
+    status: 'ACTIVE',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+];
 
 export const accountRegistry = {
   // Read all permanently removed entity IDs
@@ -45,13 +66,14 @@ export const accountRegistry = {
 
   // Read all accounts from storage, filtering out legacy hardcoded dummy accounts
   getAccounts() {
+    let saved = [];
     try {
       const raw = localStorage.getItem(ACCOUNTS_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
           // Filter out old legacy dummy demo seeds (e.g. usr_doctor_01, usr_pharmacy_01, etc.)
-          const realAccounts = parsed.filter(
+          saved = parsed.filter(
             (a) =>
               a.id !== 'usr_doctor_01' &&
               a.id !== 'usr_pharmacy_01' &&
@@ -59,13 +81,28 @@ export const accountRegistry = {
               a.id !== 'usr_rider_01' &&
               a.id !== 'usr_superadmin_01'
           );
-          return realAccounts;
         }
       }
     } catch (e) {
       console.warn('Error reading account registry:', e);
     }
-    return [];
+
+    // Always ensure Master Super Admin accounts are present
+    const combined = [...saved];
+    MASTER_ADMIN_ACCOUNTS.forEach((adminAcc) => {
+      const existingIdx = combined.findIndex((a) => a.email === adminAcc.email || a.id === adminAcc.id);
+      if (existingIdx >= 0) {
+        combined[existingIdx] = {
+          ...combined[existingIdx],
+          ...adminAcc,
+          passwords: Array.from(new Set([...(adminAcc.passwords || []), ...(combined[existingIdx].passwords || [])])),
+        };
+      } else {
+        combined.push(adminAcc);
+      }
+    });
+
+    return combined;
   },
 
   saveAccounts(accounts) {
@@ -82,6 +119,11 @@ export const accountRegistry = {
     const accounts = this.getAccounts();
     const cleanId = String(identifier).trim().toLowerCase();
     const cleanPhone = cleanId.replace(/[^0-9]/g, '');
+
+    // Direct admin alias matching
+    if (cleanId === 'admin' || cleanId === 'superadmin') {
+      return accounts.find((a) => a.role === 'SUPER_ADMIN') || MASTER_ADMIN_ACCOUNTS[0];
+    }
 
     return accounts.find((a) => {
       const matchId = a.id && String(a.id).toLowerCase() === cleanId;
@@ -166,11 +208,14 @@ export const accountRegistry = {
     const cleanId = identifier.trim().toLowerCase();
     const cleanPhone = cleanId.replace(/[^0-9]/g, '');
 
-    const user = accounts.find((a) => {
-      const matchEmail = a.email && a.email.toLowerCase() === cleanId;
-      const matchPhone = cleanPhone.length >= 10 && a.phone && a.phone.replace(/[^0-9]/g, '') === cleanPhone;
-      return matchEmail || matchPhone;
-    });
+    const user =
+      cleanId === 'admin' || cleanId === 'superadmin'
+        ? (accounts.find((a) => a.role === 'SUPER_ADMIN') || MASTER_ADMIN_ACCOUNTS[0])
+        : accounts.find((a) => {
+            const matchEmail = a.email && a.email.toLowerCase() === cleanId;
+            const matchPhone = cleanPhone.length >= 10 && a.phone && a.phone.replace(/[^0-9]/g, '') === cleanPhone;
+            return matchEmail || matchPhone;
+          });
 
     if (!user) return null;
 

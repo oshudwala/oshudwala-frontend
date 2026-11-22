@@ -1,8 +1,11 @@
 import React from 'react';
 import { FileText, ArrowRight, Upload, PhoneCall, Zap, Sparkles } from 'lucide-react';
 import Button from '../common/Button';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const OrderChannels = ({ onOpenPrescription }) => {
+  const { t } = useLanguage();
+
   // Configurable helpline and WhatsApp numbers
   const whatsappNumber = import.meta.env.VITE_WHATSAPP_NUMBER || '+919800000000';
   const cleanWhatsappNumber = whatsappNumber.replace(/[^0-9]/g, '');
@@ -18,10 +21,10 @@ export const OrderChannels = ({ onOpenPrescription }) => {
       {/* Section Heading - Concise on Mobile */}
       <div className="text-center mb-3 sm:mb-8">
         <h2 className="text-base sm:text-2xl lg:text-3xl font-heading font-extrabold text-forest-800 tracking-tight">
-          Get your medicines via
+          {t('get_medicines_via', 'Get your medicines via')}
         </h2>
         <p className="hidden sm:block text-xs sm:text-sm text-brandText-secondary mt-1 max-w-xl mx-auto">
-          Choose your preferred channel to order verified medicines and healthcare essentials with express home delivery
+          {t('get_medicines_subtitle', 'Choose your preferred channel to order verified medicines and healthcare essentials with express home delivery')}
         </p>
       </div>
 
@@ -45,21 +48,21 @@ export const OrderChannels = ({ onOpenPrescription }) => {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                   <h3 className="text-xs xs:text-sm sm:text-xl font-heading font-extrabold text-forest-900 group-hover:text-forest-700 transition-colors">
-                    Add Prescription
+                    {t('add_prescription', 'Add Prescription')}
                   </h3>
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold text-forest-800 bg-forest-100/90 px-2 py-0.5 rounded-full border border-forest-200">
                     <Sparkles className="w-3 h-3 text-forest-600" />
-                    Recommended & Fastest
+                    {t('recommended_fastest', 'Recommended & Fastest')}
                   </span>
                 </div>
 
                 {/* Subtitle: Short on Mobile, Detailed on Desktop */}
                 <p className="sm:hidden text-[11px] text-brandText-secondary truncate mt-0.5">
-                  Upload prescription for fast delivery
+                  {t('prescription_subtitle', 'Upload prescription for fast delivery')}
                 </p>
 
                 <p className="hidden sm:block text-xs sm:text-sm text-brandText-secondary mt-1 leading-relaxed max-w-2xl">
-                  Upload your doctor's prescription directly. Our certified pharmacists will verify it, assemble your dosage, and arrange rapid delivery.
+                  {t('prescription_subtitle', "Upload your doctor's prescription directly. Our certified pharmacists will verify it, assemble your dosage, and arrange rapid delivery.")}
                 </p>
 
                 {/* Trust Badges on Desktop */}
@@ -84,8 +87,8 @@ export const OrderChannels = ({ onOpenPrescription }) => {
                 }}
                 className="py-1.5 px-3 sm:py-2.5 sm:px-6 shadow-sm sm:shadow-md font-bold text-[11px] sm:text-sm rounded-xl sm:rounded-2xl"
               >
-                <span className="hidden sm:inline">Upload Prescription</span>
-                <span className="sm:hidden">Upload</span>
+                <span className="hidden sm:inline">{t('upload_prescription', 'Upload Prescription')}</span>
+                <span className="sm:hidden">{t('upload_prescription', 'Upload')}</span>
               </Button>
             </div>
           </div>
@@ -106,11 +109,11 @@ export const OrderChannels = ({ onOpenPrescription }) => {
 
               <div className="min-w-0">
                 <h3 className="text-xs xs:text-sm sm:text-lg font-heading font-bold text-forest-800 group-hover:text-forest-700 transition-colors truncate">
-                  <span className="hidden sm:inline">Order on Call</span>
-                  <span className="sm:hidden">Call Us</span>
+                  <span className="hidden sm:inline">{t('order_on_call', 'Order on Call')}</span>
+                  <span className="sm:hidden">{t('order_on_call', 'Call Us')}</span>
                 </h3>
                 <p className="text-[10px] sm:text-xs text-forest-600 font-semibold truncate mt-0.5">
-                  24/7 Helpline
+                  {t('helpline_247', '24/7 Helpline')}
                 </p>
                 <p className="hidden sm:block text-xs font-mono font-bold text-forest-700 mt-1">
                   {helplineNumber}
@@ -143,11 +146,11 @@ export const OrderChannels = ({ onOpenPrescription }) => {
 
               <div className="min-w-0">
                 <h3 className="text-xs xs:text-sm sm:text-lg font-heading font-bold text-forest-800 group-hover:text-emerald-700 transition-colors truncate">
-                  <span className="hidden sm:inline">Order on WhatsApp</span>
-                  <span className="sm:hidden">WhatsApp</span>
+                  <span className="hidden sm:inline">{t('order_on_whatsapp', 'Order on WhatsApp')}</span>
+                  <span className="sm:hidden">{t('order_on_whatsapp', 'WhatsApp')}</span>
                 </h3>
                 <p className="text-[10px] sm:text-xs text-emerald-600 font-semibold truncate mt-0.5">
-                  Instant Order
+                  {t('instant_order', 'Instant Order')}
                 </p>
                 <p className="hidden sm:block text-xs font-mono font-bold text-emerald-700 mt-1">
                   Chat with Pharmacist

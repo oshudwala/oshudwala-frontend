@@ -12,25 +12,50 @@ import {
   AlertCircle,
   Phone,
   XCircle,
-  ArrowRight
+  ArrowRight,
+  Building2,
 } from 'lucide-react';
 import { doctorService } from '../services/doctorService';
 import DoctorCard from '../components/doctors/DoctorCard';
 import BookingModal from '../components/doctors/BookingModal';
+import ClinicCard from '../components/clinics/ClinicCard';
+import ClinicDoctorsModal from '../components/clinics/ClinicDoctorsModal';
+import { clinicsData } from '../data/clinicsData';
 import Button from '../components/common/Button';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export const AppointmentsPage = () => {
   const [searchParams] = useSearchParams();
   const highlightedDoctorId = searchParams.get('doctor');
+  const urlTab = searchParams.get('tab');
   const { addToast } = useToast();
+  const { t, isBengali } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState('find'); // 'find' | 'my-appointments'
+  const [activeTab, setActiveTab] = useState(() => {
+    if (urlTab === 'clinics') return 'clinics';
+    if (urlTab === 'my-appointments') return 'my-appointments';
+    return 'find';
+  });
+
   const [doctors, setDoctors] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [clinicSearchQuery, setClinicSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState(null);
+  const [selectedClinic, setSelectedClinic] = useState(null);
   const [userAppointments, setUserAppointments] = useState([]);
+
+  // Respond to URL tab changes
+  useEffect(() => {
+    if (urlTab === 'clinics') {
+      setActiveTab('clinics');
+    } else if (urlTab === 'my-appointments') {
+      setActiveTab('my-appointments');
+    } else if (urlTab === 'doctors' || urlTab === 'find') {
+      setActiveTab('find');
+    }
+  }, [urlTab]);
 
   const specialties = [
     'All',
@@ -74,20 +99,32 @@ export const AppointmentsPage = () => {
     addToast('Appointment cancelled successfully.', 'info');
   };
 
+  const filteredClinics = clinicsData.filter((c) => {
+    const q = clinicSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.name?.toLowerCase().includes(q) ||
+      c.area?.toLowerCase().includes(q) ||
+      c.address?.toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-forest-800">
-            Doctor Consultations & Appointments
+            {isBengali ? 'চিকিৎসক পরামর্শ ও অ্যাপয়েন্টমেন্ট' : 'Doctor Consultations & Appointments'}
           </h1>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
-            Book trusted doctors, track live clinic queue tokens, and skip waiting rooms
+            {isBengali
+              ? 'বিশ্বস্ত ডাক্তার বুক করুন, ক্লিনিকের লাইভ টোকেন ট্র্যাক করুন এবং দীর্ঘ লাইনের ঝামেলা এড়ান'
+              : 'Book trusted doctors, track live clinic queue tokens, and skip waiting rooms'}
           </p>
         </div>
 
-        {/* Tab Switcher */}
+        {/* 3-Tab Switcher */}
         <div className="inline-flex rounded-2xl p-1 bg-surface-pure border border-brandBorder-subtle shadow-subtle self-start sm:self-auto text-xs font-bold">
           <button
             type="button"
@@ -98,7 +135,18 @@ export const AppointmentsPage = () => {
                 : 'text-brandText-secondary hover:text-forest-700'
             }`}
           >
-            Find Doctors ({doctors.length})
+            {isBengali ? 'ডাক্তারগণ' : 'Find Doctors'} ({doctors.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('clinics')}
+            className={`px-4 py-2 rounded-xl transition-all ${
+              activeTab === 'clinics'
+                ? 'bg-forest-600 text-white shadow-sm'
+                : 'text-brandText-secondary hover:text-forest-700'
+            }`}
+          >
+            {isBengali ? 'ক্লিনিক ও চেম্বার' : 'Explore Clinics'} ({clinicsData.length})
           </button>
           <button
             type="button"
@@ -109,7 +157,7 @@ export const AppointmentsPage = () => {
                 : 'text-brandText-secondary hover:text-forest-700'
             }`}
           >
-            My Appointments ({userAppointments.length})
+            {isBengali ? 'আমার অ্যাপয়েন্টমেন্ট' : 'My Appointments'} ({userAppointments.length})
           </button>
         </div>
       </div>
@@ -123,7 +171,7 @@ export const AppointmentsPage = () => {
               <Search className="w-4 h-4 text-brandText-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search doctors by name, specialty, or clinic name..."
+                placeholder={isBengali ? "ডাক্তারের নাম, বিশেষজ্ঞতা বা চেম্বার খুঁজুন..." : "Search doctors by name, specialty, or clinic name..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 text-brandText-main"
@@ -143,7 +191,7 @@ export const AppointmentsPage = () => {
                       : 'bg-forest-50 text-forest-800 hover:bg-forest-100'
                   }`}
                 >
-                  {spec}
+                  {spec === 'All' ? (isBengali ? 'সব' : 'All') : t(spec, spec)}
                 </button>
               ))}
             </div>
@@ -160,6 +208,45 @@ export const AppointmentsPage = () => {
               />
             ))}
           </div>
+        </div>
+      ) : activeTab === 'clinics' ? (
+        /* Explore Clinics View */
+        <div className="space-y-6">
+          {/* Clinic Search Bar */}
+          <div className="bg-surface-pure p-4 sm:p-5 rounded-2xl border border-brandBorder-subtle shadow-subtle">
+            <div className="relative">
+              <Search className="w-4 h-4 text-brandText-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder={isBengali ? "ক্লিনিক বা চেম্বারের নাম, এলাকা বা ঠিকানা খুঁজুন..." : "Search partner clinics by name, locality, or address..."}
+                value={clinicSearchQuery}
+                onChange={(e) => setClinicSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 text-brandText-main"
+              />
+            </div>
+          </div>
+
+          {/* Clinics Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {filteredClinics.map((clinic) => (
+              <ClinicCard
+                key={clinic.id}
+                clinic={clinic}
+                onSelect={(cln) => setSelectedClinic(cln)}
+              />
+            ))}
+          </div>
+
+          {/* Clinic Doctors Modal */}
+          <ClinicDoctorsModal
+            clinic={selectedClinic}
+            isOpen={Boolean(selectedClinic)}
+            onClose={() => setSelectedClinic(null)}
+            onBookDoctor={(doc) => {
+              setSelectedClinic(null);
+              setSelectedDoctorForBooking(doc);
+            }}
+          />
         </div>
       ) : (
         /* My Appointments & Live Queue Tokens View */

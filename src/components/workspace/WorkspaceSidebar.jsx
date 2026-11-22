@@ -34,7 +34,9 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
   const location = useLocation();
   const { orders, tokens, prescriptions, inventory } = useWorkspaceStore();
 
-  const userRole = (user?.role || '').toUpperCase();
+  const rawRole = typeof user?.role === 'object' ? (user?.role?.name || user?.role?.role) : user?.role;
+  let userRole = String(rawRole || '').trim().toUpperCase();
+  if (userRole === 'ADMIN' || userRole === 'SUPERADMIN') userRole = 'SUPER_ADMIN';
 
   // Dynamic counts for notification badges
   const pendingOrdersCount = orders.filter((o) => ['PENDING', 'ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status)).length;
@@ -45,6 +47,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
   const getNavGroups = () => {
     switch (userRole) {
       case 'SUPER_ADMIN':
+      case 'ADMIN':
         return [
           {
             title: 'Overview',

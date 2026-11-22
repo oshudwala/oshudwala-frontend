@@ -2,8 +2,11 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Facebook, Instagram, Youtube, Linkedin, Twitter, ArrowUpRight } from 'lucide-react';
 import Logo from '../common/Logo';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const Footer = () => {
+  const { t, isBengali } = useLanguage();
+
   return (
     <footer className="bg-forest-900 text-white pt-16 pb-10 border-t border-forest-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -12,7 +15,7 @@ export const Footer = () => {
           <div className="lg:col-span-1 space-y-4">
             <Logo variant="dark" />
             <p className="text-xs text-forest-200/90 leading-relaxed max-w-sm">
-              Your trusted healthcare partner for medicines, doctor appointments, and verified pharmacy care. Closer to you, wherever you are.
+              {t('footer_tagline', 'Your trusted healthcare partner for medicines, doctor appointments, and verified pharmacy care. Closer to you, wherever you are.')}
             </p>
             {/* Social Icons */}
             <div className="flex items-center gap-2.5 pt-2">
@@ -41,32 +44,32 @@ export const Footer = () => {
           {/* Quick Links */}
           <div>
             <h4 className="font-heading font-bold text-sm text-white mb-4 tracking-wide">
-              Quick Links
+              {t('quick_links', 'Quick Links')}
             </h4>
             <ul className="space-y-2.5 text-xs text-forest-200">
               <li>
                 <Link to="/" className="hover:text-emerald-300 transition-colors">
-                  Home
+                  {t('nav_home', 'Home')}
                 </Link>
               </li>
               <li>
                 <Link to="/appointments" className="hover:text-emerald-300 transition-colors">
-                  Appointments
+                  {t('nav_appointments', 'Appointments')}
                 </Link>
               </li>
               <li>
                 <Link to="/shop" className="hover:text-emerald-300 transition-colors">
-                  Shop
+                  {t('nav_shop', 'Shop')}
                 </Link>
               </li>
               <li>
                 <Link to="/orders" className="hover:text-emerald-300 transition-colors">
-                  Orders
+                  {t('nav_orders', 'Orders')}
                 </Link>
               </li>
               <li>
                 <Link to="/refers" className="hover:text-emerald-300 transition-colors">
-                  Refers & Earn
+                  {t('nav_refers', 'Refers')}
                 </Link>
               </li>
             </ul>
@@ -75,32 +78,32 @@ export const Footer = () => {
           {/* Healthcare Services */}
           <div>
             <h4 className="font-heading font-bold text-sm text-white mb-4 tracking-wide">
-              Healthcare
+              {t('services', 'Healthcare')}
             </h4>
             <ul className="space-y-2.5 text-xs text-forest-200">
               <li>
                 <Link to="/appointments" className="hover:text-emerald-300 transition-colors">
-                  Find Doctors
+                  {t('find_doctors_title', 'Find Doctors')}
                 </Link>
               </li>
               <li>
                 <Link to="/shop" className="hover:text-emerald-300 transition-colors">
-                  Find Pharmacies
+                  {t('featured_pharmacies', 'Find Pharmacies')}
                 </Link>
               </li>
               <li>
                 <Link to="/profile?tab=prescriptions" className="hover:text-emerald-300 transition-colors">
-                  Upload Prescription
+                  {t('upload_prescription', 'Upload Prescription')}
                 </Link>
               </li>
               <li>
                 <Link to="/shop" className="hover:text-emerald-300 transition-colors">
-                  Medicine Categories
+                  {t('categories_title', 'Medicine Categories')}
                 </Link>
               </li>
               <li>
-                <Link to="/appointments" className="hover:text-emerald-300 transition-colors">
-                  Live Queue Tokens
+                <Link to="/appointments?tab=clinics" className="hover:text-emerald-300 transition-colors">
+                  {t('live_queue_tokens', 'Live Queue Tokens')}
                 </Link>
               </li>
             </ul>
@@ -109,32 +112,32 @@ export const Footer = () => {
           {/* Support */}
           <div>
             <h4 className="font-heading font-bold text-sm text-white mb-4 tracking-wide">
-              Support
+              {t('contact_support', 'Support')}
             </h4>
             <ul className="space-y-2.5 text-xs text-forest-200">
               <li>
                 <a href="#faq" className="hover:text-emerald-300 transition-colors">
-                  Help Center
+                  {isBengali ? 'সাহায্য কেন্দ্র' : 'Help Center'}
                 </a>
               </li>
               <li>
                 <a href="#faq" className="hover:text-emerald-300 transition-colors">
-                  FAQs
+                  {t('faqs_title', 'FAQs')}
                 </a>
               </li>
               <li>
                 <a href="https://wa.me/919800000000" target="_blank" rel="noreferrer" className="hover:text-emerald-300 transition-colors flex items-center gap-1">
-                  Contact Support <ArrowUpRight className="w-3 h-3" />
+                  {t('contact_support', 'Contact Support')} <ArrowUpRight className="w-3 h-3" />
                 </a>
               </li>
               <li>
                 <Link to="/terms-conditions" className="hover:text-emerald-300 transition-colors">
-                  Terms & Conditions
+                  {t('terms_conditions', 'Terms & Conditions')}
                 </Link>
               </li>
               <li>
                 <Link to="/privacy-policy" className="hover:text-emerald-300 transition-colors">
-                  Privacy Policy
+                  {t('privacy_policy', 'Privacy Policy')}
                 </Link>
               </li>
             </ul>
@@ -143,10 +146,10 @@ export const Footer = () => {
           {/* Download Our App */}
           <div className="space-y-3">
             <h4 className="font-heading font-bold text-sm text-white mb-4 tracking-wide">
-              Download Our App
+              {isBengali ? 'অ্যাপ ডাউনলোড করুন' : 'Download Our App'}
             </h4>
             <p className="text-xs text-forest-200 leading-snug">
-              Experience fast medicine delivery and queue tracking on iOS & Android.
+              {isBengali ? 'আইওএস এবং অ্যান্ড্রয়েডে দ্রুত ওষুধ ডেলিভারি ও সিরিয়াল ট্র্যাকিং অভিজ্ঞতা উপভোগ করুন।' : 'Experience fast medicine delivery and queue tracking on iOS & Android.'}
             </p>
 
             <div className="space-y-2.5 pt-1">
@@ -184,17 +187,19 @@ export const Footer = () => {
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-forest-300 gap-3">
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-            <p>© 2026 Oshud Wala. All rights reserved.</p>
+            <p>{t('footer_rights', '© 2026 Oshud Wala. All rights reserved.')}</p>
             <span className="hidden sm:inline text-forest-700">•</span>
             <Link to="/privacy-policy" className="hover:text-emerald-300 transition-colors underline-offset-2 hover:underline">
-              Privacy Policy
+              {t('privacy_policy', 'Privacy Policy')}
             </Link>
             <span className="hidden sm:inline text-forest-700">•</span>
             <Link to="/terms-conditions" className="hover:text-emerald-300 transition-colors underline-offset-2 hover:underline">
-              Terms & Conditions
+              {t('terms_conditions', 'Terms & Conditions')}
             </Link>
           </div>
-          <p className="text-emerald-400 font-medium">Better Healthcare. A Healthier Tomorrow.</p>
+          <p className="text-emerald-400 font-medium">
+            {isBengali ? 'উন্নত স্বাস্থ্যসেবায় একটি সুস্থ আগামী।' : 'Better Healthcare. A Healthier Tomorrow.'}
+          </p>
         </div>
       </div>
     </footer>

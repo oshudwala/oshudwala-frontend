@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Plus, Minus, ArrowRight } from 'lucide-react';
 import { faqsData } from '../../data/faqsData';
 import Button from '../common/Button';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const FaqSection = () => {
+  const { t, isBengali } = useLanguage();
   const [openFaqId, setOpenFaqId] = useState('faq-1');
   const [showAll, setShowAll] = useState(false);
 
@@ -36,10 +38,10 @@ export const FaqSection = () => {
 
           <div className="relative z-10 space-y-3">
             <h2 className="text-2xl sm:text-3xl font-heading font-extrabold text-forest-800 tracking-tight leading-tight">
-              Frequently Asked Questions
+              {t('faqs_title', 'Frequently Asked Questions')}
             </h2>
             <p className="text-xs sm:text-sm text-brandText-secondary leading-relaxed">
-              Find answers to common queries regarding medicine ordering, prescription reviews, and doctor appointments.
+              {t('faqs_subtitle', 'Find answers to common queries regarding medicine ordering, prescription reviews, and doctor appointments.')}
             </p>
 
             <div className="pt-2">
@@ -50,7 +52,7 @@ export const FaqSection = () => {
                 onClick={() => setShowAll((prev) => !prev)}
                 className="py-2.5 px-5 shadow-sm text-xs font-bold"
               >
-                {showAll ? 'Show Fewer FAQs' : 'View All FAQs'}
+                {showAll ? t('show_less', 'Show Fewer FAQs') : t('view_all_questions', 'View All FAQs')}
               </Button>
             </div>
           </div>
@@ -71,7 +73,7 @@ export const FaqSection = () => {
                   className="w-full p-4 sm:p-5 text-left flex items-center justify-between gap-4 font-heading font-bold text-sm text-forest-800 hover:text-forest-600 transition-colors"
                   aria-expanded={isOpen}
                 >
-                  <span className="leading-snug">{faq.question}</span>
+                  <span className="leading-snug">{isBengali && faq.questionBn ? faq.questionBn : faq.question}</span>
                   <div className="w-7 h-7 rounded-full bg-forest-50 text-forest-700 flex items-center justify-center flex-shrink-0">
                     {isOpen ? (
                       <Minus className="w-4 h-4 stroke-[2.5]" />
@@ -83,7 +85,7 @@ export const FaqSection = () => {
 
                 {isOpen && (
                   <div className="px-4 sm:px-5 pb-5 pt-0 text-xs sm:text-sm text-brandText-secondary leading-relaxed border-t border-brandBorder-light/50 mt-1 animate-fade-in">
-                    {faq.answer}
+                    {isBengali && faq.answerBn ? faq.answerBn : faq.answer}
                   </div>
                 )}
               </div>

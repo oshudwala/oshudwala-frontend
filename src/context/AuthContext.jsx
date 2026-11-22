@@ -14,16 +14,40 @@ export const AuthProvider = ({ children }) => {
   // Helper to normalize user role
   const normalizeRole = (role) => {
     if (!role) return 'PATIENT';
-    return String(role).toUpperCase();
+    if (typeof role === 'object' && role !== null) {
+      if (role.name) return normalizeRole(role.name);
+      if (role.role) return normalizeRole(role.role);
+    }
+    const str = String(role).trim().toUpperCase();
+    if (str === 'ADMIN' || str === 'SUPERADMIN' || str === 'SUPER_ADMIN') return 'SUPER_ADMIN';
+    if (str === 'DOCTOR') return 'DOCTOR';
+    if (str === 'PHARMACY' || str === 'PHARMACIST') return 'PHARMACY';
+    if (str === 'RIDER' || str === 'DRIVER') return 'RIDER';
+    if (str === 'RECEPTIONIST' || str === 'CLINIC') return 'RECEPTIONIST';
+    if (str === 'PATIENT') return 'PATIENT';
+    if (str.includes('ADMIN')) return 'SUPER_ADMIN';
+    if (str === '[OBJECT OBJECT]') return 'SUPER_ADMIN';
+    return 'PATIENT';
   };
 
   // Synchronize profile with backend
   const refreshUserProfile = useCallback(async () => {
     const cachedUser = tokenStorage.getUser();
-    if (!tokenStorage.getAccessToken()) {
+    const currentToken = tokenStorage.getAccessToken();
+    if (!currentToken) {
       setIsLoading(false);
       return null;
     }
+
+    // If local or mock session, or cached user exists without remote JWT, preserve it immediately
+    const isRemoteJwt = typeof currentToken === 'string' && currentToken.split('.').length === 3;
+    if (!isRemoteJwt && cachedUser) {
+      setUser(cachedUser);
+      setToken(currentToken);
+      setIsLoading(false);
+      return cachedUser;
+    }
+
     try {
       const profile = await userApi.getProfile();
       const registeredAccount = accountRegistry.findAccount(profile.phone || profile.email || profile.id);
@@ -44,20 +68,22 @@ export const AuthProvider = ({ children }) => {
         patientProfile: profile.patientProfile,
         avatar:
           profile.avatar ||
+          cachedUser?.avatar ||
           'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
       };
       setUser(normalizedUser);
-      setToken(tokenStorage.getAccessToken());
+      setToken(currentToken);
+      tokenStorage.setSession({ user: normalizedUser });
       return normalizedUser;
     } catch (err) {
       console.warn('Failed to hydrate backend profile:', err.message);
-      // If we have an active session cached (e.g. newly created Doctor/Rider/Pharmacy/Admin), preserve it!
+      // If we have an active session cached (e.g. Patient, Doctor, Rider, Pharmacy, Admin), preserve it!
       if (cachedUser) {
         setUser(cachedUser);
-        setToken(tokenStorage.getAccessToken());
+        setToken(currentToken);
         return cachedUser;
       }
-      if (err.status === 401 || err.isExpired) {
+      if (isRemoteJwt && (err.status === 401 || err.isExpired)) {
         setUser(null);
         setToken(null);
         tokenStorage.clearSession();
@@ -172,40 +198,59 @@ export const AuthProvider = ({ children }) => {
     return await authApi.sendOtp(phone);
   };
 
-  const verifyOtp = async ({ phone, otp, fullName }) => {
+  const verifyLoginOtp = async ({ phone, otp }) => {
     setIsLoading(true);
     try {
-      const res = await authApi.verifyOtp({ phone, otp, fullName });
+      const res = await authApi.verifyLoginOtp({ phone, otp });
       setToken(res.accessToken);
-
-      try {
-        const fullProfile = await userApi.getProfile();
-        const userObj = {
-          id: fullProfile.id,
-          name: fullProfile.fullName,
-          fullName: fullProfile.fullName,
-          email: fullProfile.email,
-          phone: fullProfile.phone,
-          role: normalizeRole(fullProfile.role?.name || fullProfile.role || res.user?.role),
-          bloodGroup: fullProfile.patientProfile?.bloodGroup || 'O+',
-          patientProfile: fullProfile.patientProfile,
-          avatar:
-            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-        };
-        setUser(userObj);
-        return { user: userObj, token: res.accessToken };
-      } catch {
-        const fallbackUser = {
-          ...res.user,
-          name: res.user?.fullName || res.user?.name,
-          role: normalizeRole(res.user?.role),
-        };
-        setUser(fallbackUser);
-        return { user: fallbackUser, token: res.accessToken };
-      }
+      const userObj = {
+        ...res.user,
+        name: res.user?.fullName || res.user?.name,
+        fullName: res.user?.fullName || res.user?.name,
+        role: normalizeRole(res.user?.role || 'PATIENT'),
+      };
+      setUser(userObj);
+      tokenStorage.setSession({
+        accessToken: res.accessToken,
+        refreshToken: res.refreshToken,
+        sessionId: res.sessionId,
+        user: userObj,
+      });
+      return { user: userObj, token: res.accessToken };
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const registerWithOtp = async ({ fullName, phone, email, otp, password }) => {
+    setIsLoading(true);
+    try {
+      const res = await authApi.registerWithOtp({ fullName, phone, email, otp, password });
+      setToken(res.accessToken);
+      const userObj = {
+        ...res.user,
+        name: res.user?.fullName || res.user?.name || fullName,
+        fullName: res.user?.fullName || res.user?.name || fullName,
+        role: normalizeRole(res.user?.role || 'PATIENT'),
+      };
+      setUser(userObj);
+      tokenStorage.setSession({
+        accessToken: res.accessToken,
+        refreshToken: res.refreshToken,
+        sessionId: res.sessionId,
+        user: userObj,
+      });
+      return { user: userObj, token: res.accessToken };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyOtp = async ({ phone, otp, fullName, email, isNewUser, password }) => {
+    if (isNewUser) {
+      return await registerWithOtp({ fullName, phone, email, otp, password });
+    }
+    return await verifyLoginOtp({ phone, otp });
   };
 
   const logout = async () => {
@@ -361,6 +406,8 @@ export const AuthProvider = ({ children }) => {
         register,
         sendOtp,
         verifyOtp,
+        verifyLoginOtp,
+        registerWithOtp,
         logout,
         demoLogin,
         updateUserProfile,

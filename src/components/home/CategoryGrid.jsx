@@ -2,13 +2,28 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { parentCategories, categoryItemsByParent, categoryCardsData } from '../../data/categoriesData';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const CategoryGrid = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [activeParentTab, setActiveParentTab] = useState('personal-care');
 
   // Dynamically filter cards based on the selected parent category tab
   const currentCards = categoryItemsByParent[activeParentTab] || categoryCardsData;
+
+  const getParentCategoryName = (parent) => {
+    const keyMap = {
+      'personal-care': 'cat_personal_care',
+      'health-care': 'cat_health_care',
+      'baby-mother': 'cat_baby_mother',
+      'sexual-wellness': 'cat_sexual_wellness',
+      'otc-medicine': 'cat_otc_medicine',
+      'medical-devices': 'cat_medical_devices',
+    };
+    const key = keyMap[parent.id];
+    return key ? t(key, parent.name) : parent.name;
+  };
 
   return (
     <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
@@ -16,10 +31,10 @@ export const CategoryGrid = () => {
       <div className="flex items-end justify-between mb-3 sm:mb-6">
         <div>
           <h2 className="text-base sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight">
-            Categories
+            {t('categories_title', 'Categories')}
           </h2>
           <p className="hidden sm:block text-xs sm:text-sm text-brandText-secondary mt-1">
-            Browse genuine medicines, personal care, and specialized healthcare products
+            {t('categories_subtitle', 'Browse genuine medicines, personal care, and specialized healthcare products')}
           </p>
         </div>
 
@@ -27,7 +42,7 @@ export const CategoryGrid = () => {
           to="/shop"
           className="inline-flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm font-bold text-forest-700 hover:text-forest-800 group transition-colors"
         >
-          <span>View All</span>
+          <span>{t('view_all', 'View All')}</span>
           <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 group-hover:translate-x-0.5 transition-transform" />
         </Link>
       </div>
@@ -62,7 +77,7 @@ export const CategoryGrid = () => {
                       : 'text-brandText-secondary group-hover:text-forest-700'
                   }`}
                 >
-                  {parent.name}
+                  {getParentCategoryName(parent)}
                 </span>
 
                 {/* Active Indicator Underline (Reference Image Accent Underline) */}
@@ -95,7 +110,7 @@ export const CategoryGrid = () => {
 
             {/* Label Below Card (Clean, Bold, Centered) */}
             <h3 className="font-heading font-bold text-[10px] xs:text-[11px] sm:text-xs text-forest-900 group-hover:text-forest-700 mt-1.5 sm:mt-2 text-center transition-colors line-clamp-2 leading-tight">
-              {category.name}
+              {t(category.name, category.name)}
             </h3>
           </div>
         ))}

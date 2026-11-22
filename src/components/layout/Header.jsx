@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { NavLink, Link, useLocation as useRouterLocation, useNavigate } from 'react-router-dom';
-import { MapPin, ChevronDown, Bell, ShoppingBag, Menu, X, LogIn, UserPlus, LayoutDashboard } from 'lucide-react';
+import { MapPin, ChevronDown, Bell, ShoppingBag, Menu, X, LogIn, UserPlus, LayoutDashboard, Globe } from 'lucide-react';
 import Logo from '../common/Logo';
 import { useLocation } from '../../context/LocationContext';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import NotificationsDropdown from '../common/NotificationsDropdown';
 import UserMenuDropdown from '../common/UserMenuDropdown';
 import LocationModal from './LocationModal';
@@ -16,17 +17,18 @@ export const Header = () => {
   const { selectedLocation, setIsLocationModalOpen } = useLocation();
   const { itemCount, setIsCartDrawerOpen } = useCart();
   const { user, isAuthenticated, isPatient, getRoleDefaultPath, logout } = useAuth();
+  const { language, setLanguage, t, isBengali } = useLanguage();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navLinks = [
-    { name: 'Home', path: '/' },
-    { name: 'Appointments', path: '/appointments' },
-    { name: 'Shop', path: '/shop' },
-    { name: 'Orders', path: '/orders' },
-    { name: 'Refers', path: '/refers' },
+    { name: t('nav_home', 'Home'), path: '/' },
+    { name: t('nav_appointments', 'Appointments'), path: '/appointments' },
+    { name: t('nav_shop', 'Shop'), path: '/shop' },
+    { name: t('nav_orders', 'Orders'), path: '/orders' },
+    { name: t('nav_refers', 'Refers'), path: '/refers' },
   ];
 
   return (
@@ -107,19 +109,20 @@ export const Header = () => {
                 </div>
               )}
 
-              {/* Cart Icon with Item Counter */}
+              {/* Language Switcher Pill (Replaces Cart button in Header as requested) */}
               <button
                 type="button"
-                onClick={() => setIsCartDrawerOpen(true)}
-                className="p-1.5 xs:p-2 sm:p-2.5 rounded-full hover:bg-forest-50 text-brandText-secondary hover:text-forest-700 transition-colors relative"
-                aria-label="Open cart"
+                onClick={() => setLanguage(isBengali ? 'en' : 'bn')}
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-forest-50/90 hover:bg-forest-100 text-forest-800 text-[11px] sm:text-xs font-bold transition-all border border-forest-200/90 shadow-2xs hover:scale-105 active:scale-95 group"
+                title={isBengali ? 'Switch to English' : 'বাংলায় পরিবর্তন করুন'}
               >
-                <ShoppingBag className="w-4 h-4 xs:w-5 xs:h-5" />
-                {itemCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 xs:top-1 xs:right-1 w-3.5 h-3.5 xs:w-4 xs:h-4 bg-forest-600 text-white text-[9px] xs:text-[10px] font-bold rounded-full flex items-center justify-center ring-1.5 ring-white">
-                    {itemCount}
-                  </span>
-                )}
+                <Globe className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-forest-600 group-hover:rotate-12 transition-transform flex-shrink-0" />
+                <span className="font-heading font-extrabold text-forest-900 tracking-tight">
+                  {isBengali ? 'বাংলা' : 'English'}
+                </span>
+                <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-forest-200/60 text-forest-800 font-bold hidden xs:inline">
+                  {isBengali ? 'BN' : 'EN'}
+                </span>
               </button>
 
               {/* Conditional Auth: Profile Avatar if logged in, Login/Register buttons if not */}
@@ -133,23 +136,28 @@ export const Header = () => {
                       title="Open your role workspace dashboard"
                     >
                       <LayoutDashboard className="w-3.5 h-3.5 text-emerald-300" />
-                      <span>Go to Dashboard</span>
+                      <span>{t('go_to_dashboard', 'Go to Dashboard')}</span>
                     </Link>
                   )}
 
-                  {/* Profile Avatar / User Menu */}
+                  {/* Profile Pill / User Menu Dropdown */}
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setIsUserMenuOpen((prev) => !prev)}
-                      className="flex items-center p-0.5 rounded-full hover:ring-2 hover:ring-forest-400 transition-all"
+                      className="flex items-center gap-1.5 sm:gap-2 p-1 pl-1.5 pr-2 rounded-full hover:bg-forest-50 border border-brandBorder-subtle transition-all bg-surface-pure shadow-2xs hover:shadow-xs group"
                       aria-label="User account"
+                      title="My Profile & Settings"
                     >
                       <img
                         src={user?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"}
                         alt={user?.name || "User Profile"}
-                        className="w-7 h-7 xs:w-8 xs:h-8 sm:w-9 sm:h-9 rounded-full object-cover border-2 border-forest-600 shadow-sm"
+                        className="w-7 h-7 xs:w-8 xs:h-8 rounded-full object-cover border border-forest-600 shadow-2xs group-hover:scale-105 transition-transform"
                       />
+                      <span className="hidden sm:inline text-xs font-bold text-forest-900 max-w-[105px] truncate">
+                        {user?.fullName?.split(' ')[0] || user?.name?.split(' ')[0] || (isBengali ? 'প্রোফাইল' : 'Profile')}
+                      </span>
+                      <ChevronDown className="w-3.5 h-3.5 text-forest-600 transition-transform group-hover:translate-y-0.5" />
                     </button>
                     <UserMenuDropdown
                       isOpen={isUserMenuOpen}
@@ -164,7 +172,7 @@ export const Header = () => {
                     to="/login"
                     className="px-2 xs:px-2.5 sm:px-3.5 py-1 sm:py-2 text-[11px] xs:text-xs font-bold text-forest-700 hover:text-forest-900 transition-colors rounded-full hover:bg-forest-50"
                   >
-                    Sign In
+                    {t('sign_in', 'Sign In')}
                   </Link>
                   <Button
                     variant="primary"
@@ -172,7 +180,7 @@ export const Header = () => {
                     onClick={() => navigate('/register')}
                     className="hidden xs:inline-flex text-[11px] sm:text-xs py-1 sm:py-2 px-2.5 sm:px-4 shadow-sm"
                   >
-                    Register
+                    {t('register', 'Register')}
                   </Button>
                 </div>
               )}
@@ -236,6 +244,34 @@ export const Header = () => {
               })}
             </nav>
 
+            {/* Mobile Language Switcher Row */}
+            <div className="pt-2 border-t border-brandBorder-subtle flex items-center justify-between text-xs font-semibold text-forest-900">
+              <span className="flex items-center gap-1.5 text-brandText-secondary">
+                <Globe className="w-4 h-4 text-forest-600" />
+                <span>Language / ভাষা</span>
+              </span>
+              <div className="flex items-center p-0.5 bg-forest-50 rounded-xl border border-forest-200">
+                <button
+                  type="button"
+                  onClick={() => setLanguage('en')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                    !isBengali ? 'bg-forest-800 text-white shadow-xs' : 'text-forest-800 hover:bg-forest-100'
+                  }`}
+                >
+                  English
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguage('bn')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                    isBengali ? 'bg-forest-800 text-white shadow-xs' : 'text-forest-800 hover:bg-forest-100'
+                  }`}
+                >
+                  বাংলা
+                </button>
+              </div>
+            </div>
+
             {/* Mobile Auth Buttons */}
             <div className="pt-2 border-t border-brandBorder-subtle space-y-2">
               {isAuthenticated ? (
@@ -251,7 +287,7 @@ export const Header = () => {
                     >
                       <span className="flex items-center gap-2">
                         <LayoutDashboard className="w-4 h-4 text-emerald-300" />
-                        <span>Go to {user?.role?.replace('_', ' ')} Workspace</span>
+                        <span>Go to {String(typeof user?.role === 'object' ? user?.role?.name : user?.role || '').replace('_', ' ')} Workspace</span>
                       </span>
                       <span className="text-[10px] text-emerald-300 font-bold uppercase">Open &rarr;</span>
                     </button>
@@ -264,8 +300,10 @@ export const Header = () => {
                         className="w-8 h-8 rounded-full object-cover border border-forest-600"
                       />
                       <div>
-                        <p className="text-xs font-bold text-forest-800">{user?.name}</p>
-                        <p className="text-[10px] text-brandText-secondary capitalize">{user?.role}</p>
+                        <p className="text-xs font-bold text-forest-800">{user?.name || user?.fullName}</p>
+                        <p className="text-[10px] text-brandText-secondary capitalize">
+                          {String(typeof user?.role === 'object' ? user?.role?.name : user?.role || '').toLowerCase().replace('_', ' ')}
+                        </p>
                       </div>
                     </div>
                     <button

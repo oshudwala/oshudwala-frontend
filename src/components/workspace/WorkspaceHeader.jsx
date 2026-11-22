@@ -30,9 +30,15 @@ export const WorkspaceHeader = ({ roleTitle, onToggleSidebar, isSidebarCollapsed
   // Path segments for breadcrumbs
   const pathParts = location.pathname.split('/').filter(Boolean);
 
+  const rawRole = typeof user?.role === 'object' ? (user?.role?.name || user?.role?.role) : user?.role;
+  const roleStr = String(rawRole || '').trim();
+  const normalizedRole = roleStr === 'ADMIN' || roleStr === 'SUPERADMIN' ? 'SUPER_ADMIN' : roleStr;
+  const displayRole = normalizedRole.replace('_', ' ');
+
   const getRoleIcon = () => {
-    switch (user?.role) {
+    switch (normalizedRole) {
       case 'SUPER_ADMIN':
+      case 'ADMIN':
         return Shield;
       case 'DOCTOR':
         return Stethoscope;
@@ -67,7 +73,7 @@ export const WorkspaceHeader = ({ roleTitle, onToggleSidebar, isSidebarCollapsed
         <div className="flex items-center gap-2">
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-forest-50 border border-forest-100 text-forest-800 text-xs font-bold">
             <RoleIcon className="w-3.5 h-3.5 text-forest-600" />
-            <span>{roleTitle || user?.role?.replace('_', ' ')}</span>
+            <span>{roleTitle || displayRole}</span>
           </div>
 
           {/* Breadcrumb Trail */}
@@ -158,7 +164,7 @@ export const WorkspaceHeader = ({ roleTitle, onToggleSidebar, isSidebarCollapsed
                 {user?.fullName || user?.name || 'Operator'}
               </p>
               <p className="text-[10px] text-brandText-secondary capitalize">
-                {user?.role?.replace('_', ' ')}
+                {displayRole.toLowerCase()}
               </p>
             </div>
           </button>

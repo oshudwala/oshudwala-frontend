@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { MapPin, Check, Search } from 'lucide-react';
 import Modal from '../common/Modal';
 import { useLocation } from '../../context/LocationContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const LocationModal = () => {
+  const { t, isBengali } = useLanguage();
   const {
     selectedLocation,
     changeLocation,
@@ -31,8 +33,8 @@ export const LocationModal = () => {
     <Modal
       isOpen={isLocationModalOpen}
       onClose={() => setIsLocationModalOpen(false)}
-      title="Select Delivery Location"
-      subtitle="Ensure fast 45-minute delivery from nearby verified pharmacies"
+      title={t('select_location', 'Select Delivery Location')}
+      subtitle={t('select_location_desc', 'Ensure fast 45-minute delivery from nearby verified pharmacies')}
       maxWidth="max-w-md"
     >
       <div className="space-y-4">

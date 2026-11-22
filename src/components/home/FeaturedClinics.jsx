@@ -4,10 +4,12 @@ import { ChevronLeft, ChevronRight, ArrowRight, Building2 } from 'lucide-react';
 import { clinicsData } from '../../data/clinicsData';
 import ClinicCard from '../clinics/ClinicCard';
 import ClinicDoctorsModal from '../clinics/ClinicDoctorsModal';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const FeaturedClinics = ({ onBookDoctor }) => {
   const scrollContainerRef = useRef(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
+  const { t } = useLanguage();
 
   const scroll = (direction) => {
     if (scrollContainerRef.current) {
@@ -30,10 +32,10 @@ export const FeaturedClinics = ({ onBookDoctor }) => {
             <span>Chambers & Healthcare Desks</span>
           </div>
           <h2 className="text-lg sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight">
-            Featured Clinics
+            {t('featured_clinics', 'Featured Clinics')}
           </h2>
           <p className="hidden sm:block text-xs sm:text-sm text-brandText-secondary mt-1">
-            Certified partner clinics offering in-person consultations with live token tracking
+            {t('featured_clinics_subtitle', 'Certified partner clinics offering in-person consultations with live token tracking')}
           </p>
         </div>
 
@@ -41,7 +43,7 @@ export const FeaturedClinics = ({ onBookDoctor }) => {
           to="/appointments"
           className="inline-flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm font-bold text-forest-700 hover:text-forest-800 group transition-colors"
         >
-          <span>View All</span>
+          <span>{t('view_all', 'View All')}</span>
           <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 group-hover:translate-x-0.5 transition-transform" />
         </Link>
       </div>

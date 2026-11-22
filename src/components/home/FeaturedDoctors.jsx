@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { doctorsData } from '../../data/doctorsData';
 import DoctorCard from '../doctors/DoctorCard';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const FeaturedDoctors = ({ onBookDoctor }) => {
   const navigate = useNavigate();
   const scrollContainerRef = useRef(null);
+  const { t } = useLanguage();
 
   const scroll = (direction) => {
     if (scrollContainerRef.current) {
@@ -25,10 +27,10 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
       <div className="flex items-end justify-between mb-6">
         <div>
           <h2 className="text-xl sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight">
-            Featured Doctors
+            {t('featured_doctors', 'Featured Doctors')}
           </h2>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
-            Consult experienced doctors for better care
+            {t('featured_doctors_subtitle', 'Consult experienced doctors for better care')}
           </p>
         </div>
 
@@ -36,7 +38,7 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
           to="/appointments"
           className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-forest-700 hover:text-forest-800 group transition-colors"
         >
-          <span>View All</span>
+          <span>{t('view_all', 'View All')}</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
         </Link>
       </div>
@@ -56,12 +58,12 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
         {/* Doctor Cards Horizontal Container */}
         <div
           ref={scrollContainerRef}
-          className="flex gap-3 sm:gap-5 overflow-x-auto no-scrollbar scroll-smooth pb-3 sm:pb-4 pt-1 snap-x snap-mandatory"
+          className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar scroll-smooth pb-3 sm:pb-4 pt-1 snap-x snap-mandatory"
         >
-          {doctorsData.slice(0, 5).map((doctor) => (
+          {doctorsData.slice(0, 6).map((doctor) => (
             <div
               key={doctor.id}
-              className="w-[185px] xs:w-[205px] sm:w-[260px] lg:w-[280px] flex-shrink-0 snap-start"
+              className="w-[235px] xs:w-[255px] sm:w-[285px] lg:w-[300px] flex-shrink-0 snap-start"
             >
               <DoctorCard
                 doctor={doctor}

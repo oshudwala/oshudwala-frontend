@@ -69,11 +69,15 @@ export const AdminUsersPage = () => {
     {
       header: 'System Role',
       key: 'role',
-      render: (row) => (
-        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-forest-100 text-forest-800 uppercase tracking-wider">
-          {row.role.replace('_', ' ')}
-        </span>
-      ),
+      render: (row) => {
+        const rawRole = typeof row.role === 'object' ? row.role?.name : row.role;
+        const roleLabel = String(rawRole || 'PATIENT').replace('_', ' ');
+        return (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-forest-100 text-forest-800 uppercase tracking-wider">
+            {roleLabel}
+          </span>
+        );
+      },
     },
     {
       header: 'Operating Location',

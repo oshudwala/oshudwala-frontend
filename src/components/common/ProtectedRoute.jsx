@@ -22,8 +22,16 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
   }
 
   if (allowedRoles && allowedRoles.length > 0) {
-    const userRole = (user?.role || '').toUpperCase();
-    const hasRole = allowedRoles.some((r) => r.toUpperCase() === userRole);
+    const rawRole = typeof user?.role === 'object' ? (user?.role?.name || user?.role?.role) : user?.role;
+    let userRole = (rawRole ? String(rawRole).trim().toUpperCase() : '');
+    if (userRole === 'ADMIN' || userRole === 'SUPERADMIN') userRole = 'SUPER_ADMIN';
+
+    const hasRole = allowedRoles.some((r) => {
+      const allowed = String(r).trim().toUpperCase();
+      if (allowed === userRole) return true;
+      if ((allowed === 'SUPER_ADMIN' || allowed === 'ADMIN') && (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN')) return true;
+      return false;
+    });
 
     if (!hasRole) {
       return (
@@ -34,11 +42,11 @@ export const ProtectedRoute = ({ children, allowedRoles }) => {
             </div>
             <h2 className="font-heading font-bold text-xl text-forest-800">Access Restricted</h2>
             <p className="text-xs text-brandText-secondary leading-relaxed">
-              Your account role (<span className="font-bold text-rose-600">{user?.role}</span>) does not have authorization to view this section.
+              Your account role (<span className="font-bold text-rose-600">{userRole || 'PATIENT'}</span>) does not have authorization to view this section.
             </p>
             <div className="pt-2">
-              <Button variant="primary" size="md" onClick={() => window.history.back()} className="w-full">
-                Go Back
+              <Button variant="primary" size="md" onClick={() => (window.location.href = '/')} className="w-full">
+                Go to Home
               </Button>
             </div>
           </div>

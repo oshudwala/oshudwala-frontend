@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext';
 import { LocationProvider } from './context/LocationContext';
 import { CartProvider } from './context/CartContext';
 import { ToastProvider } from './context/ToastContext';
+import { LanguageProvider } from './context/LanguageContext';
 import AppRoutes from './routes/AppRoutes';
 
 export function App() {
@@ -11,11 +12,13 @@ export function App() {
     <BrowserRouter>
       <AuthProvider>
         <LocationProvider>
-          <CartProvider>
-            <ToastProvider>
-              <AppRoutes />
-            </ToastProvider>
-          </CartProvider>
+          <LanguageProvider>
+            <CartProvider>
+              <ToastProvider>
+                <AppRoutes />
+              </ToastProvider>
+            </CartProvider>
+          </LanguageProvider>
         </LocationProvider>
       </AuthProvider>
     </BrowserRouter>

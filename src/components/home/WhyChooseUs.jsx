@@ -1,31 +1,34 @@
 import React from 'react';
 import { ShieldCheck, FileText, CalendarCheck, Truck, Lock, TrendingUp } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const WhyChooseUs = () => {
+  const { t } = useLanguage();
+
   const benefits = [
     {
       icon: ShieldCheck,
-      title: "Trusted\nPharmacies",
+      title: t('benefit_trusted_pharmacies', "Trusted\nPharmacies"),
     },
     {
       icon: FileText,
-      title: "Easy Prescription\nUploads",
+      title: t('benefit_prescription_upload', "Easy Prescription\nUploads"),
     },
     {
       icon: CalendarCheck,
-      title: "Doctor Appointment\nBooking",
+      title: t('benefit_doctor_booking', "Doctor Appointment\nBooking"),
     },
     {
       icon: Truck,
-      title: "Convenient\nDelivery",
+      title: t('benefit_convenient_delivery', "Convenient\nDelivery"),
     },
     {
       icon: Lock,
-      title: "Secure Payment\nOptions",
+      title: t('benefit_secure_payment', "Secure Payment\nOptions"),
     },
     {
       icon: TrendingUp,
-      title: "Order\nTracking",
+      title: t('benefit_order_tracking', "Order\nTracking"),
     },
   ];
 
@@ -35,10 +38,10 @@ export const WhyChooseUs = () => {
         {/* Left: Heading & Subtitle */}
         <div className="lg:w-1/4 text-center lg:text-left">
           <h2 className="text-xl sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight leading-tight">
-            Why Choose Oshud Wala?
+            {t('why_choose_title', 'Why Choose Oshud Wala?')}
           </h2>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
-            Your trusted partner for better healthcare
+            {t('why_choose_subtitle', 'Your trusted partner for better healthcare')}
           </p>
         </div>
 

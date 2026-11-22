@@ -5,10 +5,12 @@ import Button from '../common/Button';
 import { doctorService } from '../../services/doctorService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { t, isBengali } = useLanguage();
 
   const [selectedDate, setSelectedDate] = useState('Today');
   const [selectedSlot, setSelectedSlot] = useState(doctor?.availableSlots?.[0] || '05:00 PM');
@@ -22,10 +24,10 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
   if (!doctor) return null;
 
   const dates = [
-    { label: 'Today', sub: 'Available' },
-    { label: 'Tomorrow', sub: 'Slots Open' },
-    { label: 'Wednesday', sub: 'Available' },
-    { label: 'Thursday', sub: 'Available' },
+    { key: 'today', label: t('today', 'Today'), sub: t('available', 'Available') },
+    { key: 'tomorrow', label: t('tomorrow', 'Tomorrow'), sub: t('slots_open', 'Slots Open') },
+    { key: 'wednesday', label: t('wednesday', 'Wednesday'), sub: t('available', 'Available') },
+    { key: 'thursday', label: t('thursday', 'Thursday'), sub: t('available', 'Available') },
   ];
 
   const handleSubmit = async (e) => {
@@ -44,14 +46,16 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
       });
 
       setBookingResult(res);
-      addToast(`Appointment booked successfully! Token #${res.tokenNumber}`, 'success');
+      addToast(isBengali ? `অ্যাপয়েন্টমেন্ট নিশ্চিত হয়েছে! টোকেন #${res.tokenNumber}` : `Appointment booked successfully! Token #${res.tokenNumber}`, 'success');
       if (onBookingSuccess) onBookingSuccess(res);
     } catch (err) {
       setBookingNotice({
-        title: 'Chamber Advance Token Booking Notice',
+        title: t('modal_token_notice', 'Chamber Booking Notice'),
         message:
           err.message ||
-          'Live queue token booking is scheduled for backend Phase 2. To reserve an advance consultation token today, please contact the chamber reception directly.',
+          (isBengali
+            ? 'লাইভ সিরিয়াল টোকেন বুকিং ফেজ ২ এর জন্য নির্ধারিত। অগ্রিম বুকিং এর জন্য চেম্বার রিসেপশনে সরাসরি যোগাযোগ করুন।'
+            : 'Live queue token booking is scheduled for backend Phase 2. To reserve an advance consultation token today, please contact the chamber reception directly.'),
       });
     } finally {
       setIsSubmitting(false);
@@ -68,13 +72,13 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
     <Modal
       isOpen={isOpen}
       onClose={resetAndClose}
-      title={bookingNotice ? 'Chamber Booking Notice' : bookingResult ? 'Appointment Confirmed' : `Book Appointment`}
+      title={bookingNotice ? t('modal_token_notice', 'Chamber Booking Notice') : bookingResult ? t('modal_token_confirmed', 'Appointment Confirmed') : t('modal_book_appointment', 'Book Appointment')}
       subtitle={
         bookingNotice
-          ? 'Live chamber booking information'
+          ? (isBengali ? 'চেম্বার বুকিং সংক্রান্ত তথ্য' : 'Live chamber booking information')
           : bookingResult
-          ? 'Your live queue token has been generated.'
-          : `Consult with ${doctor.name}`
+          ? (isBengali ? 'আপনার লাইভ সিরিয়াল টোকেন তৈরি হয়েছে।' : 'Your live queue token has been generated.')
+          : (isBengali ? `${doctor.name}-এর সাথে পরামর্শ নিন` : `Consult with ${doctor.name}`)
       }
       maxWidth="max-w-lg"
     >
@@ -86,7 +90,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
 
           <div>
             <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
-              Chamber Token Notice
+              {t('modal_token_notice', 'Chamber Token Notice')}
             </span>
             <h3 className="text-lg font-heading font-extrabold text-forest-800 mt-1">
               {doctor.name} — {doctor.clinicName}
@@ -98,22 +102,22 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
 
           <div className="bg-surface-warm p-4 rounded-2xl border border-brandBorder-subtle text-left text-xs space-y-2 text-brandText-main">
             <div className="flex justify-between">
-              <span className="text-brandText-secondary">Chamber Location:</span>
+              <span className="text-brandText-secondary">{t('chamber_location', 'Chamber Location')}:</span>
               <span className="font-semibold text-forest-800">{doctor.clinicName}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brandText-secondary">Consultation Fee:</span>
-              <span className="font-semibold text-forest-700">₹{doctor.consultationFee} (Pay at chamber)</span>
+              <span className="text-brandText-secondary">{t('consultation_fee', 'Consultation Fee')}:</span>
+              <span className="font-semibold text-forest-700">₹{doctor.consultationFee} {t('pay_at_clinic', '(Pay at clinic)')}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brandText-secondary">Reception Phone:</span>
+              <span className="text-brandText-secondary">{t('reception_phone', 'Reception Phone')}:</span>
               <span className="font-semibold">{doctor.phone || '+91 98301 22334'}</span>
             </div>
           </div>
 
           <div className="pt-2">
             <Button variant="primary" onClick={resetAndClose} className="w-full">
-              Close Notice
+              {t('close', 'Close')}
             </Button>
           </div>
         </div>
@@ -125,11 +129,11 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
 
           <div>
             <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">
-              Token Confirmed
+              {t('token_confirmed_badge', 'Token Confirmed')}
             </span>
             <div className="my-2 p-4 bg-gradient-to-r from-forest-700 to-forest-900 text-white rounded-2xl shadow-floating flex items-center justify-between">
               <div className="text-left">
-                <p className="text-xs text-forest-200">Patient Queue Token</p>
+                <p className="text-xs text-forest-200">{t('patient_queue_token', 'Patient Queue Token')}</p>
                 <p className="text-3xl font-extrabold tracking-tight mt-0.5">{bookingResult.tokenNumber}</p>
                 <p className="text-xs text-forest-200 mt-1">{doctor.name} • {selectedSlot}</p>
               </div>
@@ -141,27 +145,27 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
 
           <div className="bg-surface-warm p-4 rounded-2xl border border-brandBorder-subtle text-left text-xs space-y-2 text-brandText-main">
             <div className="flex justify-between">
-              <span className="text-brandText-secondary">Doctor:</span>
+              <span className="text-brandText-secondary">{t('doctor_label', 'Doctor')}:</span>
               <span className="font-semibold text-forest-800">{doctor.name}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brandText-secondary">Clinic:</span>
+              <span className="text-brandText-secondary">{t('clinic_label', 'Clinic')}:</span>
               <span className="font-semibold">{doctor.clinicName}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brandText-secondary">Date & Time:</span>
-              <span className="font-semibold">{selectedDate} at {selectedSlot}</span>
+              <span className="text-brandText-secondary">{t('date_time_label', 'Date & Time')}:</span>
+              <span className="font-semibold">{selectedDate} {isBengali ? 'সময়' : 'at'} {selectedSlot}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-brandText-secondary">Consultation Fee:</span>
-              <span className="font-semibold text-forest-700">₹{doctor.consultationFee} (Pay at clinic)</span>
+              <span className="text-brandText-secondary">{t('consultation_fee', 'Consultation Fee')}:</span>
+              <span className="font-semibold text-forest-700">₹{doctor.consultationFee} {t('pay_at_clinic', '(Pay at clinic)')}</span>
             </div>
           </div>
 
           <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex items-start gap-2.5 text-xs text-emerald-900 text-left">
             <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0 mt-0.5" />
             <span>
-              You will receive SMS queue reminders. You can track this token live in your <b>Appointments</b> dashboard.
+              {t('queue_sms_notice', 'You will receive SMS queue reminders. You can track this token live in your Appointments dashboard.')}
             </span>
           </div>
 
@@ -170,7 +174,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
             onClick={resetAndClose}
             className="w-full"
           >
-            Done
+            {t('done', 'Done')}
           </Button>
         </div>
       ) : (
@@ -187,7 +191,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
                 {doctor.name}
               </h4>
               <p className="text-xs text-forest-600 font-medium">
-                {doctor.specialization} • {doctor.experience}
+                {t(doctor.specialization, doctor.specialization)} • {doctor.experience}
               </p>
               <p className="text-[11px] text-brandText-secondary flex items-center gap-1 mt-0.5">
                 <MapPin className="w-3 h-3 text-forest-500" />
@@ -200,12 +204,12 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
           <div>
             <label className="block text-xs font-semibold text-brandText-main mb-1.5 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-forest-600" />
-              Select Date
+              {t('select_date', 'Select Date')}
             </label>
             <div className="grid grid-cols-4 gap-2">
               {dates.map((d) => (
                 <button
-                  key={d.label}
+                  key={d.key}
                   type="button"
                   onClick={() => setSelectedDate(d.label)}
                   className={`p-2 rounded-xl border text-center transition-all ${
@@ -227,7 +231,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
           <div>
             <label className="block text-xs font-semibold text-brandText-main mb-1.5 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-forest-600" />
-              Available Time Slots
+              {t('available_time_slots', 'Available Time Slots')}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(doctor.availableSlots || ['04:30 PM', '05:00 PM', '05:30 PM', '06:00 PM']).map((slot) => (
@@ -252,7 +256,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
             <div>
               <label className="block text-xs font-semibold text-brandText-main mb-1 flex items-center gap-1">
                 <User className="w-3 h-3 text-forest-600" />
-                Patient Name
+                {t('patient_name', 'Patient Name')}
               </label>
               <input
                 type="text"
@@ -265,7 +269,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
             <div>
               <label className="block text-xs font-semibold text-brandText-main mb-1 flex items-center gap-1">
                 <Phone className="w-3 h-3 text-forest-600" />
-                Phone Number
+                {t('phone_number', 'Phone Number')}
               </label>
               <input
                 type="tel"
@@ -279,7 +283,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
 
           {/* Consultation Fee Note */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-surface-warm border border-brandBorder-subtle text-xs">
-            <span className="text-brandText-secondary">Consultation Fee</span>
+            <span className="text-brandText-secondary">{t('consultation_fee', 'Consultation Fee')}</span>
             <span className="font-bold text-forest-800 text-sm">₹{doctor.consultationFee}</span>
           </div>
 
@@ -292,7 +296,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
               disabled={isSubmitting}
               className="flex-1"
             >
-              Cancel
+              {t('cancel', 'Cancel')}
             </Button>
             <Button
               type="submit"
@@ -301,7 +305,7 @@ export const BookingModal = ({ isOpen, onClose, doctor, onBookingSuccess }) => {
               isLoading={isSubmitting}
               className="flex-1"
             >
-              Confirm Appointment
+              {t('confirm_appointment', 'Confirm Appointment')}
             </Button>
           </div>
         </form>

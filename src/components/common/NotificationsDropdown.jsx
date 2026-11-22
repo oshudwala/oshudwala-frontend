@@ -1,37 +1,39 @@
 import React, { useRef, useEffect } from 'react';
 import { Bell, CheckCircle2, Truck, Calendar, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const NotificationsDropdown = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
+  const { t } = useLanguage();
 
   const notifications = [
     {
       id: 'notif-1',
       icon: Truck,
       color: 'bg-emerald-100 text-emerald-700',
-      title: 'Rider is on the way!',
-      desc: 'Kamrul Islam is 800m away with your order OW-89214. OTP: 4829',
-      time: '10m ago',
+      title: t('notif_rider_title', 'Rider is on the way!'),
+      desc: t('notif_rider_desc', 'Kamrul Islam is 800m away with your order OW-89214. OTP: 4829'),
+      time: t('notif_rider_time', '10m ago'),
       link: '/orders'
     },
     {
       id: 'notif-2',
       icon: Calendar,
       color: 'bg-blue-100 text-blue-700',
-      title: 'Appointment Token Reminder',
-      desc: 'Dr. Priya Sharma is currently serving token GP-11. Your token: GP-14',
-      time: '25m ago',
+      title: t('notif_token_title', 'Appointment Token Reminder'),
+      desc: t('notif_token_desc', 'Dr. Priya Sharma is currently serving token GP-11. Your token: GP-14'),
+      time: t('notif_token_time', '25m ago'),
       link: '/appointments'
     },
     {
       id: 'notif-3',
       icon: CheckCircle2,
       color: 'bg-amber-100 text-amber-700',
-      title: 'Prescription Verified',
-      desc: 'Prescription RX-841920 approved by MedPlus pharmacist.',
-      time: '2h ago',
+      title: t('notif_rx_title', 'Prescription Verified'),
+      desc: t('notif_rx_desc', 'Prescription RX-841920 approved by MedPlus pharmacist.'),
+      time: t('notif_rx_time', '2h ago'),
       link: '/profile'
     }
   ];
@@ -58,10 +60,12 @@ export const NotificationsDropdown = ({ isOpen, onClose }) => {
       <div className="p-4 border-b border-brandBorder-subtle flex items-center justify-between bg-surface-warm">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-forest-700" />
-          <h4 className="font-heading font-bold text-sm text-forest-800">Notifications</h4>
+          <h4 className="font-heading font-bold text-sm text-forest-800">
+            {t('notifications', 'Notifications')}
+          </h4>
         </div>
         <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-          2 New
+          {t('new_badge', '2 New')}
         </span>
       </div>
 
@@ -100,7 +104,7 @@ export const NotificationsDropdown = ({ isOpen, onClose }) => {
           }}
           className="text-xs font-semibold text-forest-700 hover:text-forest-800 inline-flex items-center gap-1"
         >
-          View all activity <ArrowRight className="w-3 h-3" />
+          {t('view_all_activity', 'View all activity')} <ArrowRight className="w-3 h-3" />
         </button>
       </div>
     </div>

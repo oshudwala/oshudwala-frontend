@@ -10,8 +10,11 @@ export const WorkspaceLayout = ({ roleTitle }) => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const defaultRoleTitle = () => {
-    switch (user?.role) {
+    const rawRole = typeof user?.role === 'object' ? (user?.role?.name || user?.role?.role) : user?.role;
+    const role = String(rawRole || '').trim().toUpperCase();
+    switch (role) {
       case 'SUPER_ADMIN':
+      case 'ADMIN':
         return 'Super Admin Console';
       case 'DOCTOR':
         return 'Doctor Clinical Workspace';

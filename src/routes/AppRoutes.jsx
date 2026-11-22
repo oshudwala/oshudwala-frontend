@@ -116,12 +116,13 @@ export const AppRoutes = () => {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+          <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
             <WorkspaceLayout roleTitle="Super Admin Console" />
           </ProtectedRoute>
         }
       >
         <Route index element={<AdminDashboard />} />
+        <Route path="dashboard" element={<AdminDashboard />} />
         <Route path="analytics" element={<AdminDashboard />} />
         <Route path="orders" element={<AdminOrdersPage />} />
         <Route path="prescriptions" element={<AdminPrescriptionsPage />} />

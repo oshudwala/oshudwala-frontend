@@ -2,14 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { bannersData } from '../../data/bannersData';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const HeroBanner = ({ onOpenPrescription }) => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const timerRef = useRef(null);
 
-  // Touch swipe support for Flipkart-style mobile swiping
+  // Touch swipe support for mobile swiping
   const [touchStartX, setTouchStartX] = useState(null);
   const [touchEndX, setTouchEndX] = useState(null);
 
@@ -40,15 +42,22 @@ export const HeroBanner = ({ onOpenPrescription }) => {
     if (!touchStartX || !touchEndX) return;
     const distance = touchStartX - touchEndX;
     if (distance > 45) {
-      nextSlide(); // Swiped left
+      nextSlide();
     } else if (distance < -45) {
-      prevSlide(); // Swiped right
+      prevSlide();
     }
     setTouchStartX(null);
     setTouchEndX(null);
   };
 
   const slide = bannersData[currentSlide];
+  const slideIdx = currentSlide + 1;
+
+  const headline = t(`banner_${slideIdx}_headline`, slide.headline);
+  const subtext = t(`banner_${slideIdx}_subtext`, slide.subtext);
+  const badge = t(`banner_${slideIdx}_badge`, slide.badge);
+  const ctaText = t(`banner_${slideIdx}_cta`, slide.ctaText);
+  const secCtaText = t('upload_prescription', slide.secondaryCtaText || 'Upload Prescription');
 
   return (
     <section className="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-4 pb-4 sm:pb-8">
@@ -70,18 +79,18 @@ export const HeroBanner = ({ onOpenPrescription }) => {
         <div className="relative z-10 w-full flex items-center justify-between p-3.5 xs:p-4 sm:p-8 lg:p-12 gap-2.5 xs:gap-3 sm:gap-6 min-h-[145px] xs:min-h-[165px] sm:min-h-[250px] md:min-h-[320px] lg:min-h-[380px]">
           {/* Left Text & CTA Section (58-60% width) */}
           <div className="flex-1 min-w-0 pr-1 sm:pr-4 space-y-1 xs:space-y-1.5 sm:space-y-3.5">
-            {slide.badge && (
+            {badge && (
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] xs:text-[10px] sm:text-xs font-bold bg-forest-600/10 text-forest-700 tracking-wide border border-forest-600/20">
-                {slide.badge}
+                {badge}
               </span>
             )}
 
             <h1 className="text-xs xs:text-sm sm:text-2xl md:text-3xl lg:text-5xl font-heading font-extrabold text-forest-800 tracking-tight leading-[1.18] whitespace-pre-line">
-              {slide.headline}
+              {headline}
             </h1>
 
             <p className="hidden xs:line-clamp-1 sm:line-clamp-2 text-[10px] xs:text-xs sm:text-sm lg:text-base text-brandText-secondary leading-tight sm:leading-relaxed">
-              {slide.subtext}
+              {subtext}
             </p>
 
             {/* CTA Buttons */}
@@ -94,7 +103,7 @@ export const HeroBanner = ({ onOpenPrescription }) => {
                 }}
                 className="px-2.5 py-1 xs:px-3 xs:py-1.5 sm:px-5 sm:py-2.5 rounded-full bg-forest-700 hover:bg-forest-800 text-white font-bold text-[10px] xs:text-xs sm:text-sm shadow-sm flex items-center gap-1 transition-all hover:scale-105"
               >
-                <span>{slide.ctaText}</span>
+                <span>{ctaText}</span>
                 <ArrowRight className="w-2.5 h-2.5 xs:w-3 xs:h-3 sm:w-4 sm:h-4" />
               </button>
 
@@ -107,14 +116,14 @@ export const HeroBanner = ({ onOpenPrescription }) => {
                   }}
                   className="hidden sm:inline-flex px-4 py-2 sm:px-5 sm:py-2.5 rounded-full bg-white/90 hover:bg-white text-forest-800 font-bold text-xs sm:text-sm border border-emerald-200 shadow-xs transition-all hover:scale-105"
                 >
-                  {slide.secondaryCtaText}
+                  {secCtaText}
                 </button>
-              ) : slide.secondaryCtaLink ? (
+              ) : slide.secondaryCtaText ? (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(slide.secondaryCtaLink);
+                    navigate(slide.secondaryCtaLink || '/shop');
                   }}
                   className="hidden sm:inline-flex px-4 py-2 sm:px-5 sm:py-2.5 rounded-full bg-white/90 hover:bg-white text-forest-800 font-bold text-xs sm:text-sm border border-emerald-200 shadow-xs transition-all hover:scale-105"
                 >

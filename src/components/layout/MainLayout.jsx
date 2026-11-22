@@ -14,6 +14,11 @@ export const MainLayout = () => {
   const isAuthPage = ['/login', '/register', '/forgot-password'].includes(location.pathname);
   const isWorkspaceUser = isAuthenticated && !isPatient && user?.role && !isAuthPage;
 
+  const rawRole = typeof user?.role === 'object' ? (user?.role?.name || user?.role?.role) : user?.role;
+  const roleName = String(rawRole || '').trim();
+  const normalizedRole = roleName === 'ADMIN' || roleName === 'SUPERADMIN' ? 'SUPER_ADMIN' : roleName;
+  const displayRole = normalizedRole.replace('_', ' ');
+
   return (
     <div className="min-h-screen flex flex-col bg-surface-bg text-brandText-main selection:bg-forest-100 selection:text-forest-800">
       {/* Non-patient staff notification banner on patient site */}
@@ -23,7 +28,7 @@ export const MainLayout = () => {
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>
-                Logged in as <strong className="uppercase tracking-wider text-forest-200">{user.role}</strong> ({user.name || user.fullName})
+                Logged in as <strong className="uppercase tracking-wider text-forest-200">{displayRole}</strong> ({user.name || user.fullName})
               </span>
             </div>
             <Link
@@ -31,7 +36,7 @@ export const MainLayout = () => {
               className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-forest-700 hover:bg-forest-600 text-white font-bold transition-all hover:scale-[1.02]"
             >
               <LayoutDashboard className="w-3.5 h-3.5" />
-              <span>Go to {user.role.replace('_', ' ')} Workspace</span>
+              <span>Go to {displayRole} Workspace</span>
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>

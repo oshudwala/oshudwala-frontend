@@ -125,10 +125,10 @@ export const PrivacyPolicyPage = () => {
               <div className="pt-4 border-t border-brandBorder-subtle text-xs text-brandText-muted">
                 <p>Need legal or privacy clarification?</p>
                 <a
-                  href="mailto:privacy@oshudwala.in"
+                  href="mailto:oshudwala@gmail.com"
                   className="text-forest-700 font-bold hover:underline block mt-0.5"
                 >
-                  privacy@oshudwala.in
+                  oshudwala@gmail.com
                 </a>
               </div>
             </div>
@@ -341,8 +341,8 @@ export const PrivacyPolicyPage = () => {
                 </p>
                 <p className="text-forest-800">
                   <strong>Email:</strong>{' '}
-                  <a href="mailto:grievance@oshudwala.in" className="text-emerald-700 font-bold hover:underline">
-                    grievance@oshudwala.in
+                  <a href="mailto:oshudwala@gmail.com" className="text-emerald-700 font-bold hover:underline">
+                    oshudwala@gmail.com
                   </a>
                 </p>
                 <p className="text-forest-800">

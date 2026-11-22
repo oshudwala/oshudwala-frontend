@@ -3,10 +3,12 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { pharmaciesData } from '../../data/pharmaciesData';
 import PharmacyCard from '../pharmacies/PharmacyCard';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const FeaturedPharmacies = ({ onSelectPharmacy }) => {
   const navigate = useNavigate();
   const scrollContainerRef = useRef(null);
+  const { t } = useLanguage();
 
   const scroll = (direction) => {
     if (scrollContainerRef.current) {
@@ -25,10 +27,10 @@ export const FeaturedPharmacies = ({ onSelectPharmacy }) => {
       <div className="flex items-end justify-between mb-6">
         <div>
           <h2 className="text-xl sm:text-2xl font-heading font-extrabold text-forest-800 tracking-tight">
-            Featured Pharmacies
+            {t('featured_pharmacies', 'Featured Pharmacies')}
           </h2>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
-            Trusted, certified partner pharmacies delivering near you
+            {t('featured_pharmacies_subtitle', 'Trusted, certified partner pharmacies delivering near you')}
           </p>
         </div>
 
@@ -36,7 +38,7 @@ export const FeaturedPharmacies = ({ onSelectPharmacy }) => {
           to="/shop"
           className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-forest-700 hover:text-forest-800 group transition-colors"
         >
-          <span>View All</span>
+          <span>{t('view_all', 'View All')}</span>
           <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
         </Link>
       </div>
