@@ -27,6 +27,7 @@ import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
 import adminApi from '../../services/api/admin.api';
+import accountRegistry from '../../services/api/accountRegistry';
 
 export const AdminDashboard = () => {
   const { orders, tokens, prescriptions, inventory, riders, updateOrderStatus } = useWorkspaceStore();
@@ -51,49 +52,35 @@ export const AdminDashboard = () => {
   });
 
   // Pending verification queue items (Clinic Doctors & Pharmacy Medicine Orders)
-  const [pendingClinicDoctors, setPendingClinicDoctors] = useState([
-    {
-      id: 'doc-sub-01',
-      fullName: 'Dr. Debabrata Banerjee',
-      clinicName: 'Suraksha Clinic & Diagnostic Centre',
-      specialization: 'Cardiologist',
-      regNo: 'WBMC-58291',
-      submittedAt: 'Today, 10:15 AM',
-      experience: '12 yrs',
-      fee: '₹700',
-    },
-    {
-      id: 'doc-sub-02',
-      fullName: 'Dr. Sneha Roy Chowdhury',
-      clinicName: 'Apollo Clinic Salt Lake',
-      specialization: 'Pediatrician',
-      regNo: 'WBMC-74102',
-      submittedAt: 'Yesterday, 04:30 PM',
-      experience: '8 yrs',
-      fee: '₹600',
-    },
-  ]);
-
-  const [entityCounts, setEntityCounts] = useState({
-    clinics: 6,
-    doctors: 12,
-    pharmacies: 8,
-    riders: 15,
+  const [pendingClinicDoctors, setPendingClinicDoctors] = useState(() => {
+    try {
+      const raw = localStorage.getItem('oshud_pending_clinic_doctors');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((d) => !String(d.id || '').startsWith('doc-sub-0'));
+        }
+      }
+    } catch {}
+    return [];
   });
 
-  const fetchCounts = async () => {
+  const initialEntities = accountRegistry.getEntities();
+  const [entityCounts, setEntityCounts] = useState({
+    clinics: initialEntities.clinics?.length || 0,
+    doctors: initialEntities.doctors?.length || 0,
+    pharmacies: initialEntities.pharmacies?.length || 0,
+    riders: initialEntities.riders?.length || 0,
+  });
+
+  const fetchCounts = async (forceRefresh = false) => {
     try {
-      const [c, d, p, r] = await Promise.all([
-        adminApi.getClinics(),
-        adminApi.getDoctors(),
-        adminApi.getPharmacies(),
-        adminApi.getRiders(),
-      ]);
+      const entities = await adminApi.fetchAllEntities(forceRefresh);
       setEntityCounts({
-        clinics: c.total || c.clinics?.length || 6,
-        doctors: d.total || d.doctors?.length || 12,
-        pharmacies: p.total || p.pharmacies?.length || 8,
-        riders: r.total || r.riders?.length || 15,
+        clinics: entities.clinics?.length || 0,
+        doctors: entities.doctors?.length || 0,
+        pharmacies: entities.pharmacies?.length || 0,
+        riders: entities.riders?.length || 0,
       });
     } catch (err) {
       console.warn('Could not fetch real entity counts:', err);
@@ -115,7 +102,7 @@ export const AdminDashboard = () => {
       })
     );
     try {
-      await fetchCounts();
+      await fetchCounts(true);
       addToast('System state & network records refreshed successfully!', 'success');
     } catch {
       addToast('System state synchronized.', 'info');
@@ -224,17 +211,17 @@ export const AdminDashboard = () => {
         <MetricCard
           title="Platform Gross Volume"
           value={`₹${totalRevenue.toLocaleString('en-IN')}`}
-          change="+18.4%"
+          change={totalRevenue > 0 ? "Real-time" : "₹0.00"}
           trend="up"
-          caption="vs last week"
+          caption="all fulfilled orders"
           icon={DollarSign}
           colorScheme="forest"
         />
         <MetricCard
           title="Orders In Pipeline"
           value={pendingOrders.length}
-          change="+5 orders"
-          trend="up"
+          change={`${pendingOrders.length} active`}
+          trend={pendingOrders.length > 0 ? "up" : "neutral"}
           caption="awaiting completion"
           icon={ShoppingBag}
           colorScheme="blue"
@@ -242,17 +229,17 @@ export const AdminDashboard = () => {
         <MetricCard
           title="Active Riders Online"
           value={`${activeRiders.length} / ${riders.length}`}
-          change="85% on-time"
+          change={activeRiders.length > 0 ? `${activeRiders.length} on shift` : "Standby"}
           trend="up"
-          caption="Kolkata South & Salt Lake"
+          caption="fleet tracking"
           icon={Bike}
           colorScheme="amber"
         />
         <MetricCard
           title="Rx Pending Audit"
           value={pendingRx.length}
-          change="Action required"
-          trend="down"
+          change={pendingRx.length > 0 ? "Review needed" : "All cleared"}
+          trend={pendingRx.length > 0 ? "down" : "up"}
           caption="Pharmacist queue"
           icon={FileCheck}
           colorScheme="rose"
@@ -523,38 +510,44 @@ export const AdminDashboard = () => {
           </div>
 
           <div className="divide-y divide-brandBorder-subtle">
-            {orders.slice(0, 4).map((order) => (
-              <div
-                key={order.id}
-                className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-forest-50/30 px-2 rounded-xl transition-colors"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold text-forest-800">
-                      {order.id}
-                    </span>
-                    <StatusBadge status={order.status} />
-                  </div>
-                  <p className="text-xs text-brandText-main font-semibold">
-                    {order.customerName} &bull;{' '}
-                    <span className="text-brandText-secondary font-normal">{order.area}</span>
-                  </p>
-                  <p className="text-[11px] text-brandText-muted">
-                    {order.items.length} items &bull; Fulfilled by{' '}
-                    <strong className="text-forest-700">{order.pharmacyName}</strong>
-                  </p>
-                </div>
-
-                <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center">
-                  <span className="font-extrabold text-sm text-forest-900">
-                    ₹{order.total.toFixed(2)}
-                  </span>
-                  <span className="text-[11px] text-brandText-secondary uppercase font-semibold">
-                    {order.paymentMethod} &bull; {order.paymentStatus}
-                  </span>
-                </div>
+            {orders.length === 0 ? (
+              <div className="py-8 text-center text-xs text-brandText-muted">
+                No active orders in stream. Real-time orders will display here automatically.
               </div>
-            ))}
+            ) : (
+              orders.slice(0, 4).map((order) => (
+                <div
+                  key={order.id}
+                  className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-forest-50/30 px-2 rounded-xl transition-colors"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-forest-800">
+                        {order.id}
+                      </span>
+                      <StatusBadge status={order.status} />
+                    </div>
+                    <p className="text-xs text-brandText-main font-semibold">
+                      {order.customerName} &bull;{' '}
+                      <span className="text-brandText-secondary font-normal">{order.area}</span>
+                    </p>
+                    <p className="text-[11px] text-brandText-muted">
+                      {order.items?.length || 0} items &bull; Fulfilled by{' '}
+                      <strong className="text-forest-700">{order.pharmacyName}</strong>
+                    </p>
+                  </div>
+
+                  <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center">
+                    <span className="font-extrabold text-sm text-forest-900">
+                      ₹{(order.total || 0).toFixed(2)}
+                    </span>
+                    <span className="text-[11px] text-brandText-secondary uppercase font-semibold">
+                      {order.paymentMethod} &bull; {order.paymentStatus}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -566,29 +559,40 @@ export const AdminDashboard = () => {
               <Activity className="w-4 h-4 text-emerald-600" />
               <span>Doctor Queue Pulse</span>
             </h3>
-            <div className="bg-forest-50/60 p-3.5 rounded-xl border border-forest-100 space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-forest-900">
-                <span>Dr. Priya Sharma</span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px]">
-                  Online Consulting
-                </span>
+            {tokens.some((t) => t.status === 'SERVING' || t.status === 'WAITING') ? (
+              (() => {
+                const active = tokens.find((t) => t.status === 'SERVING') || tokens[0];
+                return (
+                  <div className="bg-forest-50/60 p-3.5 rounded-xl border border-forest-100 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-forest-900">
+                      <span>{active.doctorName || 'Active Doctor'}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px]">
+                        Consulting
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-brandText-secondary">
+                      {active.clinicName || 'Clinic'} &bull; {active.room || 'Chamber'}
+                    </p>
+                    <div className="pt-2 flex items-center justify-between border-t border-forest-200/60 text-xs">
+                      <span className="text-brandText-secondary">Currently Serving:</span>
+                      <strong className="text-forest-800 font-mono text-sm">
+                        Token #{tokens.find((t) => t.status === 'SERVING')?.tokenNumber || '--'}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-brandText-secondary">Waiting in Lobby:</span>
+                      <span className="font-bold text-forest-800">
+                        {tokens.filter((t) => t.status === 'WAITING').length} patients
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="bg-surface-warm p-4 rounded-xl border border-brandBorder-subtle text-center text-xs text-brandText-muted">
+                No active patient consultations in progress.
               </div>
-              <p className="text-[11px] text-brandText-secondary">
-                Apollo Clinic, Salt Lake Kolkata &bull; Room 204
-              </p>
-              <div className="pt-2 flex items-center justify-between border-t border-forest-200/60 text-xs">
-                <span className="text-brandText-secondary">Currently Serving:</span>
-                <strong className="text-forest-800 font-mono text-sm">
-                  Token #{tokens.find((t) => t.status === 'SERVING')?.tokenNumber || '--'}
-                </strong>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-brandText-secondary">Waiting in Lobby:</span>
-                <span className="font-bold text-forest-800">
-                  {tokens.filter((t) => t.status === 'WAITING').length} patients
-                </span>
-              </div>
-            </div>
+            )}
             <Link
               to="/doctor/queue"
               className="block text-center py-2 bg-surface-warm hover:bg-forest-50 text-forest-800 font-bold text-xs rounded-xl border border-brandBorder-subtle transition-colors"
@@ -604,15 +608,34 @@ export const AdminDashboard = () => {
               <span>Compliance & Safety Alerts</span>
             </h3>
             <div className="space-y-2 text-xs">
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
-                <p className="font-bold">2 Medicines Expiring in &lt; 30 Days</p>
-                <p className="text-[11px] text-amber-800 mt-0.5">
-                  Azithral 500 & Pan 40 batch audit recommended at MedPlus Sector V.
-                </p>
-              </div>
-              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+              {(() => {
+                const expiring = (inventory || []).filter(
+                  (item) => (item.daysToExpiry && item.daysToExpiry < 30) || item.status === 'EXPIRING_SOON'
+                );
+                if (expiring.length > 0) {
+                  return (
+                    <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                      <p className="font-bold">
+                        {expiring.length} Medicine{expiring.length > 1 ? 's' : ''} Expiring in &lt; 30 Days
+                      </p>
+                      <p className="text-[11px] text-amber-800 mt-0.5">
+                        {expiring.map((e) => e.name).slice(0, 2).join(', ')} batch audit recommended.
+                      </p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+                    <p className="font-bold">Inventory Shelf-Life Healthy</p>
+                    <p className="text-[11px] text-emerald-800 mt-0.5">
+                      All monitored batches are within safe shelf-life limits.
+                    </p>
+                  </div>
+                );
+              })()}
+              <div className="p-2.5 rounded-xl bg-forest-50 border border-forest-200 text-forest-900">
                 <p className="font-bold">CDSCO & WBSPC Compliant</p>
-                <p className="text-[11px] text-emerald-800 mt-0.5">
+                <p className="text-[11px] text-forest-800 mt-0.5">
                   Schedule H1 drug prescription tracking is fully active.
                 </p>
               </div>

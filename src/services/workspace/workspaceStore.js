@@ -6,402 +6,10 @@
 
 const STORAGE_KEY = 'oshud_workspace_state_v1';
 
-// Initial Seed Data
-const initialOrders = [
-  {
-    id: 'OW-89214',
-    customerName: 'Ayon Paul',
-    customerPhone: '+91 98300 11223',
-    address: 'Flat 4B, Greenwood Park, Action Area 1, New Town',
-    landmark: 'Near Biswa Bangla Gate',
-    area: 'New Town, Kolkata',
-    city: 'Kolkata',
-    pharmacyId: 'pharma-01',
-    pharmacyName: 'MedPlus Pharmacy - Sector V',
-    pharmacyAddress: 'Sector V, Salt Lake, Kolkata 700091',
-    pharmacyPhone: '+91 33 2357 8900',
-    items: [
-      { name: 'Augmentin 625 Duo Tablet', qty: 2, price: 201.5, form: 'Strip of 10' },
-      { name: 'Pan 40 Tablet', qty: 2, price: 155.0, form: 'Strip of 15' },
-      { name: 'Dolo 650 Tablet', qty: 1, price: 34.0, form: 'Strip of 15' },
-    ],
-    subtotal: 747.0,
-    deliveryFee: 0.0,
-    discount: 50.0,
-    total: 697.0,
-    status: 'READY_FOR_PICKUP', // Workflow: PENDING -> ACCEPTED -> PREPARING -> READY_FOR_PICKUP -> OUT_FOR_DELIVERY -> DELIVERED
-    paymentMethod: 'COD',
-    paymentStatus: 'PENDING_COLLECTION',
-    assignedRider: {
-      id: 'usr-rider-01',
-      name: 'Rahul Das',
-      phone: '+91 98304 55667',
-      vehicle: 'Hero Electric (WB-02-AZ-4921)',
-    },
-    pickupQrCode: 'PICKUP-89214-SEC5',
-    deliveryOtp: '4829',
-    timeline: [
-      { status: 'Order Placed', time: '10:15 AM, Today', completed: true },
-      { status: 'Accepted by Pharmacy', time: '10:20 AM, Today', completed: true },
-      { status: 'Prepared & Packed', time: '10:38 AM, Today', completed: true },
-      { status: 'Ready for Pickup', time: '10:45 AM, Today', completed: true },
-      { status: 'Out for Delivery', time: 'Pending Handover', completed: false },
-      { status: 'Delivered', time: 'Estimated 11:30 AM', completed: false },
-    ],
-    createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'OW-89215',
-    customerName: 'Sunita Mukherjee',
-    customerPhone: '+91 98311 44552',
-    address: 'Block CD-212, Sector 1, Salt Lake City',
-    landmark: 'Opposite City Centre 1',
-    area: 'Salt Lake, Kolkata',
-    city: 'Kolkata',
-    pharmacyId: 'pharma-01',
-    pharmacyName: 'MedPlus Pharmacy - Sector V',
-    pharmacyAddress: 'Sector V, Salt Lake, Kolkata 700091',
-    pharmacyPhone: '+91 33 2357 8900',
-    items: [
-      { name: 'Thyronorm 50mcg Tablet', qty: 1, price: 185.0, form: 'Bottle of 120' },
-      { name: 'Shelcal 500 Tablet', qty: 2, price: 131.0, form: 'Strip of 15' },
-    ],
-    subtotal: 447.0,
-    deliveryFee: 30.0,
-    discount: 0.0,
-    total: 477.0,
-    status: 'PREPARING',
-    paymentMethod: 'ONLINE',
-    paymentStatus: 'PAID',
-    assignedRider: {
-      id: 'usr-rider-01',
-      name: 'Rahul Das',
-      phone: '+91 98304 55667',
-      vehicle: 'Hero Electric (WB-02-AZ-4921)',
-    },
-    pickupQrCode: 'PICKUP-89215-SEC5',
-    deliveryOtp: '7103',
-    timeline: [
-      { status: 'Order Placed', time: '10:30 AM, Today', completed: true },
-      { status: 'Accepted by Pharmacy', time: '10:35 AM, Today', completed: true },
-      { status: 'Preparing & Packing', time: 'In Progress', completed: false },
-      { status: 'Ready for Pickup', time: 'Pending', completed: false },
-    ],
-    createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'OW-89216',
-    customerName: 'Amitava Banerjee',
-    customerPhone: '+91 94330 88771',
-    address: '88/2 Gariahat Road, South Kolkata',
-    landmark: 'Near Golpark Post Office',
-    area: 'Gariahat, Kolkata',
-    city: 'Kolkata',
-    pharmacyId: 'pharma-02',
-    pharmacyName: 'Wellness Forever - Golpark',
-    pharmacyAddress: 'Gariahat Main Road, Kolkata 700029',
-    pharmacyPhone: '+91 33 2464 1200',
-    items: [
-      { name: 'Glucophage 500mg Tablet', qty: 3, price: 82.0, form: 'Strip of 10' },
-      { name: 'Telma 40 Tablet', qty: 2, price: 210.0, form: 'Strip of 15' },
-    ],
-    subtotal: 666.0,
-    deliveryFee: 0.0,
-    discount: 60.0,
-    total: 606.0,
-    status: 'OUT_FOR_DELIVERY',
-    paymentMethod: 'COD',
-    paymentStatus: 'PENDING_COLLECTION',
-    assignedRider: {
-      id: 'usr-rider-02',
-      name: 'Sourav Mondal',
-      phone: '+91 98308 11990',
-      vehicle: 'Honda Activa (WB-04-EK-1120)',
-    },
-    pickupQrCode: 'PICKUP-89216-GPK',
-    deliveryOtp: '9215',
-    timeline: [
-      { status: 'Order Placed', time: '09:40 AM, Today', completed: true },
-      { status: 'Accepted by Pharmacy', time: '09:45 AM, Today', completed: true },
-      { status: 'Prepared & Packed', time: '10:00 AM, Today', completed: true },
-      { status: 'Picked Up by Rider', time: '10:25 AM, Today', completed: true },
-      { status: 'Out for Delivery', time: '10:30 AM, Today', completed: true },
-    ],
-    createdAt: new Date(Date.now() - 80 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'OW-89217',
-    customerName: 'Rina Sen',
-    customerPhone: '+91 98305 33221',
-    address: 'P-44 Lake Gardens, Kolkata 700045',
-    landmark: 'Beside Lake Club',
-    area: 'Lake Gardens, Kolkata',
-    city: 'Kolkata',
-    pharmacyId: 'pharma-01',
-    pharmacyName: 'MedPlus Pharmacy - Sector V',
-    pharmacyAddress: 'Sector V, Salt Lake, Kolkata 700091',
-    pharmacyPhone: '+91 33 2357 8900',
-    items: [
-      { name: 'Volini Gel 50g', qty: 1, price: 145.0, form: 'Tube of 50g' },
-      { name: 'Combiflam Tablet', qty: 1, price: 42.0, form: 'Strip of 20' },
-    ],
-    subtotal: 187.0,
-    deliveryFee: 25.0,
-    discount: 0.0,
-    total: 212.0,
-    status: 'DELIVERED',
-    paymentMethod: 'COD',
-    paymentStatus: 'COLLECTED',
-    assignedRider: {
-      id: 'usr-rider-01',
-      name: 'Rahul Das',
-      phone: '+91 98304 55667',
-      vehicle: 'Hero Electric (WB-02-AZ-4921)',
-    },
-    pickupQrCode: 'PICKUP-89217-SEC5',
-    deliveryOtp: '3391',
-    timeline: [
-      { status: 'Order Placed', time: '08:50 AM, Today', completed: true },
-      { status: 'Picked Up', time: '09:30 AM, Today', completed: true },
-      { status: 'Delivered Successfully', time: '09:55 AM, Today', completed: true },
-    ],
-    createdAt: new Date(Date.now() - 140 * 60 * 1000).toISOString(),
-  },
-];
-
-// Initial Live Token Queue for Doctor (Dr. Priya Sharma, Dr. Rohit Mehta, Dr. Sneha Das) & Receptionist (Apollo Clinic)
-const initialTokens = [
-  // Chamber 204: Dr. Priya Sharma (General Medicine)
-  {
-    tokenNumber: 12,
-    patientName: 'Subhasis Deb',
-    patientPhone: '+91 98301 77889',
-    age: 48,
-    gender: 'Male',
-    doctorId: 'doc-01',
-    doctorName: 'Dr. Priya Sharma',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 204',
-    type: 'APPOINTMENT',
-    slot: '10:30 AM - 10:45 AM',
-    status: 'SERVING', // Statuses: SERVING, NEXT, WAITING, COMPLETED, SKIPPED
-    vitals: { bp: '130/85', pulse: '76 bpm', temp: '98.4°F', weight: '72 kg' },
-    symptoms: 'Persistent dry cough for 5 days, mild fever in evenings',
-    arrivedAt: '10:20 AM',
-    prescription: null,
-  },
-  {
-    tokenNumber: 13,
-    patientName: 'Debarati Ganguly',
-    patientPhone: '+91 98312 99001',
-    age: 32,
-    gender: 'Female',
-    doctorId: 'doc-01',
-    doctorName: 'Dr. Priya Sharma',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 204',
-    type: 'APPOINTMENT',
-    slot: '10:45 AM - 11:00 AM',
-    status: 'NEXT',
-    vitals: { bp: '118/76', pulse: '72 bpm', temp: '98.6°F', weight: '58 kg' },
-    symptoms: 'Follow-up for migraine, reporting increased screen fatigue',
-    arrivedAt: '10:35 AM',
-    prescription: null,
-  },
-  {
-    tokenNumber: 14,
-    patientName: 'Monojit Ghosh',
-    patientPhone: '+91 98366 11234',
-    age: 55,
-    gender: 'Male',
-    doctorId: 'doc-01',
-    doctorName: 'Dr. Priya Sharma',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 204',
-    type: 'WALK_IN',
-    slot: 'Queue Walk-in',
-    status: 'WAITING',
-    vitals: { bp: '142/90', pulse: '82 bpm', temp: '99.1°F', weight: '79 kg' },
-    symptoms: 'High blood pressure checkup, dizziness after morning walk',
-    arrivedAt: '10:42 AM',
-    prescription: null,
-  },
-  {
-    tokenNumber: 15,
-    patientName: 'Priyanka Roy',
-    patientPhone: '+91 94321 00987',
-    age: 27,
-    gender: 'Female',
-    doctorId: 'doc-01',
-    doctorName: 'Dr. Priya Sharma',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 204',
-    type: 'APPOINTMENT',
-    slot: '11:00 AM - 11:15 AM',
-    status: 'WAITING',
-    vitals: { bp: '120/80', pulse: '74 bpm', temp: '98.2°F', weight: '54 kg' },
-    symptoms: 'Seasonal throat irritation and allergic rhinitis',
-    arrivedAt: '10:48 AM',
-    prescription: null,
-  },
-  {
-    tokenNumber: 11,
-    patientName: 'Alok Nath Mukherjee',
-    patientPhone: '+91 98300 44556',
-    age: 63,
-    gender: 'Male',
-    doctorId: 'doc-01',
-    doctorName: 'Dr. Priya Sharma',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 204',
-    type: 'APPOINTMENT',
-    slot: '10:15 AM - 10:30 AM',
-    status: 'COMPLETED',
-    vitals: { bp: '128/82', pulse: '70 bpm', temp: '98.4°F', weight: '68 kg' },
-    symptoms: 'Routine diabetic consultation and HbA1c review',
-    arrivedAt: '10:05 AM',
-    prescription: {
-      medicines: ['Metformin 500mg SR (1-0-1)', 'Glimepiride 1mg (1-0-0)'],
-      advice: 'Repeat fasting blood sugar after 15 days. Maintain low GI diet.',
-    },
-  },
-
-  // Chamber 206: Dr. Rohit Mehta (Cardiology)
-  {
-    tokenNumber: 21,
-    patientName: 'Amitava Sen',
-    patientPhone: '+91 98302 99887',
-    age: 61,
-    gender: 'Male',
-    doctorId: 'doc-02',
-    doctorName: 'Dr. Rohit Mehta',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 206',
-    type: 'APPOINTMENT',
-    slot: '10:30 AM - 10:50 AM',
-    status: 'SERVING',
-    vitals: { bp: '138/88', pulse: '78 bpm', temp: '98.4°F', weight: '76 kg' },
-    symptoms: 'Post-angioplasty annual cardiac review and ECG checkup',
-    arrivedAt: '10:25 AM',
-    prescription: null,
-  },
-  {
-    tokenNumber: 22,
-    patientName: 'Shreya Roy',
-    patientPhone: '+91 98314 33221',
-    age: 38,
-    gender: 'Female',
-    doctorId: 'doc-02',
-    doctorName: 'Dr. Rohit Mehta',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 206',
-    type: 'APPOINTMENT',
-    slot: '10:50 AM - 11:10 AM',
-    status: 'NEXT',
-    vitals: { bp: '124/80', pulse: '80 bpm', temp: '98.6°F', weight: '62 kg' },
-    symptoms: 'Mild palpitation during aerobic exercise and anxiety',
-    arrivedAt: '10:40 AM',
-    prescription: null,
-  },
-  {
-    tokenNumber: 23,
-    patientName: 'Tapas Paul',
-    patientPhone: '+91 94330 66778',
-    age: 52,
-    gender: 'Male',
-    doctorId: 'doc-02',
-    doctorName: 'Dr. Rohit Mehta',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 206',
-    type: 'WALK_IN',
-    slot: 'Queue Walk-in',
-    status: 'WAITING',
-    vitals: { bp: '144/92', pulse: '86 bpm', temp: '98.2°F', weight: '81 kg' },
-    symptoms: 'Chest heaviness on climbing stairs',
-    arrivedAt: '10:50 AM',
-    prescription: null,
-  },
-
-  // Chamber 208: Dr. Sneha Das (Dermatology)
-  {
-    tokenNumber: 31,
-    patientName: 'Moumita Dutta',
-    patientPhone: '+91 98319 77881',
-    age: 29,
-    gender: 'Female',
-    doctorId: 'doc-03',
-    doctorName: 'Dr. Sneha Das',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 208',
-    type: 'WALK_IN',
-    slot: 'Queue Walk-in',
-    status: 'WAITING',
-    vitals: { bp: '116/74', pulse: '72 bpm', temp: '98.4°F', weight: '55 kg' },
-    symptoms: 'Severe dry skin allergy and rash after seasonal weather change',
-    arrivedAt: '10:45 AM',
-    prescription: null,
-  },
-  {
-    tokenNumber: 32,
-    patientName: 'Rajiv Bose',
-    patientPhone: '+91 98305 11442',
-    age: 44,
-    gender: 'Male',
-    doctorId: 'doc-03',
-    doctorName: 'Dr. Sneha Das',
-    clinicName: 'Apollo Clinic, Salt Lake Kolkata',
-    room: 'Room 208',
-    type: 'APPOINTMENT',
-    slot: '11:15 AM - 11:30 AM',
-    status: 'WAITING',
-    vitals: { bp: '122/78', pulse: '74 bpm', temp: '98.6°F', weight: '70 kg' },
-    symptoms: 'Fungal patch on forearm, itchy at night',
-    arrivedAt: '10:52 AM',
-    prescription: null,
-  },
-];
-
-// Initial Prescriptions Queue
-const initialPrescriptions = [
-  {
-    id: 'RX-9921',
-    patientName: 'Sourav Chattopadhyay',
-    patientPhone: '+91 98302 55441',
-    patientAge: 44,
-    patientGender: 'Male',
-    doctorName: 'Dr. Sneha Das (Dermatologist)',
-    clinicName: 'Skin & Cure Clinic, Park Street Kolkata',
-    rxDate: '19 Nov 2026',
-    status: 'PENDING_VERIFICATION', // PENDING_VERIFICATION, VERIFIED, REJECTED, CLARIFICATION
-    imageUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=800',
-    extractedMedicines: [
-      { name: 'Nadoxin Ointment 10g', dosage: 'Apply twice daily', qty: 1, available: true },
-      { name: 'Allegra 120mg Tablet', dosage: '1 tablet at bedtime', qty: 10, available: true },
-      { name: 'Moiz Moisturizing Cream 100g', dosage: 'Liberally after bath', qty: 1, available: true },
-    ],
-    notes: 'Prescription clear, CDSCO Reg: WB-MED-7712.',
-    submittedAt: '10:30 AM, Today',
-  },
-  {
-    id: 'RX-9922',
-    patientName: 'Anindita Sen',
-    patientPhone: '+91 98319 88123',
-    patientAge: 38,
-    patientGender: 'Female',
-    doctorName: 'Dr. Rohit Mehta (Cardiologist)',
-    clinicName: 'BM Birla Heart Research Centre',
-    rxDate: '18 Nov 2026',
-    status: 'VERIFIED',
-    imageUrl: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=800',
-    extractedMedicines: [
-      { name: 'Rosuvas 10 Tablet', dosage: '1 tablet at bedtime', qty: 30, available: true },
-      { name: 'Concor 2.5 Tablet', dosage: '1 tablet morning', qty: 30, available: true },
-      { name: 'Ecosprin 75mg Tablet', dosage: '1 tablet post lunch', qty: 30, available: true },
-    ],
-    notes: 'Verified by Senior Pharmacist Subhash Bose.',
-    submittedAt: '09:15 AM, Today',
-  },
-];
+// Initial Seed Data (No demo records - clean dynamic state)
+const initialOrders = [];
+const initialTokens = [];
+const initialPrescriptions = [];
 
 // Initial Pharmacy Inventory
 const initialInventory = [
@@ -526,42 +134,23 @@ const initialRiders = [
 ];
 
 // Initial Rider Handover Audit Log (Tracks which driver picks which order items)
-const initialHandovers = [
-  {
-    handoverId: 'HND-89216',
-    orderId: 'OW-89216',
-    customerName: 'Amitava Banerjee',
-    destination: 'Gariahat, Kolkata',
-    riderId: 'usr-rider-02',
-    riderName: 'Sourav Mondal',
-    riderPhone: '+91 98308 11990',
-    riderVehicle: 'Honda Activa (WB-04-EK-1120)',
-    items: [
-      { name: 'Glucophage 500mg Tablet', qty: 3, price: 82.0 },
-      { name: 'Telma 40 Tablet', qty: 2, price: 210.0 },
-    ],
-    qrToken: 'PICKUP-89216-GPK',
-    handoverTime: '10:25 AM, Today',
-    status: 'OUT_FOR_DELIVERY',
-  },
-  {
-    handoverId: 'HND-89217',
-    orderId: 'OW-89217',
-    customerName: 'Rina Sen',
-    destination: 'Lake Gardens, Kolkata',
-    riderId: 'usr-rider-01',
-    riderName: 'Rahul Das',
-    riderPhone: '+91 98304 55667',
-    riderVehicle: 'Hero Electric (WB-02-AZ-4921)',
-    items: [
-      { name: 'Volini Gel 50g', qty: 1, price: 145.0 },
-      { name: 'Combiflam Tablet', qty: 1, price: 42.0 },
-    ],
-    qrToken: 'PICKUP-89217-SEC5',
-    handoverTime: '09:30 AM, Today',
-    status: 'DELIVERED',
-  },
-];
+const initialHandovers = [];
+
+const DEMO_ORDER_PREFIX = 'OW-8921';
+const DEMO_RX_IDS = new Set(['RX-9921', 'RX-9922']);
+const DEMO_PATIENT_NAMES = new Set([
+  'Subhasis Deb',
+  'Debarati Ganguly',
+  'Monojit Ghosh',
+  'Priyanka Roy',
+  'Alok Nath Mukherjee',
+  'Amitava Sen',
+  'Shreya Roy',
+  'Tapas Paul',
+  'Moumita Dutta',
+  'Rajiv Bose',
+]);
+const DEMO_HANDOVER_IDS = new Set(['HND-89216', 'HND-89217']);
 
 // Helper to load or initialize state
 const loadInitialState = () => {
@@ -569,15 +158,33 @@ const loadInitialState = () => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return {
-        orders: parsed.orders || initialOrders,
-        tokens: parsed.tokens || initialTokens,
-        prescriptions: parsed.prescriptions || initialPrescriptions,
+      const orders = Array.isArray(parsed.orders)
+        ? parsed.orders.filter((o) => !o.id || !o.id.startsWith(DEMO_ORDER_PREFIX))
+        : [];
+      const tokens = Array.isArray(parsed.tokens)
+        ? parsed.tokens.filter((t) => !DEMO_PATIENT_NAMES.has(t.patientName))
+        : [];
+      const prescriptions = Array.isArray(parsed.prescriptions)
+        ? parsed.prescriptions.filter((p) => !DEMO_RX_IDS.has(p.id))
+        : [];
+      const handovers = Array.isArray(parsed.handovers)
+        ? parsed.handovers.filter((h) => !DEMO_HANDOVER_IDS.has(h.handoverId))
+        : [];
+
+      const cleanState = {
+        orders,
+        tokens,
+        prescriptions,
         inventory: parsed.inventory || initialInventory,
         riders: parsed.riders || initialRiders,
-        handovers: parsed.handovers || initialHandovers,
+        handovers,
         lastUpdated: parsed.lastUpdated || Date.now(),
       };
+      // Overwrite storage with purged clean state
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanState));
+      } catch {}
+      return cleanState;
     }
   } catch (err) {
     console.warn('Workspace store load fallback:', err);

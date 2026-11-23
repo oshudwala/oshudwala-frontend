@@ -86,93 +86,8 @@ const INITIAL_CLINIC_DOCTORS = [
   },
 ];
 
-// Initial appointments template
-const INITIAL_APPOINTMENTS = [
-  {
-    id: 'APT-1001',
-    patientName: 'Subhasis Deb',
-    phone: '+91 98301 77889',
-    age: 48,
-    gender: 'Male',
-    doctorId: 'doc-01',
-    doctor: 'Dr. Priya Sharma (Room 204)',
-    doctorName: 'Dr. Priya Sharma',
-    room: 'Room 204',
-    slot: '10:30 AM',
-    checkedIn: true,
-    status: 'COMPLETED',
-  },
-  {
-    id: 'APT-1002',
-    patientName: 'Debarati Ganguly',
-    phone: '+91 98312 99001',
-    age: 32,
-    gender: 'Female',
-    doctorId: 'doc-01',
-    doctor: 'Dr. Priya Sharma (Room 204)',
-    doctorName: 'Dr. Priya Sharma',
-    room: 'Room 204',
-    slot: '10:45 AM',
-    checkedIn: true,
-    status: 'SERVING',
-  },
-  {
-    id: 'APT-1003',
-    patientName: 'Priyanka Roy',
-    phone: '+91 94321 00987',
-    age: 27,
-    gender: 'Female',
-    doctorId: 'doc-01',
-    doctor: 'Dr. Priya Sharma (Room 204)',
-    doctorName: 'Dr. Priya Sharma',
-    room: 'Room 204',
-    slot: '11:00 AM',
-    checkedIn: false,
-    status: 'SCHEDULED',
-  },
-  {
-    id: 'APT-1004',
-    patientName: 'Kunal Mukherjee',
-    phone: '+91 98308 22119',
-    age: 39,
-    gender: 'Male',
-    doctorId: 'doc-02',
-    doctor: 'Dr. Rohit Mehta (Room 206)',
-    doctorName: 'Dr. Rohit Mehta',
-    room: 'Room 206',
-    slot: '11:15 AM',
-    checkedIn: true,
-    status: 'SERVING',
-  },
-  {
-    id: 'APT-1005',
-    patientName: 'Soma Chakraborty',
-    phone: '+91 94331 88776',
-    age: 51,
-    gender: 'Female',
-    doctorId: 'doc-03',
-    doctor: 'Dr. Sneha Das (Room 208)',
-    doctorName: 'Dr. Sneha Das',
-    room: 'Room 208',
-    slot: '11:30 AM',
-    checkedIn: false,
-    status: 'SCHEDULED',
-  },
-  {
-    id: 'APT-1006',
-    patientName: 'Tanmay Ghosh',
-    phone: '+91 98314 55432',
-    age: 8,
-    gender: 'Male',
-    doctorId: 'doc-04',
-    doctor: 'Dr. Amit Verma (Room 210)',
-    doctorName: 'Dr. Amit Verma',
-    room: 'Room 210',
-    slot: '11:45 AM',
-    checkedIn: false,
-    status: 'SCHEDULED',
-  },
-];
+// Initial appointments template (No demo data)
+const INITIAL_APPOINTMENTS = [];
 
 // In-memory instant caches
 let memoryProfileCache = null;
@@ -554,21 +469,18 @@ export const clinicApi = {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          memoryAppointmentsCache.set(storageKey, parsed);
-          return parsed;
+        if (Array.isArray(parsed)) {
+          const clean = parsed.filter((a) => !String(a.id || '').startsWith('APT-100'));
+          memoryAppointmentsCache.set(storageKey, clean);
+          return clean;
         }
       }
     } catch (e) {
       console.warn('Error reading clinic appointments:', e);
     }
 
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(INITIAL_APPOINTMENTS));
-    } catch {}
-
-    memoryAppointmentsCache.set(storageKey, INITIAL_APPOINTMENTS);
-    return INITIAL_APPOINTMENTS;
+    memoryAppointmentsCache.set(storageKey, []);
+    return [];
   },
 
   /**

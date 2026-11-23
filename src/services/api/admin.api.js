@@ -99,46 +99,268 @@ async function registerUserInDatabase({ fullName, phone, email, password, roleNa
   return { userId, fullName: cleanName, phone: cleanPhone, email: cleanEmail };
 }
 
+// In-memory cache for ultra-fast instant rendering
+let cachedEntities = null;
+let lastEntitiesFetch = 0;
+const ENTITIES_CACHE_TTL = 15000; // 15 seconds
+
 export const adminApi = {
-  // ================= USERS / PATIENTS =================
-  async getUsers(params = { page: 1, limit: 50, roleName: 'PATIENT' }) {
-    let backendUsers = [];
-    try {
-      const response = await apiClient.get('/admin/users', { params });
-      const data = response.data?.data || response.data;
-      if (Array.isArray(data?.users)) {
-        backendUsers = data.users;
-      } else if (Array.isArray(data)) {
-        backendUsers = data;
-      }
-    } catch (err) {
-      console.warn('Backend fetch users notice:', err.message);
+  // Invalidate in-memory cache on mutations
+  invalidateCache() {
+    cachedEntities = null;
+    lastEntitiesFetch = 0;
+  },
+
+  // Consolidated fast parallel fetcher for ALL network entities
+  async fetchAllEntities(forceRefresh = false) {
+    if (!forceRefresh && cachedEntities && Date.now() - lastEntitiesFetch < ENTITIES_CACHE_TTL) {
+      return cachedEntities;
     }
 
-    const localEntities = accountRegistry.getEntities();
-    const allUsers = [...backendUsers];
+    const local = accountRegistry.getEntities();
+    let backendUsers = [];
+    let backendDoctors = [];
+    let backendPharmacies = [];
+    let backendRiders = [];
+    let backendSettings = [];
 
-    // Merge any locally registered patients that haven't shown up in list yet
-    localEntities.users.forEach((lu) => {
-      if (!allUsers.some((u) => u.id === lu.id || (u.phone && lu.phone && u.phone === lu.phone))) {
-        allUsers.push(lu);
+    // Parallel fetch real backend endpoints only (No failing 404 routes!)
+    try {
+      const [usersRes, docsRes, pharmsRes, ridersRes, settingsRes] = await Promise.allSettled([
+        apiClient.get('/admin/users', { params: { limit: 100 } }),
+        apiClient.get('/doctors'),
+        apiClient.get('/pharmacies'),
+        apiClient.get('/riders'),
+        apiClient.get('/admin/settings'),
+      ]);
+
+      if (usersRes.status === 'fulfilled') {
+        const d = usersRes.value.data?.data || usersRes.value.data;
+        backendUsers = Array.isArray(d?.users) ? d.users : Array.isArray(d) ? d : [];
+      }
+      if (docsRes.status === 'fulfilled') {
+        const d = docsRes.value.data?.data || docsRes.value.data;
+        backendDoctors = Array.isArray(d?.doctors) ? d.doctors : Array.isArray(d) ? d : [];
+      }
+      if (pharmsRes.status === 'fulfilled') {
+        const d = pharmsRes.value.data?.data || pharmsRes.value.data;
+        backendPharmacies = Array.isArray(d?.pharmacies) ? d.pharmacies : Array.isArray(d) ? d : [];
+      }
+      if (ridersRes.status === 'fulfilled') {
+        const d = ridersRes.value.data?.data || ridersRes.value.data;
+        backendRiders = Array.isArray(d?.riders) ? d.riders : Array.isArray(d) ? d : [];
+      }
+      if (settingsRes.status === 'fulfilled') {
+        backendSettings = settingsRes.value.data?.data || settingsRes.value.data || [];
+      }
+    } catch (e) {
+      console.warn('Backend fetch all entities notice:', e.message);
+    }
+
+    // 1. DOCTORS
+    const doctors = [...local.doctors];
+    backendDoctors.forEach((bd) => {
+      if (!accountRegistry.isEntityRemoved(bd.id) && !doctors.some((d) => d.id === bd.id || d.userId === bd.userId || (bd.email && d.email === bd.email))) {
+        doctors.push({
+          id: bd.id,
+          userId: bd.userId || bd.id,
+          fullName: bd.fullName || bd.name,
+          email: bd.email,
+          phone: bd.phone,
+          imageUrl: bd.imageUrl || bd.photoUrl || '',
+          registrationNumber: bd.registrationNumber || 'WBMC-REG',
+          qualifications: bd.qualifications || 'MBBS',
+          experienceYears: bd.experienceYears || 5,
+          specialization: bd.specialization || bd.specializations?.[0]?.specialization?.name || 'General Physician',
+          consultationFeePaise: bd.consultationFeePaise || 50000,
+          status: bd.status || 'ACTIVE',
+          user: { id: bd.userId || bd.id, email: bd.email, phone: bd.phone, status: bd.status || 'ACTIVE' },
+        });
+      }
+    });
+    backendUsers.filter((u) => u.role?.name === 'DOCTOR' || u.role === 'DOCTOR').forEach((u) => {
+      if (!accountRegistry.isEntityRemoved(u.id) && !doctors.some((d) => d.id === u.id || d.userId === u.id || (u.email && d.email === u.email))) {
+        doctors.push({
+          id: u.id,
+          userId: u.id,
+          fullName: u.fullName,
+          email: u.email,
+          phone: u.phone,
+          imageUrl: u.imageUrl || '',
+          registrationNumber: 'WBMC-REG',
+          qualifications: 'MBBS',
+          experienceYears: 5,
+          specialization: 'General Physician',
+          consultationFeePaise: 50000,
+          status: u.status || 'ACTIVE',
+          user: { id: u.id, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
+        });
       }
     });
 
-    const filtered = allUsers.filter((u) => {
-      if (accountRegistry.isEntityRemoved(u.id)) return false;
-      const regAccount = accountRegistry.findAccount(u.phone || u.email);
-      if (regAccount && regAccount.role !== 'PATIENT') return false;
-      if (u.doctor || u.riderProfile || (u.pharmacyStaff && u.pharmacyStaff.length > 0)) return false;
-      if (u.role?.name && u.role.name !== 'PATIENT') return false;
-      if (typeof u.fullName === 'string' && u.fullName.startsWith('Dr.')) return false;
-      return !params.roleName || u.role?.name === params.roleName || u.role === params.roleName;
+    // 2. PHARMACIES
+    const pharmacies = [...local.pharmacies];
+    backendPharmacies.forEach((bp) => {
+      if (!accountRegistry.isEntityRemoved(bp.id) && !pharmacies.some((p) => p.id === bp.id || (bp.email && p.email === bp.email))) {
+        pharmacies.push({
+          id: bp.id,
+          userId: bp.ownerId || bp.id,
+          name: bp.name,
+          email: bp.email,
+          phone: bp.phone,
+          imageUrl: bp.imageUrl || '',
+          licenseNumber: bp.licenseNumber || 'WB-DL-REG',
+          line1: bp.line1 || 'Sector V',
+          city: bp.city || 'Kolkata',
+          state: bp.state || 'West Bengal',
+          pincode: bp.pincode || '700091',
+          status: bp.status || 'ACTIVE',
+          owner: { id: bp.id, fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone },
+          staff: [{ staffRole: 'OWNER', user: { fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone, status: bp.status || 'ACTIVE' } }],
+        });
+      }
+    });
+    backendUsers.filter((u) => u.role?.name === 'PHARMACY' || u.role === 'PHARMACY').forEach((u) => {
+      if (!accountRegistry.isEntityRemoved(u.id) && !pharmacies.some((p) => p.id === u.id || (u.email && p.email === u.email))) {
+        pharmacies.push({
+          id: u.id,
+          userId: u.id,
+          name: `${u.fullName} Pharmacy`,
+          email: u.email,
+          phone: u.phone,
+          imageUrl: '',
+          licenseNumber: 'WB-DL-REG',
+          line1: 'Sector V',
+          city: 'Kolkata',
+          state: 'West Bengal',
+          pincode: '700091',
+          status: u.status || 'ACTIVE',
+          owner: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
+          staff: [{ staffRole: 'OWNER', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
+        });
+      }
     });
 
-    return { users: filtered, total: filtered.length };
+    // 3. CLINICS
+    const clinics = [...local.clinics];
+    backendUsers.filter((u) => u.role?.name === 'RECEPTIONIST' || u.role === 'RECEPTIONIST').forEach((u) => {
+      if (!accountRegistry.isEntityRemoved(u.id) && !clinics.some((c) => c.id === u.id || (u.email && c.email === u.email))) {
+        clinics.push({
+          id: u.id,
+          userId: u.id,
+          name: `${u.fullName} Polyclinic`,
+          email: u.email,
+          phone: u.phone,
+          imageUrl: '',
+          chamberCount: '6 Chambers',
+          line1: 'Salt Lake Sector 1',
+          city: 'Kolkata',
+          state: 'West Bengal',
+          pincode: '700064',
+          status: u.status || 'ACTIVE',
+          manager: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
+          staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
+          settings: { chamberCount: '6 Chambers' },
+        });
+      }
+    });
+
+    // 4. RIDERS
+    const riders = [...local.riders];
+    backendRiders.forEach((br) => {
+      if (!accountRegistry.isEntityRemoved(br.id) && !riders.some((r) => r.id === br.id || r.userId === br.userId || (br.phone && r.phone === br.phone))) {
+        riders.push({
+          id: br.id,
+          userId: br.userId || br.id,
+          fullName: br.user?.fullName || br.fullName || 'Rider',
+          email: br.user?.email || br.email,
+          phone: br.user?.phone || br.phone,
+          imageUrl: br.imageUrl || '',
+          vehicleType: br.vehicleType || 'Motorcycle',
+          vehicleNumber: br.vehicleNumber || 'WB-01-AB-1234',
+          licenseNumber: br.licenseNumber || 'DL-WB-Verified',
+          user: { id: br.userId || br.id, fullName: br.fullName, email: br.email, phone: br.phone, status: br.status || 'ACTIVE' },
+          status: br.status || 'AVAILABLE',
+        });
+      }
+    });
+    backendUsers.filter((u) => u.role?.name === 'RIDER' || u.role === 'RIDER').forEach((u) => {
+      if (!accountRegistry.isEntityRemoved(u.id) && !riders.some((r) => r.id === u.id || r.userId === u.id || (u.phone && r.phone === u.phone))) {
+        riders.push({
+          id: u.id,
+          userId: u.id,
+          fullName: u.fullName,
+          email: u.email,
+          phone: u.phone,
+          imageUrl: '',
+          vehicleType: 'Motorcycle',
+          vehicleNumber: 'WB-01-AB-1234',
+          licenseNumber: 'DL-WB-Verified',
+          user: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
+          status: u.status || 'AVAILABLE',
+        });
+      }
+    });
+
+    // 5. PATIENTS / USERS
+    const users = [...local.users];
+    backendUsers.filter((u) => !u.role?.name || u.role?.name === 'PATIENT' || u.role === 'PATIENT').forEach((u) => {
+      if (!accountRegistry.isEntityRemoved(u.id) && !users.some((eu) => eu.id === u.id || (u.phone && eu.phone === u.phone))) {
+        users.push({
+          id: u.id,
+          fullName: u.fullName,
+          email: u.email,
+          phone: u.phone,
+          imageUrl: '',
+          createdAt: u.createdAt,
+          role: { name: 'PATIENT' },
+          status: u.status || 'ACTIVE',
+        });
+      }
+    });
+
+    const result = {
+      clinics: clinics.filter((c) => !accountRegistry.isEntityRemoved(c.id)),
+      doctors: doctors.filter((d) => !accountRegistry.isEntityRemoved(d.id)),
+      pharmacies: pharmacies.filter((p) => !accountRegistry.isEntityRemoved(p.id)),
+      riders: riders.filter((r) => !accountRegistry.isEntityRemoved(r.id)),
+      users: users.filter((u) => !accountRegistry.isEntityRemoved(u.id)),
+      settings: backendSettings,
+    };
+
+    cachedEntities = result;
+    lastEntitiesFetch = Date.now();
+    return result;
+  },
+
+  // Ultra-fast cached accessors
+  async getClinics() {
+    const all = await this.fetchAllEntities();
+    return { clinics: all.clinics, total: all.clinics.length };
+  },
+
+  async getDoctors() {
+    const all = await this.fetchAllEntities();
+    return { doctors: all.doctors, total: all.doctors.length };
+  },
+
+  async getPharmacies() {
+    const all = await this.fetchAllEntities();
+    return { pharmacies: all.pharmacies, total: all.pharmacies.length };
+  },
+
+  async getRiders() {
+    const all = await this.fetchAllEntities();
+    return { riders: all.riders, total: all.riders.length };
+  },
+
+  async getUsers() {
+    const all = await this.fetchAllEntities();
+    return { users: all.users, total: all.users.length };
   },
 
   async updateUserAccess(id, { roleName, status }) {
+    this.invalidateCache();
     const payload = { roleName };
     if (status) payload.status = status;
     try {
@@ -151,6 +373,7 @@ export const adminApi = {
   },
 
   async deactivateUser(id) {
+    this.invalidateCache();
     try {
       await apiClient.put(`/admin/users/${id}/access`, {
         roleName: 'PATIENT',
@@ -169,80 +392,8 @@ export const adminApi = {
   },
 
   // ================= DOCTORS =================
-  async getDoctors(params = { page: 1, limit: 50 }) {
-    let list = [];
-
-    // 1. Try dedicated doctor endpoint if present
-    try {
-      const response = await apiClient.get('/admin/doctors', { params });
-      const data = response.data?.data || response.data;
-      if (Array.isArray(data?.doctors)) list = data.doctors;
-      else if (Array.isArray(data)) list = data;
-    } catch (err) {
-      console.warn('Backend fetch doctors notice:', err.message);
-    }
-
-    // Filter out removed doctors from direct endpoint
-    list = list.filter(
-      (d) =>
-        !accountRegistry.isEntityRemoved(d.id) &&
-        !accountRegistry.isEntityRemoved(d.userId) &&
-        d.user?.status !== 'DEACTIVATED' &&
-        d.status !== 'DEACTIVATED'
-    );
-
-    // 2. Query /admin/users to retrieve real users with DOCTOR role
-    try {
-      const usersRes = await apiClient.get('/admin/users', { params: { limit: 100 } });
-      const uData = usersRes.data?.data || usersRes.data;
-      const allUsers = Array.isArray(uData?.users) ? uData.users : Array.isArray(uData) ? uData : [];
-      const doctorUsers = allUsers.filter(
-        (u) =>
-          (u.role?.name === 'DOCTOR' || u.role === 'DOCTOR' || u.doctor != null) &&
-          u.status !== 'DEACTIVATED' &&
-          !accountRegistry.isEntityRemoved(u.id) &&
-          !accountRegistry.isEntityRemoved(u.doctor?.id)
-      );
-
-      doctorUsers.forEach((u) => {
-        if (!list.some((d) => d.id === u.id || d.userId === u.id || (u.phone && d.phone === u.phone))) {
-          list.push({
-            id: u.doctor?.id || u.id,
-            userId: u.id,
-            fullName: u.doctor?.fullName || u.fullName,
-            email: u.email,
-            phone: u.phone,
-            registrationNumber: u.doctor?.registrationNumber || 'WBMC-REG',
-            qualifications: u.doctor?.qualifications || 'MBBS',
-            experienceYears: u.doctor?.experienceYears || 5,
-            specialization: u.doctor?.specializations?.[0]?.specialization?.name || 'General Physician',
-            specializations: u.doctor?.specializations || [{ specialization: { name: 'General Physician' } }],
-            clinicName: u.doctor?.pharmacies?.[0]?.pharmacy?.name || 'Apollo Clinic',
-            pharmacies: u.doctor?.pharmacies || [{ pharmacy: { name: 'Apollo Clinic' } }],
-            user: { id: u.id, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
-            status: u.status || 'ACTIVE',
-            createdAt: u.createdAt,
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('Backend query users for doctors notice:', err.message);
-    }
-
-    // 3. Include any doctor registered in local registry
-    const registryDoctors = accountRegistry.getEntities().doctors.filter(
-      (rd) => !accountRegistry.isEntityRemoved(rd.id) && !accountRegistry.isEntityRemoved(rd.userId)
-    );
-    registryDoctors.forEach((rd) => {
-      if (!list.some((d) => d.id === rd.id || (rd.email && d.email === rd.email) || (rd.phone && d.phone === rd.phone))) {
-        list.push(rd);
-      }
-    });
-
-    return { doctors: list, total: list.length };
-  },
-
   async createDoctor(data) {
+    this.invalidateCache();
     let dbDoctor = null;
     let userId = null;
 
@@ -362,83 +513,8 @@ export const adminApi = {
   },
 
   // ================= PHARMACIES / PHARMACISTS =================
-  async getPharmacies(params = { page: 1, limit: 50 }) {
-    let list = [];
-
-    // 1. Try /admin/pharmacies or /pharmacies
-    try {
-      const response = await apiClient.get('/admin/pharmacies', { params });
-      const data = response.data?.data || response.data;
-      if (Array.isArray(data?.pharmacies)) list = data.pharmacies;
-      else if (Array.isArray(data)) list = data;
-    } catch (err) {
-      try {
-        const fallbackRes = await apiClient.get('/pharmacies');
-        const d = fallbackRes.data?.data || fallbackRes.data;
-        if (Array.isArray(d)) list = d;
-      } catch {
-        console.warn('Backend fetch pharmacies notice:', err.message);
-      }
-    }
-
-    list = list.filter(
-      (p) =>
-        !accountRegistry.isEntityRemoved(p.id) &&
-        !accountRegistry.isEntityRemoved(p.owner?.id) &&
-        p.status !== 'CLOSED' &&
-        p.status !== 'DEACTIVATED'
-    );
-
-    // 2. Query /admin/users for PHARMACY role users
-    try {
-      const usersRes = await apiClient.get('/admin/users', { params: { limit: 100 } });
-      const uData = usersRes.data?.data || usersRes.data;
-      const allUsers = Array.isArray(uData?.users) ? uData.users : Array.isArray(uData) ? uData : [];
-      const pharmacyUsers = allUsers.filter(
-        (u) =>
-          (u.role?.name === 'PHARMACY' || u.role === 'PHARMACY' || u.pharmacyStaff != null) &&
-          u.status !== 'DEACTIVATED' &&
-          !accountRegistry.isEntityRemoved(u.id)
-      );
-
-      pharmacyUsers.forEach((u) => {
-        if (!list.some((p) => p.id === u.id || (p.email && u.email && p.email.toLowerCase() === u.email.toLowerCase()))) {
-          list.push({
-            id: u.id,
-            userId: u.id,
-            name: u.pharmacyStaff?.pharmacy?.name || `${u.fullName} Pharmacy`,
-            email: u.email,
-            phone: u.phone,
-            licenseNumber: 'WB-DL-REG',
-            line1: u.pharmacyStaff?.pharmacy?.city || 'Salt Lake Sector V',
-            city: u.pharmacyStaff?.pharmacy?.city || 'Kolkata',
-            state: 'West Bengal',
-            pincode: '700091',
-            status: u.status || 'ACTIVE',
-            owner: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
-            staff: [{ staffRole: 'OWNER', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
-            createdAt: u.createdAt,
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('Backend query users for pharmacies notice:', err.message);
-    }
-
-    // 3. Include any pharmacy registered in local registry
-    const registryPharmacies = accountRegistry.getEntities().pharmacies.filter(
-      (rp) => !accountRegistry.isEntityRemoved(rp.id) && !accountRegistry.isEntityRemoved(rp.userId)
-    );
-    registryPharmacies.forEach((rp) => {
-      if (!list.some((p) => p.id === rp.id || (rp.email && p.email === rp.email) || (rp.phone && p.phone === rp.phone))) {
-        list.push(rp);
-      }
-    });
-
-    return { pharmacies: list, total: list.length };
-  },
-
   async createPharmacy(data) {
+    this.invalidateCache();
     // 1. Register User in PostgreSQL and assign PHARMACY role
     const registered = await registerUserInDatabase({
       fullName: data.ownerName || data.name,
@@ -529,78 +605,8 @@ export const adminApi = {
   },
 
   // ================= CLINICS =================
-  async getClinics(params = { page: 1, limit: 50 }) {
-    let list = [];
-
-    // 1. Try /admin/clinics
-    try {
-      const response = await apiClient.get('/admin/clinics', { params });
-      const data = response.data?.data || response.data;
-      if (Array.isArray(data?.clinics)) list = data.clinics;
-      else if (Array.isArray(data)) list = data;
-    } catch (err) {
-      console.warn('Backend fetch clinics notice:', err.message);
-    }
-
-    list = list.filter(
-      (c) =>
-        !accountRegistry.isEntityRemoved(c.id) &&
-        !accountRegistry.isEntityRemoved(c.manager?.id) &&
-        c.status !== 'CLOSED' &&
-        c.status !== 'DEACTIVATED'
-    );
-
-    // 2. Query /admin/users for RECEPTIONIST role users
-    try {
-      const usersRes = await apiClient.get('/admin/users', { params: { limit: 100 } });
-      const uData = usersRes.data?.data || usersRes.data;
-      const allUsers = Array.isArray(uData?.users) ? uData.users : Array.isArray(uData) ? uData : [];
-      const receptionistUsers = allUsers.filter(
-        (u) =>
-          (u.role?.name === 'RECEPTIONIST' || u.role === 'RECEPTIONIST') &&
-          u.status !== 'DEACTIVATED' &&
-          !accountRegistry.isEntityRemoved(u.id)
-      );
-
-      receptionistUsers.forEach((u) => {
-        if (!list.some((c) => c.id === u.id || (c.email && u.email && c.email.toLowerCase() === u.email.toLowerCase()))) {
-          list.push({
-            id: u.id,
-            userId: u.id,
-            name: `${u.fullName} Clinic & Diagnostics`,
-            email: u.email,
-            phone: u.phone,
-            chamberCount: '6 Chambers',
-            line1: 'City Centre, Sector 1',
-            city: 'Kolkata',
-            state: 'West Bengal',
-            pincode: '700064',
-            status: u.status || 'ACTIVE',
-            manager: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
-            staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
-            settings: { chamberCount: '6 Chambers' },
-            createdAt: u.createdAt,
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('Backend query users for clinics notice:', err.message);
-    }
-
-    // 3. Include any clinic registered in local registry
-    const registryClinics = accountRegistry.getEntities().clinics.filter(
-      (rc) => !accountRegistry.isEntityRemoved(rc.id) && !accountRegistry.isEntityRemoved(rc.userId)
-    );
-    registryClinics.forEach((rc) => {
-      if (!list.some((c) => c.id === rc.id || (rc.email && c.email === rc.email) || (rc.phone && c.phone === rc.phone))) {
-        list.push(rc);
-      }
-    });
-
-    return { clinics: list, total: list.length };
-  },
-
   async createClinic(data) {
+    this.invalidateCache();
     // 1. Register User in PostgreSQL and assign RECEPTIONIST role
     const registered = await registerUserInDatabase({
       fullName: data.managerName || data.name,
@@ -653,6 +659,7 @@ export const adminApi = {
   },
 
   async deleteClinic(id, userId) {
+    this.invalidateCache();
     const targetUserId = userId || id;
     try {
       await apiClient.put(`/admin/users/${targetUserId}/access`, {
@@ -679,74 +686,12 @@ export const adminApi = {
 
   // ================= RIDERS =================
   async getRiders(params = { page: 1, limit: 50 }) {
-    let list = [];
-
-    // 1. Try dedicated rider endpoint
-    try {
-      const response = await apiClient.get('/admin/riders', { params });
-      const data = response.data?.data || response.data;
-      if (Array.isArray(data?.riders)) list = data.riders;
-      else if (Array.isArray(data)) list = data;
-    } catch (err) {
-      console.warn('Backend fetch riders notice:', err.message);
-    }
-
-    list = list.filter(
-      (r) =>
-        !accountRegistry.isEntityRemoved(r.id) &&
-        !accountRegistry.isEntityRemoved(r.userId) &&
-        r.user?.status !== 'DEACTIVATED' &&
-        r.status !== 'DEACTIVATED'
-    );
-
-    // 2. Query /admin/users for RIDER role users
-    try {
-      const usersRes = await apiClient.get('/admin/users', { params: { limit: 100 } });
-      const uData = usersRes.data?.data || usersRes.data;
-      const allUsers = Array.isArray(uData?.users) ? uData.users : Array.isArray(uData) ? uData : [];
-      const riderUsers = allUsers.filter(
-        (u) =>
-          (u.role?.name === 'RIDER' || u.role === 'RIDER' || u.riderProfile != null) &&
-          u.status !== 'DEACTIVATED' &&
-          !accountRegistry.isEntityRemoved(u.id) &&
-          !accountRegistry.isEntityRemoved(u.riderProfile?.id)
-      );
-
-      riderUsers.forEach((u) => {
-        if (!list.some((r) => r.id === u.id || r.userId === u.id || (u.phone && r.phone === u.phone))) {
-          list.push({
-            id: u.riderProfile?.id || u.id,
-            userId: u.id,
-            fullName: u.fullName,
-            email: u.email,
-            phone: u.phone,
-            vehicleType: u.riderProfile?.vehicleType || 'Motorcycle',
-            vehicleNumber: u.riderProfile?.vehicleNumber || 'WB-01-AB-1234',
-            licenseNumber: u.riderProfile?.licenseNumber || 'DL-WB-2023-8890',
-            user: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
-            status: u.status || 'AVAILABLE',
-            createdAt: u.createdAt,
-          });
-        }
-      });
-    } catch (err) {
-      console.warn('Backend query users for riders notice:', err.message);
-    }
-
-    // 3. Include any rider registered in local registry
-    const registryRiders = accountRegistry.getEntities().riders.filter(
-      (rr) => !accountRegistry.isEntityRemoved(rr.id) && !accountRegistry.isEntityRemoved(rr.userId)
-    );
-    registryRiders.forEach((rr) => {
-      if (!list.some((r) => r.id === rr.id || (rr.email && r.email === rr.email) || (rr.phone && r.phone === rr.phone))) {
-        list.push(rr);
-      }
-    });
-
-    return { riders: list, total: list.length };
+    const res = await this.fetchAllEntities();
+    return { riders: res.riders, total: res.riders.length };
   },
 
   async createRider(data) {
+    this.invalidateCache();
     // 1. Register User in PostgreSQL and assign RIDER role
     const registered = await registerUserInDatabase({
       fullName: data.fullName,
@@ -793,6 +738,7 @@ export const adminApi = {
   },
 
   async deleteRider(id, userId) {
+    this.invalidateCache();
     const targetUserId = userId || id;
     try {
       await apiClient.put(`/admin/users/${targetUserId}/access`, {
@@ -857,6 +803,7 @@ export const adminApi = {
 
   // ================= ENTITY STATUS & DEACTIVATION (30-DAY DEADLINE) =================
   async setStatus(id, roleName, status) {
+    this.invalidateCache();
     const purgeDeadline = status === 'DEACTIVATED' ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null;
     try {
       await apiClient.put(`/admin/users/${id}/access`, {
@@ -875,6 +822,7 @@ export const adminApi = {
 
   // ================= ENTITY EDIT / UPDATE =================
   async updateDoctor(id, data) {
+    this.invalidateCache();
     try {
       await apiClient.put(`/doctors/${id}`, data);
     } catch (err) {
@@ -900,6 +848,7 @@ export const adminApi = {
   },
 
   async updatePharmacy(id, data) {
+    this.invalidateCache();
     try {
       await apiClient.put(`/admin/pharmacies/${id}`, data);
     } catch (err) {
@@ -925,6 +874,7 @@ export const adminApi = {
   },
 
   async updateClinic(id, data) {
+    this.invalidateCache();
     try {
       await apiClient.put(`/admin/clinics/${id}`, data);
     } catch (err) {
@@ -952,6 +902,7 @@ export const adminApi = {
   },
 
   async updateRider(id, data) {
+    this.invalidateCache();
     try {
       await apiClient.put(`/admin/riders/${id}`, data);
     } catch (err) {
@@ -974,6 +925,7 @@ export const adminApi = {
   },
 
   async updateUser(id, data) {
+    this.invalidateCache();
     try {
       await apiClient.put(`/admin/users/${id}/access`, {
         roleName: 'PATIENT',

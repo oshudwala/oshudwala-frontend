@@ -40,6 +40,7 @@ import StatusBadge from '../../components/workspace/StatusBadge';
 import Button from '../../components/common/Button';
 import { useToast } from '../../context/ToastContext';
 import adminApi from '../../services/api/admin.api';
+import accountRegistry from '../../services/api/accountRegistry';
 
 export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const navigate = useNavigate();
@@ -49,13 +50,15 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   // Tab: 'clinics' | 'doctors' | 'pharmacies' | 'riders' | 'users'
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  // Data states
-  const [clinics, setClinics] = useState([]);
-  const [doctors, setDoctors] = useState([]);
-  const [pharmacies, setPharmacies] = useState([]);
-  const [riders, setRiders] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Data states - load initial cached/registered entities immediately for 0ms latency
+  const initialEntities = accountRegistry.getEntities();
+  const [clinics, setClinics] = useState(initialEntities.clinics || []);
+  const [doctors, setDoctors] = useState(initialEntities.doctors || []);
+  const [pharmacies, setPharmacies] = useState(initialEntities.pharmacies || []);
+  const [riders, setRiders] = useState(initialEntities.riders || []);
+  const [users, setUsers] = useState(initialEntities.users || []);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -123,15 +126,11 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   }, [location.pathname, initialTab]);
 
   // Load real data from backend
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (forceRefresh = false) => {
+    setIsSyncing(true);
     try {
-      const [clinicsRes, doctorsRes, pharmaciesRes, ridersRes, usersRes, settingsRes] = await Promise.all([
-        adminApi.getClinics(),
-        adminApi.getDoctors(),
-        adminApi.getPharmacies(),
-        adminApi.getRiders(),
-        adminApi.getUsers({ roleName: 'PATIENT' }),
+      const [res, settingsRes] = await Promise.all([
+        adminApi.fetchAllEntities(forceRefresh),
         adminApi.getSettings(),
       ]);
 
@@ -140,24 +139,24 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       const featuredClins = settingsRes?.find?.((s) => s.key === 'featured_clinics')?.value || [];
 
       setClinics(
-        (clinicsRes.clinics || []).map((c) => ({
+        (res.clinics || []).map((c) => ({
           ...c,
           isFeatured: featuredClins.includes(c.id) || Boolean(c.isFeatured),
         }))
       );
       setDoctors(
-        (doctorsRes.doctors || []).map((d) => ({
+        (res.doctors || []).map((d) => ({
           ...d,
           isFeatured: featuredDocs.includes(d.id) || Boolean(d.isFeatured),
         }))
       );
-      setPharmacies(pharmaciesRes.pharmacies || []);
-      setRiders(ridersRes.riders || []);
-      setUsers(usersRes.users || []);
+      setPharmacies(res.pharmacies || []);
+      setRiders(res.riders || []);
+      setUsers(res.users || []);
     } catch (err) {
       console.error('Error fetching admin entities:', err);
-      addToast('Notice: Could not load some network entities from server.', 'info');
     } finally {
+      setIsSyncing(false);
       setIsLoading(false);
     }
   };
@@ -1167,8 +1166,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadData}
-            isLoading={isLoading}
+            onClick={() => loadData(true)}
+            isLoading={isSyncing}
             leftIcon={RefreshCw}
             className="text-xs"
           >
