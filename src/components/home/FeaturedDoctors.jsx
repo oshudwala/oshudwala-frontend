@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import { doctorsData } from '../../data/doctorsData';
@@ -9,6 +9,42 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
   const navigate = useNavigate();
   const scrollContainerRef = useRef(null);
   const { t } = useLanguage();
+  const [featuredDoctorsList, setFeaturedDoctorsList] = useState(doctorsData.slice(0, 6));
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('oshud_featured_doctors');
+      if (raw) {
+        const ids = JSON.parse(raw);
+        if (Array.isArray(ids) && ids.length > 0) {
+          const regAccounts = JSON.parse(localStorage.getItem('oshud_registered_accounts') || '[]');
+          const allDocs = [
+            ...doctorsData,
+            ...regAccounts
+              .filter((a) => a.role === 'DOCTOR')
+              .map((a) => ({
+                id: a.id,
+                name: a.fullName,
+                specialty: a.entityData?.specialization || 'General Physician',
+                degree: a.entityData?.qualifications || 'MBBS',
+                experience: `${a.entityData?.experienceYears || 5}+ years exp`,
+                fee: `₹${((a.entityData?.consultationFeePaise || 50000) / 100).toFixed(0)}`,
+                image: a.entityData?.imageUrl || a.imageUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
+                rating: 4.9,
+                reviews: '120+ patients',
+                nextAvailable: 'Today',
+              })),
+          ];
+          const matched = allDocs.filter((d) => ids.includes(d.id));
+          if (matched.length > 0) {
+            setFeaturedDoctorsList(matched);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading featured doctors list:', e);
+    }
+  }, []);
 
   const scroll = (direction) => {
     if (scrollContainerRef.current) {
@@ -60,7 +96,7 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
           ref={scrollContainerRef}
           className="flex gap-4 sm:gap-6 overflow-x-auto no-scrollbar scroll-smooth pb-3 sm:pb-4 pt-1 snap-x snap-mandatory"
         >
-          {doctorsData.slice(0, 6).map((doctor) => (
+          {featuredDoctorsList.map((doctor) => (
             <div
               key={doctor.id}
               className="w-[235px] xs:w-[255px] sm:w-[285px] lg:w-[300px] flex-shrink-0 snap-start"

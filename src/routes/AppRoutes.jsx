@@ -28,6 +28,9 @@ import AdminPrescriptionsPage from '../pages/admin/AdminPrescriptionsPage';
 import AdminEntitiesPage from '../pages/admin/AdminEntitiesPage';
 import AdminProductsPage from '../pages/admin/AdminProductsPage';
 import AdminFinancePage from '../pages/admin/AdminFinancePage';
+import AdminAppointmentsPage from '../pages/admin/AdminAppointmentsPage';
+import AdminHomepageControlsPage from '../pages/admin/AdminHomepageControlsPage';
+import AdminBookingRulesPage from '../pages/admin/AdminBookingRulesPage';
 
 // Doctor Workspace Pages
 import DoctorOverview from '../pages/doctor/DoctorOverview';
@@ -127,6 +130,7 @@ export const AppRoutes = () => {
         <Route path="analytics" element={<AdminDashboard />} />
         <Route path="orders" element={<AdminOrdersPage />} />
         <Route path="prescriptions" element={<AdminPrescriptionsPage />} />
+        <Route path="appointments" element={<AdminAppointmentsPage />} />
         
         {/* Dedicated Management Pages & Tabs */}
         <Route path="clinics" element={<AdminEntitiesPage initialTab="clinics" />} />
@@ -134,6 +138,10 @@ export const AppRoutes = () => {
         <Route path="pharmacies" element={<AdminEntitiesPage initialTab="pharmacies" />} />
         <Route path="riders" element={<AdminEntitiesPage initialTab="riders" />} />
         <Route path="users" element={<AdminEntitiesPage initialTab="users" />} />
+
+        {/* Platform Controls */}
+        <Route path="homepage-controls" element={<AdminHomepageControlsPage />} />
+        <Route path="booking-rules" element={<AdminBookingRulesPage />} />
 
         {/* Commerce & Stock: Only Inventory */}
         <Route path="inventory" element={<AdminProductsPage />} />

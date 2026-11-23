@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowRight, Building2 } from 'lucide-react';
 import { clinicsData } from '../../data/clinicsData';
@@ -10,6 +10,41 @@ export const FeaturedClinics = ({ onBookDoctor }) => {
   const scrollContainerRef = useRef(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
   const { t } = useLanguage();
+  const [featuredClinicsList, setFeaturedClinicsList] = useState(clinicsData);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('oshud_featured_clinics');
+      if (raw) {
+        const ids = JSON.parse(raw);
+        if (Array.isArray(ids) && ids.length > 0) {
+          const regAccounts = JSON.parse(localStorage.getItem('oshud_registered_accounts') || '[]');
+          const allClins = [
+            ...clinicsData,
+            ...regAccounts
+              .filter((a) => a.role === 'RECEPTIONIST')
+              .map((a) => ({
+                id: a.id,
+                name: a.entityData?.name || `${a.fullName} Clinic`,
+                address: a.entityData?.line1 || 'Salt Lake Sector 1',
+                city: a.entityData?.city || 'Kolkata',
+                pincode: a.entityData?.pincode || '700064',
+                chambers: a.entityData?.chamberCount || '6 Chambers',
+                image: a.entityData?.imageUrl || a.imageUrl || 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=350',
+                rating: 4.8,
+                doctorsCount: 8,
+              })),
+          ];
+          const matched = allClins.filter((c) => ids.includes(c.id));
+          if (matched.length > 0) {
+            setFeaturedClinicsList(matched);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading featured clinics list:', e);
+    }
+  }, []);
 
   const scroll = (direction) => {
     if (scrollContainerRef.current) {
@@ -65,7 +100,7 @@ export const FeaturedClinics = ({ onBookDoctor }) => {
           ref={scrollContainerRef}
           className="flex gap-3 sm:gap-5 overflow-x-auto no-scrollbar scroll-smooth pb-3 sm:pb-4 pt-1 snap-x snap-mandatory"
         >
-          {clinicsData.map((clinic) => (
+          {featuredClinicsList.map((clinic) => (
             <div
               key={clinic.id}
               className="w-[260px] xs:w-[285px] sm:w-[320px] lg:w-[340px] flex-shrink-0 snap-start"

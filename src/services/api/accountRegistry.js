@@ -240,6 +240,56 @@ export const accountRegistry = {
     return user;
   },
 
+  // Update account details (Edit Entity)
+  updateAccount(id, updates) {
+    if (!id || !updates) return null;
+    const accounts = this.getAccounts();
+    const strId = String(id);
+    const index = accounts.findIndex((a) => String(a.id) === strId || String(a.userId) === strId);
+    if (index >= 0) {
+      accounts[index] = {
+        ...accounts[index],
+        ...updates,
+        fullName: updates.fullName || updates.name || accounts[index].fullName,
+        email: updates.email !== undefined ? updates.email : accounts[index].email,
+        phone: updates.phone !== undefined ? updates.phone : accounts[index].phone,
+        status: updates.status || accounts[index].status,
+        deactivatedAt: updates.deactivatedAt !== undefined ? updates.deactivatedAt : accounts[index].deactivatedAt,
+        purgeDeadline: updates.purgeDeadline !== undefined ? updates.purgeDeadline : accounts[index].purgeDeadline,
+        entityData: {
+          ...(accounts[index].entityData || {}),
+          ...(updates.entityData || {}),
+          imageUrl: updates.imageUrl || updates.entityData?.imageUrl || accounts[index].entityData?.imageUrl,
+          isFeatured: updates.isFeatured !== undefined ? updates.isFeatured : accounts[index].entityData?.isFeatured,
+        },
+      };
+      this.saveAccounts(accounts);
+      return accounts[index];
+    }
+    return null;
+  },
+
+  // Set account status (Active or Deactivated with 30-day deadline)
+  setAccountStatus(id, status, purgeDeadline = null) {
+    if (!id) return null;
+    const accounts = this.getAccounts();
+    const strId = String(id);
+    const index = accounts.findIndex((a) => String(a.id) === strId || String(a.userId) === strId);
+    if (index >= 0) {
+      accounts[index].status = status;
+      if (status === 'DEACTIVATED') {
+        accounts[index].deactivatedAt = new Date().toISOString();
+        accounts[index].purgeDeadline = purgeDeadline || (Date.now() + 30 * 24 * 60 * 60 * 1000);
+      } else {
+        delete accounts[index].deactivatedAt;
+        delete accounts[index].purgeDeadline;
+      }
+      this.saveAccounts(accounts);
+      return accounts[index];
+    }
+    return null;
+  },
+
   // Get all entities formatted for Management tab tables
   getEntities() {
     const accounts = this.getAccounts().filter((a) => !this.isEntityRemoved(a.id));
@@ -252,6 +302,7 @@ export const accountRegistry = {
         fullName: a.fullName,
         email: a.email,
         phone: a.phone,
+        imageUrl: a.entityData?.imageUrl || a.imageUrl || '',
         specialization: a.entityData?.specialization || 'General Physician',
         qualifications: a.entityData?.qualifications || 'MBBS',
         registrationNumber: a.entityData?.registrationNumber || 'WBMC-Verified',
@@ -261,6 +312,9 @@ export const accountRegistry = {
         pharmacies: [{ pharmacy: { name: a.entityData?.clinicName || 'Apollo Clinic' } }],
         user: { id: a.id, email: a.email, phone: a.phone, status: a.status },
         status: a.status,
+        deactivatedAt: a.deactivatedAt,
+        purgeDeadline: a.purgeDeadline,
+        isFeatured: a.entityData?.isFeatured || false,
       }));
 
     const pharmacies = accounts
@@ -270,6 +324,7 @@ export const accountRegistry = {
         name: a.entityData?.name || a.fullName + ' Pharmacy',
         email: a.email,
         phone: a.phone,
+        imageUrl: a.entityData?.imageUrl || a.imageUrl || '',
         licenseNumber: a.entityData?.licenseNumber || 'WB-DL-Verified',
         line1: a.entityData?.line1 || 'Sector V, Salt Lake',
         city: a.entityData?.city || 'Kolkata',
@@ -278,6 +333,8 @@ export const accountRegistry = {
         owner: { id: a.id, fullName: a.fullName, email: a.email, phone: a.phone },
         staff: [{ staffRole: 'OWNER', user: { fullName: a.fullName, email: a.email, phone: a.phone, status: a.status } }],
         status: a.status,
+        deactivatedAt: a.deactivatedAt,
+        purgeDeadline: a.purgeDeadline,
       }));
 
     const clinics = accounts
@@ -287,6 +344,7 @@ export const accountRegistry = {
         name: a.entityData?.name || a.fullName + ' Polyclinic',
         email: a.email,
         phone: a.phone,
+        imageUrl: a.entityData?.imageUrl || a.imageUrl || '',
         chamberCount: a.entityData?.chamberCount || '8 Chambers',
         line1: a.entityData?.line1 || 'Block BD, Sector 1, Salt Lake',
         city: a.entityData?.city || 'Kolkata',
@@ -296,6 +354,9 @@ export const accountRegistry = {
         staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: a.fullName, email: a.email, phone: a.phone, status: a.status } }],
         settings: { chamberCount: a.entityData?.chamberCount || '8 Chambers' },
         status: a.status,
+        deactivatedAt: a.deactivatedAt,
+        purgeDeadline: a.purgeDeadline,
+        isFeatured: a.entityData?.isFeatured || false,
       }));
 
     const riders = accounts
@@ -305,11 +366,14 @@ export const accountRegistry = {
         fullName: a.fullName,
         email: a.email,
         phone: a.phone,
+        imageUrl: a.entityData?.imageUrl || a.imageUrl || '',
         vehicleType: a.entityData?.vehicleType || 'Motorcycle',
         vehicleNumber: a.entityData?.vehicleNumber || 'WB-01-AB-1234',
         licenseNumber: a.entityData?.licenseNumber || 'DL-WB-Verified',
         user: { id: a.id, fullName: a.fullName, email: a.email, phone: a.phone, status: a.status },
         status: a.status || 'AVAILABLE',
+        deactivatedAt: a.deactivatedAt,
+        purgeDeadline: a.purgeDeadline,
       }));
 
     const users = accounts
@@ -319,9 +383,12 @@ export const accountRegistry = {
         fullName: a.fullName,
         email: a.email,
         phone: a.phone,
+        imageUrl: a.entityData?.imageUrl || a.imageUrl || '',
         createdAt: a.createdAt,
         role: { name: 'PATIENT' },
         status: a.status,
+        deactivatedAt: a.deactivatedAt,
+        purgeDeadline: a.purgeDeadline,
       }));
 
     return { doctors, pharmacies, clinics, riders, users };

@@ -23,7 +23,17 @@ import {
   Search,
   Filter,
   RefreshCw,
-  X
+  X,
+  Edit3,
+  Camera,
+  Image as ImageIcon,
+  Sparkles,
+  Clock,
+  Calendar,
+  Check,
+  Power,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
@@ -49,7 +59,10 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [itemToEdit, setItemToEdit] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -65,6 +78,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     city: 'Kolkata',
     state: 'West Bengal',
     pincode: '700064',
+    imageUrl: '',
     // Doctor specific
     registrationNumber: '',
     qualifications: '',
@@ -84,6 +98,20 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     licenseNo: '',
   });
 
+  // Form inputs for Edit Entity
+  const [editFormData, setEditFormData] = useState({});
+
+  // Form inputs for Assign Doctor to Clinic
+  const [assignData, setAssignData] = useState({
+    clinicId: '',
+    doctorId: '',
+    consultationFee: '500',
+    chamberNo: 'Chamber 1',
+    availableDays: ['Mon', 'Wed', 'Fri'],
+    timeSlot: '10:00 AM - 01:00 PM',
+    maxPatients: '25',
+  });
+
   // Sync tab with route if path changes
   useEffect(() => {
     const path = location.pathname.split('/').pop();
@@ -98,16 +126,31 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [clinicsRes, doctorsRes, pharmaciesRes, ridersRes, usersRes] = await Promise.all([
+      const [clinicsRes, doctorsRes, pharmaciesRes, ridersRes, usersRes, settingsRes] = await Promise.all([
         adminApi.getClinics(),
         adminApi.getDoctors(),
         adminApi.getPharmacies(),
         adminApi.getRiders(),
         adminApi.getUsers({ roleName: 'PATIENT' }),
+        adminApi.getSettings(),
       ]);
 
-      setClinics(clinicsRes.clinics || []);
-      setDoctors(doctorsRes.doctors || []);
+      // Read featured lists from settings if available
+      const featuredDocs = settingsRes?.find?.((s) => s.key === 'featured_doctors')?.value || [];
+      const featuredClins = settingsRes?.find?.((s) => s.key === 'featured_clinics')?.value || [];
+
+      setClinics(
+        (clinicsRes.clinics || []).map((c) => ({
+          ...c,
+          isFeatured: featuredClins.includes(c.id) || Boolean(c.isFeatured),
+        }))
+      );
+      setDoctors(
+        (doctorsRes.doctors || []).map((d) => ({
+          ...d,
+          isFeatured: featuredDocs.includes(d.id) || Boolean(d.isFeatured),
+        }))
+      );
       setPharmacies(pharmaciesRes.pharmacies || []);
       setRiders(ridersRes.riders || []);
       setUsers(usersRes.users || []);
@@ -133,6 +176,211 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleEditInputChange = (e) => {
+    const { name, value } = e.target;
+    setEditFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Calculate 30 days deadline countdown
+  const getDeadlineBadge = (row) => {
+    const isDeactivated = row.status === 'DEACTIVATED' || row.user?.status === 'DEACTIVATED';
+    if (!isDeactivated) return null;
+
+    const deadline = row.purgeDeadline || (row.deactivatedAt ? new Date(row.deactivatedAt).getTime() + 30 * 24 * 60 * 60 * 1000 : null);
+    let daysLeft = 30;
+    if (deadline) {
+      const diffMs = deadline - Date.now();
+      daysLeft = Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+    }
+
+    return (
+      <div className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+        <Clock className="w-3 h-3 text-amber-600 animate-pulse" />
+        <span>Purge in {daysLeft} days</span>
+      </div>
+    );
+  };
+
+  // Toggle Activate / Deactivate (30 Days Deadline)
+  const handleToggleStatus = async (row, type) => {
+    const currentStatus = row.status || row.user?.status || 'ACTIVE';
+    const newStatus = currentStatus === 'DEACTIVATED' ? 'ACTIVE' : 'DEACTIVATED';
+    const roleMap = {
+      clinics: 'RECEPTIONIST',
+      doctors: 'DOCTOR',
+      pharmacies: 'PHARMACY',
+      riders: 'RIDER',
+      users: 'PATIENT',
+    };
+    const roleName = roleMap[type] || 'PATIENT';
+    const targetUserId = row.userId || row.user?.id || row.id;
+
+    try {
+      await adminApi.setStatus(targetUserId, roleName, newStatus);
+      addToast(
+        newStatus === 'DEACTIVATED'
+          ? `${row.fullName || row.name || 'Account'} deactivated. 30-day deadline scheduled before permanent purge.`
+          : `${row.fullName || row.name || 'Account'} activated and login restored!`,
+        'success'
+      );
+      await loadData();
+    } catch (err) {
+      addToast(err.message || 'Failed to update account status.', 'error');
+    }
+  };
+
+  // Toggle Featured on Home Page
+  const handleToggleFeatured = async (row, type) => {
+    const newFeatured = !row.isFeatured;
+    const settingKey = type === 'doctors' ? 'featured_doctors' : 'featured_clinics';
+
+    try {
+      if (type === 'doctors') {
+        await adminApi.updateDoctor(row.id, { ...row, isFeatured: newFeatured });
+      } else {
+        await adminApi.updateClinic(row.id, { ...row, isFeatured: newFeatured });
+      }
+
+      // Sync platform setting key
+      const currentSettings = await adminApi.getSettings();
+      const existingList = currentSettings.find?.((s) => s.key === settingKey)?.value || [];
+      let updatedList = Array.isArray(existingList) ? [...existingList] : [];
+      if (newFeatured) {
+        if (!updatedList.includes(row.id)) updatedList.push(row.id);
+      } else {
+        updatedList = updatedList.filter((id) => id !== row.id);
+      }
+      await adminApi.setSetting(settingKey, updatedList);
+
+      // Save locally for instant live reflection on homepage
+      localStorage.setItem(`oshud_${settingKey}`, JSON.stringify(updatedList));
+
+      addToast(
+        newFeatured
+          ? `⭐ ${row.fullName || row.name} is now FEATURED on the Home Page!`
+          : `${row.fullName || row.name} removed from featured section.`,
+        'success'
+      );
+      await loadData();
+    } catch (err) {
+      addToast('Failed to update featured status', 'error');
+    }
+  };
+
+  // Open Edit Modal
+  const handleOpenEdit = (row, type) => {
+    setItemToEdit({ ...row, entityType: type });
+    setEditFormData({
+      id: row.id,
+      userId: row.userId || row.user?.id || row.id,
+      fullName: row.fullName || row.name || row.user?.fullName || '',
+      name: row.name || row.fullName || '',
+      email: row.email || row.user?.email || '',
+      phone: row.phone || row.user?.phone || '',
+      imageUrl: row.imageUrl || row.user?.imageUrl || '',
+      address: row.line1 || row.address || '',
+      city: row.city || 'Kolkata',
+      state: row.state || 'West Bengal',
+      pincode: row.pincode || '700064',
+      // Doctor
+      specialization: row.specializations?.[0]?.specialization?.name || row.specialization || 'General Physician',
+      qualifications: row.qualifications || 'MBBS',
+      registrationNumber: row.registrationNumber || '',
+      experienceYears: String(row.experienceYears || '5'),
+      consultationFee: String(((row.consultationFeePaise || 50000) / 100).toFixed(0)),
+      // Clinic
+      chamberCount: row.settings?.chamberCount || row.chamberCount || '6 Chambers',
+      // Pharmacy
+      licenseNumber: row.licenseNumber || '',
+      // Rider
+      vehicleType: row.vehicleType || 'Motorcycle',
+      vehicleNumber: row.vehicleNumber || '',
+      licenseNo: row.licenseNumber || '',
+    });
+    setIsEditModalOpen(true);
+  };
+
+  // Submit Edit Entity
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!itemToEdit) return;
+    setIsSubmitting(true);
+
+    try {
+      const type = itemToEdit.entityType;
+      const targetId = itemToEdit.id;
+
+      if (type === 'doctors') {
+        await adminApi.updateDoctor(targetId, {
+          fullName: editFormData.fullName,
+          email: editFormData.email,
+          phone: editFormData.phone.replace(/[^0-9]/g, ''),
+          imageUrl: editFormData.imageUrl,
+          specialization: editFormData.specialization,
+          qualifications: editFormData.qualifications,
+          registrationNumber: editFormData.registrationNumber,
+          experienceYears: Number(editFormData.experienceYears) || 0,
+          consultationFeePaise: (Number(editFormData.consultationFee) || 500) * 100,
+        });
+        addToast(`Doctor ${editFormData.fullName} details updated successfully!`, 'success');
+      } else if (type === 'pharmacies') {
+        await adminApi.updatePharmacy(targetId, {
+          name: editFormData.name,
+          email: editFormData.email,
+          phone: editFormData.phone.replace(/[^0-9]/g, ''),
+          imageUrl: editFormData.imageUrl,
+          licenseNumber: editFormData.licenseNumber,
+          line1: editFormData.address,
+          city: editFormData.city,
+          state: editFormData.state,
+          pincode: editFormData.pincode,
+        });
+        addToast(`Pharmacy "${editFormData.name}" updated successfully!`, 'success');
+      } else if (type === 'clinics') {
+        await adminApi.updateClinic(targetId, {
+          name: editFormData.name,
+          email: editFormData.email,
+          phone: editFormData.phone.replace(/[^0-9]/g, ''),
+          imageUrl: editFormData.imageUrl,
+          chamberCount: editFormData.chamberCount,
+          line1: editFormData.address,
+          city: editFormData.city,
+          state: editFormData.state,
+          pincode: editFormData.pincode,
+        });
+        addToast(`Clinic "${editFormData.name}" updated successfully!`, 'success');
+      } else if (type === 'riders') {
+        await adminApi.updateRider(targetId, {
+          fullName: editFormData.fullName,
+          email: editFormData.email,
+          phone: editFormData.phone.replace(/[^0-9]/g, ''),
+          imageUrl: editFormData.imageUrl,
+          vehicleType: editFormData.vehicleType,
+          vehicleNumber: editFormData.vehicleNumber,
+          licenseNumber: editFormData.licenseNo,
+          city: editFormData.city,
+        });
+        addToast(`Rider ${editFormData.fullName} profile updated!`, 'success');
+      } else if (type === 'users') {
+        await adminApi.updateUser(targetId, {
+          fullName: editFormData.fullName,
+          email: editFormData.email,
+          phone: editFormData.phone.replace(/[^0-9]/g, ''),
+          imageUrl: editFormData.imageUrl,
+        });
+        addToast(`Patient ${editFormData.fullName} profile updated!`, 'success');
+      }
+
+      setIsEditModalOpen(false);
+      setItemToEdit(null);
+      await loadData();
+    } catch (err) {
+      addToast(err.message || 'Failed to update details.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Submit Add Entity
   const handleAddSubmit = async (e) => {
     e.preventDefault();
@@ -145,6 +393,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: formData.email,
           phone: formData.phone.replace(/[^0-9]/g, ''),
           password: formData.password,
+          imageUrl: formData.imageUrl,
           registrationNumber: formData.registrationNumber,
           qualifications: formData.qualifications,
           experienceYears: Number(formData.experienceYears) || 0,
@@ -154,13 +403,14 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         };
         const created = await adminApi.createDoctor(payload);
         setDoctors((prev) => [created, ...prev]);
-        addToast(`Doctor ${created.fullName} registered! Dedicated login profile active.`, 'success');
+        addToast(`Doctor ${created.fullName} registered with photo! Profile active.`, 'success');
       } else if (activeTab === 'pharmacies') {
         const payload = {
           name: formData.name,
           email: formData.email,
           phone: formData.phone.replace(/[^0-9]/g, ''),
           password: formData.password,
+          imageUrl: formData.imageUrl,
           ownerName: formData.ownerName || formData.fullName,
           licenseNumber: formData.licenseNumber,
           line1: formData.address,
@@ -177,6 +427,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: formData.email,
           phone: formData.phone.replace(/[^0-9]/g, ''),
           password: formData.password,
+          imageUrl: formData.imageUrl,
           managerName: formData.managerName || formData.fullName,
           line1: formData.address,
           city: formData.city,
@@ -193,6 +444,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: formData.email,
           phone: formData.phone.replace(/[^0-9]/g, ''),
           password: formData.password,
+          imageUrl: formData.imageUrl,
           vehicleType: formData.vehicleType,
           vehicleNumber: formData.vehicleNumber,
           licenseNumber: formData.licenseNo,
@@ -215,6 +467,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         city: 'Kolkata',
         state: 'West Bengal',
         pincode: '700064',
+        imageUrl: '',
         registrationNumber: '',
         qualifications: '',
         experienceYears: '5',
@@ -229,10 +482,45 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         vehicleNumber: '',
         licenseNo: '',
       });
-      // Refresh real backend data
       await loadData();
     } catch (err) {
       addToast(err.message || 'Failed to create profile. Please check the entered data.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Submit Assign Doctor to Clinic
+  const handleAssignSubmit = async (e) => {
+    e.preventDefault();
+    if (!assignData.clinicId || !assignData.doctorId) {
+      addToast('Please select both a Clinic and a Doctor.', 'error');
+      return;
+    }
+    setIsSubmitting(true);
+
+    try {
+      const selectedClinic = clinics.find((c) => c.id === assignData.clinicId);
+      const selectedDoc = doctors.find((d) => d.id === assignData.doctorId);
+
+      await adminApi.assignDoctorToClinic({
+        clinicId: assignData.clinicId,
+        doctorId: assignData.doctorId,
+        consultationFeePaise: (Number(assignData.consultationFee) || 500) * 100,
+        chamberNo: assignData.chamberNo,
+        availableDays: assignData.availableDays,
+        timeSlot: assignData.timeSlot,
+        maxPatients: Number(assignData.maxPatients) || 25,
+      });
+
+      addToast(
+        `Doctor ${selectedDoc?.fullName || 'Doctor'} assigned to ${selectedClinic?.name || 'Clinic'} (${assignData.chamberNo})!`,
+        'success'
+      );
+      setIsAssignModalOpen(false);
+      await loadData();
+    } catch (err) {
+      addToast(err.message || 'Failed to assign doctor.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -292,15 +580,24 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
   const clinicColumns = [
     {
-      header: 'Clinic Name & Chambers',
+      header: 'Clinic & Photo',
       key: 'name',
       render: (row) => (
-        <div>
-          <p className="font-bold text-xs text-forest-900">{row.name}</p>
-          <p className="text-[11px] text-brandText-secondary">{row.line1 || row.address}, {row.city}</p>
-          <span className="inline-block mt-0.5 text-[10px] font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded">
-            {row.settings?.chamberCount || row.chamberCount || '6 Chambers'}
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
+            {row.imageUrl ? (
+              <img src={row.imageUrl} alt={row.name} className="w-full h-full object-cover" />
+            ) : (
+              <Building2 className="w-5 h-5 text-forest-700" />
+            )}
+          </div>
+          <div>
+            <p className="font-bold text-xs text-forest-900">{row.name}</p>
+            <p className="text-[11px] text-brandText-secondary">{row.line1 || row.address}, {row.city}</p>
+            <span className="inline-block mt-0.5 text-[10px] font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded">
+              {row.settings?.chamberCount || row.chamberCount || '6 Chambers'}
+            </span>
+          </div>
         </div>
       ),
     },
@@ -324,47 +621,110 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       render: (row) => <span className="text-xs">{row.city} &bull; {row.pincode}</span>,
     },
     {
-      header: 'Status',
-      key: 'status',
-      render: (row) => <StatusBadge status={row.status || 'ACTIVE'} />,
-    },
-    {
-      header: 'Action',
-      key: 'action',
-      align: 'right',
+      header: 'Featured on Home',
+      key: 'featured',
       render: (row) => (
         <button
           type="button"
-          onClick={() =>
-            setItemToDelete({
-              id: row.id,
-              userId: row.manager?.id || row.userId || row.staff?.[0]?.user?.id || row.id,
-              name: row.name,
-              type: 'clinics',
-            })
-          }
-          className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
-          title="Remove Clinic"
+          onClick={() => handleToggleFeatured(row, 'clinics')}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+            row.isFeatured
+              ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+              : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+          }`}
+          title="Toggle visibility on patient home page"
         >
-          <Trash2 className="w-4 h-4" />
+          <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+          <span>{row.isFeatured ? 'Featured' : 'Standard'}</span>
         </button>
       ),
+    },
+    {
+      header: 'Status & Deadline',
+      key: 'status',
+      render: (row) => (
+        <div>
+          <StatusBadge status={row.status || 'ACTIVE'} />
+          {getDeadlineBadge(row)}
+        </div>
+      ),
+    },
+    {
+      header: 'Actions',
+      key: 'action',
+      align: 'right',
+      render: (row) => {
+        const isDeactivated = row.status === 'DEACTIVATED';
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {/* Activate / Deactivate (30d) */}
+            <button
+              type="button"
+              onClick={() => handleToggleStatus(row, 'clinics')}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+                isDeactivated
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+              }`}
+              title={isDeactivated ? 'Activate Clinic' : 'Deactivate with 30-day purge deadline'}
+            >
+              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+            </button>
+
+            {/* Edit */}
+            <button
+              type="button"
+              onClick={() => handleOpenEdit(row, 'clinics')}
+              className="p-1.5 text-forest-700 hover:text-forest-900 hover:bg-forest-50 rounded-lg transition-colors"
+              title="Edit Clinic Details"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={() =>
+                setItemToDelete({
+                  id: row.id,
+                  userId: row.manager?.id || row.userId || row.staff?.[0]?.user?.id || row.id,
+                  name: row.name,
+                  type: 'clinics',
+                })
+              }
+              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
+              title="Remove Clinic"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
   const doctorColumns = [
     {
-      header: 'Doctor Name & Credentials',
+      header: 'Doctor & Photo',
       key: 'fullName',
       render: (row) => (
-        <div>
-          <p className="font-bold text-xs text-forest-900">{row.fullName}</p>
-          <p className="text-[11px] text-forest-700 font-medium">
-            {row.specializations?.[0]?.specialization?.name || row.specialization || 'General Physician'}
-          </p>
-          <p className="text-[10px] text-brandText-muted">
-            {row.qualifications || 'MBBS'} &bull; Reg: {row.registrationNumber || 'Verified'}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
+            {row.imageUrl ? (
+              <img src={row.imageUrl} alt={row.fullName} className="w-full h-full object-cover" />
+            ) : (
+              <Stethoscope className="w-5 h-5 text-forest-700" />
+            )}
+          </div>
+          <div>
+            <p className="font-bold text-xs text-forest-900">{row.fullName}</p>
+            <p className="text-[11px] text-forest-700 font-medium">
+              {row.specializations?.[0]?.specialization?.name || row.specialization || 'General Physician'}
+            </p>
+            <p className="text-[10px] text-brandText-muted">
+              {row.qualifications || 'MBBS'} &bull; Reg: {row.registrationNumber || 'Verified'}
+            </p>
+          </div>
         </div>
       ),
     },
@@ -391,43 +751,106 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       ),
     },
     {
-      header: 'Status',
-      key: 'status',
-      render: (row) => <StatusBadge status={row.user?.status || row.status || 'ACTIVE'} />,
-    },
-    {
-      header: 'Action',
-      key: 'action',
-      align: 'right',
+      header: 'Featured on Home',
+      key: 'featured',
       render: (row) => (
         <button
           type="button"
-          onClick={() =>
-            setItemToDelete({
-              id: row.id,
-              userId: row.userId || row.user?.id || row.id,
-              name: row.fullName,
-              type: 'doctors',
-            })
-          }
-          className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
-          title="Remove Doctor"
+          onClick={() => handleToggleFeatured(row, 'doctors')}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+            row.isFeatured
+              ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+              : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+          }`}
+          title="Toggle visibility in Featured Doctors on home page"
         >
-          <Trash2 className="w-4 h-4" />
+          <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+          <span>{row.isFeatured ? 'Featured' : 'Standard'}</span>
         </button>
       ),
+    },
+    {
+      header: 'Status & Deadline',
+      key: 'status',
+      render: (row) => (
+        <div>
+          <StatusBadge status={row.user?.status || row.status || 'ACTIVE'} />
+          {getDeadlineBadge(row)}
+        </div>
+      ),
+    },
+    {
+      header: 'Actions',
+      key: 'action',
+      align: 'right',
+      render: (row) => {
+        const isDeactivated = (row.user?.status || row.status) === 'DEACTIVATED';
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {/* Activate / Deactivate (30d) */}
+            <button
+              type="button"
+              onClick={() => handleToggleStatus(row, 'doctors')}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+                isDeactivated
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+              }`}
+              title={isDeactivated ? 'Activate Doctor' : 'Deactivate with 30-day purge deadline'}
+            >
+              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+            </button>
+
+            {/* Edit */}
+            <button
+              type="button"
+              onClick={() => handleOpenEdit(row, 'doctors')}
+              className="p-1.5 text-forest-700 hover:text-forest-900 hover:bg-forest-50 rounded-lg transition-colors"
+              title="Edit Doctor Details"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={() =>
+                setItemToDelete({
+                  id: row.id,
+                  userId: row.userId || row.user?.id || row.id,
+                  name: row.fullName,
+                  type: 'doctors',
+                })
+              }
+              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
+              title="Remove Doctor"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
   const pharmacyColumns = [
     {
-      header: 'Pharmacy Name',
+      header: 'Pharmacy & Photo',
       key: 'name',
       render: (row) => (
-        <div>
-          <p className="font-bold text-xs text-forest-900">{row.name}</p>
-          <p className="text-[11px] text-brandText-muted">License: {row.licenseNumber || 'Verified'}</p>
-          <p className="text-[10px] text-brandText-secondary">{row.line1}, {row.city}</p>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
+            {row.imageUrl ? (
+              <img src={row.imageUrl} alt={row.name} className="w-full h-full object-cover" />
+            ) : (
+              <Building2 className="w-5 h-5 text-forest-700" />
+            )}
+          </div>
+          <div>
+            <p className="font-bold text-xs text-forest-900">{row.name}</p>
+            <p className="text-[11px] text-brandText-muted">License: {row.licenseNumber || 'Verified'}</p>
+            <p className="text-[10px] text-brandText-secondary">{row.line1}, {row.city}</p>
+          </div>
         </div>
       ),
     },
@@ -451,45 +874,89 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       render: (row) => <span className="text-xs">{row.city}, {row.state || 'West Bengal'}</span>,
     },
     {
-      header: 'Status',
+      header: 'Status & Deadline',
       key: 'status',
-      render: (row) => <StatusBadge status={row.status || 'ACTIVE'} />,
+      render: (row) => (
+        <div>
+          <StatusBadge status={row.status || 'ACTIVE'} />
+          {getDeadlineBadge(row)}
+        </div>
+      ),
     },
     {
-      header: 'Action',
+      header: 'Actions',
       key: 'action',
       align: 'right',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() =>
-            setItemToDelete({
-              id: row.id,
-              userId: row.owner?.id || row.userId || row.staff?.[0]?.user?.id || row.id,
-              name: row.name,
-              type: 'pharmacies',
-            })
-          }
-          className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
-          title="Remove Pharmacy"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      ),
+      render: (row) => {
+        const isDeactivated = row.status === 'DEACTIVATED';
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {/* Activate / Deactivate (30d) */}
+            <button
+              type="button"
+              onClick={() => handleToggleStatus(row, 'pharmacies')}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+                isDeactivated
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+              }`}
+              title={isDeactivated ? 'Activate Pharmacy' : 'Deactivate with 30-day purge deadline'}
+            >
+              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+            </button>
+
+            {/* Edit */}
+            <button
+              type="button"
+              onClick={() => handleOpenEdit(row, 'pharmacies')}
+              className="p-1.5 text-forest-700 hover:text-forest-900 hover:bg-forest-50 rounded-lg transition-colors"
+              title="Edit Pharmacy Details"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={() =>
+                setItemToDelete({
+                  id: row.id,
+                  userId: row.owner?.id || row.userId || row.staff?.[0]?.user?.id || row.id,
+                  name: row.name,
+                  type: 'pharmacies',
+                })
+              }
+              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
+              title="Remove Pharmacy"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
   const riderColumns = [
     {
-      header: 'Rider Name & Vehicle',
+      header: 'Rider & Photo',
       key: 'name',
       render: (row) => (
-        <div>
-          <p className="font-bold text-xs text-forest-900">{row.user?.fullName || row.fullName || 'Rider'}</p>
-          <p className="text-[11px] text-forest-700 font-medium">
-            {row.vehicleType || 'Motorcycle'} &bull; {row.vehicleNumber || 'Reg Pending'}
-          </p>
-          <p className="text-[10px] text-brandText-muted">DL: {row.licenseNumber || 'Verified'}</p>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
+            {row.imageUrl ? (
+              <img src={row.imageUrl} alt={row.fullName} className="w-full h-full object-cover" />
+            ) : (
+              <Bike className="w-5 h-5 text-forest-700" />
+            )}
+          </div>
+          <div>
+            <p className="font-bold text-xs text-forest-900">{row.user?.fullName || row.fullName || 'Rider'}</p>
+            <p className="text-[11px] text-forest-700 font-medium">
+              {row.vehicleType || 'Motorcycle'} &bull; {row.vehicleNumber || 'Reg Pending'}
+            </p>
+            <p className="text-[10px] text-brandText-muted">DL: {row.licenseNumber || 'Verified'}</p>
+          </div>
         </div>
       ),
     },
@@ -504,44 +971,88 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       ),
     },
     {
-      header: 'Fleet Status',
+      header: 'Status & Deadline',
       key: 'status',
-      render: (row) => <StatusBadge status={row.status || 'AVAILABLE'} />,
+      render: (row) => (
+        <div>
+          <StatusBadge status={row.status || 'AVAILABLE'} />
+          {getDeadlineBadge(row)}
+        </div>
+      ),
     },
     {
-      header: 'Action',
+      header: 'Actions',
       key: 'action',
       align: 'right',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() =>
-            setItemToDelete({
-              id: row.id,
-              userId: row.userId || row.user?.id || row.id,
-              name: row.user?.fullName || row.fullName || 'Rider',
-              type: 'riders',
-            })
-          }
-          className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
-          title="Remove Rider"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      ),
+      render: (row) => {
+        const isDeactivated = row.status === 'DEACTIVATED';
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {/* Activate / Deactivate (30d) */}
+            <button
+              type="button"
+              onClick={() => handleToggleStatus(row, 'riders')}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+                isDeactivated
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+              }`}
+              title={isDeactivated ? 'Activate Rider' : 'Deactivate with 30-day purge deadline'}
+            >
+              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+            </button>
+
+            {/* Edit */}
+            <button
+              type="button"
+              onClick={() => handleOpenEdit(row, 'riders')}
+              className="p-1.5 text-forest-700 hover:text-forest-900 hover:bg-forest-50 rounded-lg transition-colors"
+              title="Edit Rider Details"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={() =>
+                setItemToDelete({
+                  id: row.id,
+                  userId: row.userId || row.user?.id || row.id,
+                  name: row.user?.fullName || row.fullName || 'Rider',
+                  type: 'riders',
+                })
+              }
+              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
+              title="Remove Rider"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
   const userColumns = [
     {
-      header: 'Patient Name',
+      header: 'Patient & Photo',
       key: 'fullName',
       render: (row) => (
-        <div>
-          <p className="font-bold text-xs text-forest-900">{row.fullName || 'Patient'}</p>
-          <span className="text-[10px] font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded uppercase">
-            PATIENT
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
+            {row.imageUrl ? (
+              <img src={row.imageUrl} alt={row.fullName} className="w-full h-full object-cover" />
+            ) : (
+              <User className="w-5 h-5 text-forest-700" />
+            )}
+          </div>
+          <div>
+            <p className="font-bold text-xs text-forest-900">{row.fullName || 'Patient'}</p>
+            <span className="text-[10px] font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded uppercase">
+              PATIENT
+            </span>
+          </div>
         </div>
       ),
     },
@@ -565,34 +1076,66 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       ),
     },
     {
-      header: 'Account Status',
+      header: 'Account Status & Deadline',
       key: 'status',
-      render: (row) => <StatusBadge status={row.status || 'ACTIVE'} />,
+      render: (row) => (
+        <div>
+          <StatusBadge status={row.status || 'ACTIVE'} />
+          {getDeadlineBadge(row)}
+        </div>
+      ),
     },
     {
-      header: 'Action',
+      header: 'Actions',
       key: 'action',
       align: 'right',
-      render: (row) =>
-        row.status !== 'DEACTIVATED' ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setItemToDelete({
-                id: row.id,
-                userId: row.id,
-                name: row.fullName || row.phone,
-                type: 'users',
-              })
-            }
-            className="text-xs py-1 text-rose-600 border-rose-200 hover:bg-rose-50"
-          >
-            Deactivate
-          </Button>
-        ) : (
-          <span className="text-[11px] text-rose-500 font-semibold">Deactivated</span>
-        ),
+      render: (row) => {
+        const isDeactivated = row.status === 'DEACTIVATED';
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            {/* Activate / Deactivate (30d) */}
+            <button
+              type="button"
+              onClick={() => handleToggleStatus(row, 'users')}
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+                isDeactivated
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+              }`}
+              title={isDeactivated ? 'Activate Patient' : 'Deactivate with 30-day purge deadline'}
+            >
+              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+            </button>
+
+            {/* Edit */}
+            <button
+              type="button"
+              onClick={() => handleOpenEdit(row, 'users')}
+              className="p-1.5 text-forest-700 hover:text-forest-900 hover:bg-forest-50 rounded-lg transition-colors"
+              title="Edit Patient Details"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
+
+            {/* Delete */}
+            <button
+              type="button"
+              onClick={() =>
+                setItemToDelete({
+                  id: row.id,
+                  userId: row.id,
+                  name: row.fullName || row.phone,
+                  type: 'users',
+                })
+              }
+              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
+              title="Delete Patient Profile"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -605,11 +1148,22 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
             Network Operations & Management
           </h1>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
-            Manage authenticated profiles for Clinics, Doctors, Pharmacists, Riders, and Patients across West Bengal.
+            Manage authenticated profiles, image avatars, 30-day deactivation deadlines, clinic assignments & featured displays.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Requirement 9: Assign Doctor to Clinic */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAssignModalOpen(true)}
+            leftIcon={Calendar}
+            className="text-xs border-forest-300 text-forest-800 hover:bg-forest-50 font-bold"
+          >
+            Assign Doctor to Clinic
+          </Button>
+
           <Button
             variant="outline"
             size="sm"
@@ -694,17 +1248,15 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Users / Patients ({users.length})</span>
+          <span>Patients ({users.length})</span>
         </button>
       </div>
 
-      {/* Active Tab Table Display */}
+      {/* Main Data Tables */}
       {isLoading ? (
-        <div className="p-12 text-center bg-surface-pure rounded-3xl border border-brandBorder-subtle space-y-3">
-          <div className="w-8 h-8 border-3 border-forest-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs font-semibold text-brandText-secondary">
-            Loading verified {activeTab} from database...
-          </p>
+        <div className="flex flex-col items-center justify-center p-12 bg-surface-pure rounded-3xl border border-brandBorder-subtle">
+          <RefreshCw className="w-8 h-8 text-forest-600 animate-spin mb-3" />
+          <p className="text-xs font-semibold text-brandText-secondary">Fetching real profiles from database...</p>
         </div>
       ) : (
         <>
@@ -713,7 +1265,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
               columns={clinicColumns}
               data={clinics}
               searchKey="name"
-              searchPlaceholder="Search clinic by name, address, or receptionist..."
+              searchPlaceholder="Search clinic by name or city..."
             />
           )}
 
@@ -722,7 +1274,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
               columns={doctorColumns}
               data={doctors}
               searchKey="fullName"
-              searchPlaceholder="Search doctor by name, qualification, or email..."
+              searchPlaceholder="Search doctor by name, qualification or specialization..."
             />
           )}
 
@@ -731,7 +1283,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
               columns={pharmacyColumns}
               data={pharmacies}
               searchKey="name"
-              searchPlaceholder="Search pharmacy by name, license, or area..."
+              searchPlaceholder="Search pharmacy store by name or license..."
             />
           )}
 
@@ -740,7 +1292,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
               columns={riderColumns}
               data={riders}
               searchKey="fullName"
-              searchPlaceholder="Search rider by name, vehicle number, or email..."
+              searchPlaceholder="Search rider by name, phone or vehicle..."
             />
           )}
 
@@ -756,7 +1308,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       )}
 
       {/* ============================================================== */}
-      {/* MODAL: ADD NEW ENTITY WITH DEDICATED EMAIL & PASSWORD          */}
+      {/* MODAL: ADD NEW ENTITY WITH IMAGE OPTION (Requirement 5)        */}
       {/* ============================================================== */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -785,7 +1337,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                       Add New {activeTab === 'clinics' ? 'Clinic & Receptionist' : activeTab === 'doctors' ? 'Doctor Profile' : activeTab === 'pharmacies' ? 'Pharmacy & Pharmacist' : 'Delivery Rider'}
                     </h2>
                     <p className="text-xs text-brandText-secondary">
-                      Create verified entity profile with dedicated login credentials.
+                      Create verified entity profile with photo and dedicated login credentials.
                     </p>
                   </div>
                 </div>
@@ -800,6 +1352,33 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
               {/* Form */}
               <form onSubmit={handleAddSubmit} className="mt-4 space-y-4">
+                {/* Image Upload / URL field with live preview */}
+                <div className="p-3 bg-surface-warm border border-brandBorder-subtle rounded-2xl flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-surface-pure border border-dashed border-forest-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {formData.imageUrl ? (
+                      <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Camera className="w-6 h-6 text-forest-600" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Profile / Store Image URL
+                    </label>
+                    <input
+                      type="url"
+                      name="imageUrl"
+                      value={formData.imageUrl}
+                      onChange={handleInputChange}
+                      placeholder="https://images.unsplash.com/... or image link"
+                      className="w-full px-3 py-1.5 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                    />
+                    <p className="text-[10px] text-brandText-muted mt-0.5">
+                      Enter direct image URL. Shown on patient home, search, and directory.
+                    </p>
+                  </div>
+                </div>
+
                 {/* 1. Name */}
                 {activeTab === 'clinics' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -976,6 +1555,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           <option value="Orthopedic">Orthopedic</option>
                           <option value="Gynecologist">Gynecologist</option>
                           <option value="ENT Specialist">ENT Specialist</option>
+                          <option value="Neurologist">Neurologist</option>
+                          <option value="Psychiatrist">Psychiatrist</option>
                         </select>
                       </div>
 
@@ -1162,7 +1743,496 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                     disabled={isSubmitting}
                     className="font-bold shadow-card px-5"
                   >
-                    Save & Create Login
+                    Save & Create Profile
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: EDIT ENTITY DETAILS (Requirement 6)                     */}
+      {/* ============================================================== */}
+      {isEditModalOpen && itemToEdit && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-forest-950/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsEditModalOpen(false)}
+          />
+          <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center">
+            <div className="w-full max-w-xl bg-surface-pure rounded-3xl p-6 sm:p-7 shadow-floating border border-brandBorder-subtle text-left relative overflow-hidden animate-scale-up my-6">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-brandBorder-subtle">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-forest-50 border border-forest-100 flex items-center justify-center text-forest-700">
+                    <Edit3 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-heading font-extrabold text-forest-800">
+                      Edit {itemToEdit.fullName || itemToEdit.name || 'Profile'}
+                    </h2>
+                    <p className="text-xs text-brandText-secondary">
+                      Update contact, images, credentials, and parameters.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="p-2 text-brandText-secondary hover:text-forest-700 hover:bg-forest-50 rounded-full"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleEditSubmit} className="mt-4 space-y-4">
+                {/* Image URL with live preview */}
+                <div className="p-3 bg-surface-warm border border-brandBorder-subtle rounded-2xl flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-surface-pure border border-dashed border-forest-300 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {editFormData.imageUrl ? (
+                      <img src={editFormData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <Camera className="w-6 h-6 text-forest-600" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Profile / Logo Image URL
+                    </label>
+                    <input
+                      type="url"
+                      name="imageUrl"
+                      value={editFormData.imageUrl || ''}
+                      onChange={handleEditInputChange}
+                      placeholder="https://images.unsplash.com/..."
+                      className="w-full px-3 py-1.5 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* Common fields: Name, Email, Phone */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      {itemToEdit.entityType === 'clinics' ? 'Clinic Name' : itemToEdit.entityType === 'pharmacies' ? 'Store Name' : 'Full Name'} *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      name={itemToEdit.entityType === 'clinics' || itemToEdit.entityType === 'pharmacies' ? 'name' : 'fullName'}
+                      value={itemToEdit.entityType === 'clinics' || itemToEdit.entityType === 'pharmacies' ? editFormData.name : editFormData.fullName}
+                      onChange={handleEditInputChange}
+                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Login Email Address *
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      name="email"
+                      value={editFormData.email || ''}
+                      onChange={handleEditInputChange}
+                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-brandText-main mb-1">
+                    Contact Phone Number (10 digits) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    name="phone"
+                    value={editFormData.phone || ''}
+                    onChange={handleEditInputChange}
+                    className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                  />
+                </div>
+
+                {/* Entity Specific Edit Fields */}
+                {itemToEdit.entityType === 'doctors' && (
+                  <div className="space-y-3 pt-2 border-t border-brandBorder-subtle">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Specialization</label>
+                        <select
+                          name="specialization"
+                          value={editFormData.specialization || 'General Physician'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        >
+                          <option value="General Physician">General Physician</option>
+                          <option value="Cardiologist">Cardiologist</option>
+                          <option value="Pediatrician">Pediatrician</option>
+                          <option value="Dermatologist">Dermatologist</option>
+                          <option value="Orthopedic">Orthopedic</option>
+                          <option value="Gynecologist">Gynecologist</option>
+                          <option value="ENT Specialist">ENT Specialist</option>
+                          <option value="Neurologist">Neurologist</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Qualifications</label>
+                        <input
+                          type="text"
+                          name="qualifications"
+                          value={editFormData.qualifications || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Reg Number</label>
+                        <input
+                          type="text"
+                          name="registrationNumber"
+                          value={editFormData.registrationNumber || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Experience (Yrs)</label>
+                        <input
+                          type="number"
+                          name="experienceYears"
+                          value={editFormData.experienceYears || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Chamber Fee (₹)</label>
+                        <input
+                          type="number"
+                          name="consultationFee"
+                          value={editFormData.consultationFee || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {(itemToEdit.entityType === 'clinics' || itemToEdit.entityType === 'pharmacies') && (
+                  <div className="space-y-3 pt-2 border-t border-brandBorder-subtle">
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">Address Line</label>
+                      <input
+                        type="text"
+                        name="address"
+                        value={editFormData.address || ''}
+                        onChange={handleEditInputChange}
+                        className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">City</label>
+                        <input
+                          type="text"
+                          name="city"
+                          value={editFormData.city || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Pincode</label>
+                        <input
+                          type="text"
+                          name="pincode"
+                          value={editFormData.pincode || ''}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">
+                          {itemToEdit.entityType === 'clinics' ? 'Chambers' : 'Drug License No.'}
+                        </label>
+                        <input
+                          type="text"
+                          name={itemToEdit.entityType === 'clinics' ? 'chamberCount' : 'licenseNumber'}
+                          value={itemToEdit.entityType === 'clinics' ? editFormData.chamberCount : editFormData.licenseNumber}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {itemToEdit.entityType === 'riders' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-brandBorder-subtle">
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">Vehicle Type</label>
+                      <select
+                        name="vehicleType"
+                        value={editFormData.vehicleType || 'Motorcycle'}
+                        onChange={handleEditInputChange}
+                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                      >
+                        <option value="Motorcycle">Motorcycle</option>
+                        <option value="Scooter">Scooter</option>
+                        <option value="EV Bike">EV Bike</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">Vehicle Number</label>
+                      <input
+                        type="text"
+                        name="vehicleNumber"
+                        value={editFormData.vehicleNumber || ''}
+                        onChange={handleEditInputChange}
+                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">City Zone</label>
+                      <input
+                        type="text"
+                        name="city"
+                        value={editFormData.city || ''}
+                        onChange={handleEditInputChange}
+                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Submit Actions */}
+                <div className="pt-3 border-t border-brandBorder-subtle flex items-center justify-end gap-2.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    isLoading={isSubmitting}
+                    disabled={isSubmitting}
+                    className="font-bold shadow-card px-5"
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: ASSIGN DOCTOR TO CLINIC (Requirement 9)                 */}
+      {/* ============================================================== */}
+      {isAssignModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-forest-950/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsAssignModalOpen(false)}
+          />
+          <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center">
+            <div className="w-full max-w-xl bg-surface-pure rounded-3xl p-6 sm:p-7 shadow-floating border border-brandBorder-subtle text-left relative overflow-hidden animate-scale-up my-6">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-brandBorder-subtle">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-forest-50 border border-forest-100 flex items-center justify-center text-forest-700">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-heading font-extrabold text-forest-800">
+                      Assign Doctor to Clinic Chamber
+                    </h2>
+                    <p className="text-xs text-brandText-secondary">
+                      Link verified doctors with clinic branches, schedule slots, and consultation fees.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsAssignModalOpen(false)}
+                  className="p-2 text-brandText-secondary hover:text-forest-700 hover:bg-forest-50 rounded-full"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleAssignSubmit} className="mt-4 space-y-4">
+                {/* 1. Clinic & Doctor Selection */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Select Clinic / Branch *
+                    </label>
+                    <select
+                      required
+                      value={assignData.clinicId}
+                      onChange={(e) => setAssignData({ ...assignData, clinicId: e.target.value })}
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    >
+                      <option value="">-- Choose Clinic --</option>
+                      {clinics.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.city})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Select Doctor *
+                    </label>
+                    <select
+                      required
+                      value={assignData.doctorId}
+                      onChange={(e) => setAssignData({ ...assignData, doctorId: e.target.value })}
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    >
+                      <option value="">-- Choose Doctor --</option>
+                      {doctors.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.fullName} ({d.specialization})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 2. Chamber & Fee */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Chamber Number
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={assignData.chamberNo}
+                      onChange={(e) => setAssignData({ ...assignData, chamberNo: e.target.value })}
+                      placeholder="e.g. Chamber 3"
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Consultation Fee (₹)
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      value={assignData.consultationFee}
+                      onChange={(e) => setAssignData({ ...assignData, consultationFee: e.target.value })}
+                      placeholder="500"
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Max Patients / Shift
+                    </label>
+                    <input
+                      type="number"
+                      value={assignData.maxPatients}
+                      onChange={(e) => setAssignData({ ...assignData, maxPatients: e.target.value })}
+                      placeholder="25"
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Shift Time Slot */}
+                <div>
+                  <label className="block text-xs font-semibold text-brandText-main mb-1">
+                    Consultation Shift Timing
+                  </label>
+                  <select
+                    value={assignData.timeSlot}
+                    onChange={(e) => setAssignData({ ...assignData, timeSlot: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                  >
+                    <option value="10:00 AM - 01:00 PM">Morning Shift (10:00 AM - 01:00 PM)</option>
+                    <option value="02:00 PM - 05:00 PM">Afternoon Shift (02:00 PM - 05:00 PM)</option>
+                    <option value="05:00 PM - 08:30 PM">Evening Shift (05:00 PM - 08:30 PM)</option>
+                    <option value="06:00 PM - 09:30 PM">Night Shift (06:00 PM - 09:30 PM)</option>
+                  </select>
+                </div>
+
+                {/* 4. Consultation Days */}
+                <div>
+                  <label className="block text-xs font-semibold text-brandText-main mb-1.5">
+                    Available Consultation Days
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
+                      const isSelected = assignData.availableDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            const newDays = isSelected
+                              ? assignData.availableDays.filter((d) => d !== day)
+                              : [...assignData.availableDays, day];
+                            setAssignData({ ...assignData, availableDays: newDays });
+                          }}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                            isSelected
+                              ? 'bg-forest-800 text-white shadow-sm'
+                              : 'bg-surface-warm text-brandText-secondary hover:bg-forest-50 border border-brandBorder-subtle'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="pt-3 border-t border-brandBorder-subtle flex items-center justify-end gap-2.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsAssignModalOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    isLoading={isSubmitting}
+                    disabled={isSubmitting}
+                    className="font-bold shadow-card px-5"
+                  >
+                    Confirm Doctor Assignment
                   </Button>
                 </div>
               </form>
@@ -1192,7 +2262,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                   </h3>
                   <p className="text-xs text-brandText-secondary mt-1">
                     Are you sure you want to remove <strong className="text-rose-700">{itemToDelete.name}</strong>?
-                    This will revoke their access and deactivate the associated workspace credentials.
+                    This will permanently revoke their access and deactivate the associated workspace credentials.
                   </p>
                 </div>
               </div>

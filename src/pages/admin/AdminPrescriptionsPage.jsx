@@ -64,21 +64,31 @@ export const AdminPrescriptionsPage = () => {
       ),
     },
     {
-      header: 'Doctor & Clinic',
-      key: 'doctorName',
+      header: 'Prescription Document',
+      key: 'imageUrl',
       render: (row) => (
-        <div>
-          <p className="font-semibold text-xs text-forest-900">{row.doctorName}</p>
-          <p className="text-[11px] text-brandText-muted">{row.clinicName}</p>
+        <div className="flex items-center gap-2">
+          {row.imageUrl ? (
+            <img
+              src={row.imageUrl}
+              alt="Rx"
+              className="w-10 h-10 rounded-xl object-cover border border-brandBorder-subtle shadow-sm"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-xl bg-forest-50 text-forest-700 flex items-center justify-center font-bold text-xs">
+              Rx
+            </div>
+          )}
+          <span className="text-xs font-semibold text-forest-800">Uploaded Document</span>
         </div>
       ),
     },
     {
-      header: 'Medicines Extracted',
-      key: 'extractedMedicines',
+      header: 'Audit Notes',
+      key: 'notes',
       render: (row) => (
-        <span className="text-xs font-bold text-forest-700 bg-forest-50 px-2.5 py-1 rounded-full border border-forest-100">
-          {row.extractedMedicines.length} Medicines
+        <span className="text-xs text-brandText-secondary line-clamp-1 max-w-xs">
+          {row.notes || 'Pending CDSCO schedule compliance verification'}
         </span>
       ),
     },
@@ -150,35 +160,22 @@ export const AdminPrescriptionsPage = () => {
               />
             </div>
 
-            {/* Doctor & Clinic */}
+            {/* Patient & Prescription Details */}
             <div className="p-3.5 rounded-xl bg-forest-50/60 border border-forest-100 space-y-1 text-xs">
-              <p className="font-bold text-forest-900">{selectedRx.doctorName}</p>
-              <p className="text-brandText-secondary">{selectedRx.clinicName}</p>
-              <p className="text-[11px] text-brandText-muted">Prescribed Date: {selectedRx.rxDate}</p>
-            </div>
-
-            {/* Extracted Medicines */}
-            <div className="space-y-2">
-              <h3 className="font-heading font-bold text-xs text-forest-900 uppercase tracking-wider">
-                Extracted Items for Dispensation
-              </h3>
-              <div className="divide-y divide-brandBorder-subtle border border-brandBorder-subtle rounded-xl text-xs">
-                {selectedRx.extractedMedicines.map((med, idx) => (
-                  <div key={idx} className="p-3 flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-forest-900">{med.name}</p>
-                      <p className="text-[11px] text-brandText-muted">{med.dosage}</p>
-                    </div>
-                    <span className="font-semibold text-forest-800">Qty: {med.qty}</span>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-forest-900">{selectedRx.patientName}</span>
+                <span className="text-[10px] font-bold text-forest-700 bg-forest-100 px-2 py-0.5 rounded-full">
+                  {selectedRx.patientGender}, {selectedRx.patientAge} years
+                </span>
               </div>
+              <p className="text-brandText-secondary">Contact: {selectedRx.patientPhone}</p>
+              <p className="text-[11px] text-brandText-muted">Submitted: {selectedRx.submittedAt || selectedRx.rxDate}</p>
             </div>
 
             {/* Compliance Notes */}
             <div className="p-3 bg-surface-warm rounded-xl border border-brandBorder-subtle text-xs">
-              <p className="font-bold text-forest-900">Audit Notes:</p>
-              <p className="text-brandText-secondary mt-0.5">{selectedRx.notes}</p>
+              <p className="font-bold text-forest-900">Compliance & Audit Notes:</p>
+              <p className="text-brandText-secondary mt-0.5">{selectedRx.notes || 'Prescription uploaded for pharmacist dispensation audit.'}</p>
             </div>
           </div>
         )}

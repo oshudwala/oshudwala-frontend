@@ -816,6 +816,209 @@ export const adminApi = {
 
     return { success: true, id };
   },
+
+  // ================= PLATFORM SETTINGS =================
+  async getSettings() {
+    try {
+      const response = await apiClient.get('/admin/settings');
+      return response.data?.data || response.data || [];
+    } catch (err) {
+      console.warn('Backend getSettings notice:', err.message);
+      try {
+        const raw = localStorage.getItem('oshud_platform_settings');
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    }
+  },
+
+  async setSetting(key, value) {
+    let saved = null;
+    try {
+      const response = await apiClient.post('/admin/settings', { key, value });
+      saved = response.data?.data || response.data;
+    } catch (err) {
+      console.warn('Backend setSetting notice:', err.message);
+    }
+
+    try {
+      const current = await this.getSettings();
+      const arr = Array.isArray(current) ? [...current] : [];
+      const idx = arr.findIndex((s) => s.key === key);
+      const entry = { key, value, updatedAt: new Date().toISOString() };
+      if (idx >= 0) arr[idx] = entry;
+      else arr.push(entry);
+      localStorage.setItem('oshud_platform_settings', JSON.stringify(arr));
+    } catch {}
+
+    return saved || { key, value };
+  },
+
+  // ================= ENTITY STATUS & DEACTIVATION (30-DAY DEADLINE) =================
+  async setStatus(id, roleName, status) {
+    const purgeDeadline = status === 'DEACTIVATED' ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null;
+    try {
+      await apiClient.put(`/admin/users/${id}/access`, {
+        roleName: roleName || 'PATIENT',
+        status,
+      });
+    } catch (err) {
+      console.warn('Backend update status notice:', err.message);
+    }
+
+    // Save in accountRegistry
+    accountRegistry.setAccountStatus(id, status, purgeDeadline);
+
+    return { id, status, purgeDeadline };
+  },
+
+  // ================= ENTITY EDIT / UPDATE =================
+  async updateDoctor(id, data) {
+    try {
+      await apiClient.put(`/doctors/${id}`, data);
+    } catch (err) {
+      console.warn('Backend update doctor notice:', err.message);
+    }
+    accountRegistry.updateAccount(id, {
+      fullName: data.fullName,
+      email: data.email,
+      phone: data.phone,
+      imageUrl: data.imageUrl,
+      isFeatured: data.isFeatured,
+      entityData: {
+        specialization: data.specialization,
+        qualifications: data.qualifications,
+        registrationNumber: data.registrationNumber,
+        experienceYears: Number(data.experienceYears) || 0,
+        consultationFeePaise: Number(data.consultationFeePaise) || 50000,
+        imageUrl: data.imageUrl,
+        isFeatured: data.isFeatured,
+      },
+    });
+    return { id, ...data };
+  },
+
+  async updatePharmacy(id, data) {
+    try {
+      await apiClient.put(`/admin/pharmacies/${id}`, data);
+    } catch (err) {
+      console.warn('Backend update pharmacy notice:', err.message);
+    }
+    accountRegistry.updateAccount(id, {
+      fullName: data.name,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      imageUrl: data.imageUrl,
+      entityData: {
+        name: data.name,
+        licenseNumber: data.licenseNumber,
+        line1: data.line1 || data.address,
+        city: data.city,
+        state: data.state,
+        pincode: data.pincode,
+        imageUrl: data.imageUrl,
+      },
+    });
+    return { id, ...data };
+  },
+
+  async updateClinic(id, data) {
+    try {
+      await apiClient.put(`/admin/clinics/${id}`, data);
+    } catch (err) {
+      console.warn('Backend update clinic notice:', err.message);
+    }
+    accountRegistry.updateAccount(id, {
+      fullName: data.name,
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      imageUrl: data.imageUrl,
+      isFeatured: data.isFeatured,
+      entityData: {
+        name: data.name,
+        chamberCount: data.chamberCount,
+        line1: data.line1 || data.address,
+        city: data.city,
+        state: data.state,
+        pincode: data.pincode,
+        imageUrl: data.imageUrl,
+        isFeatured: data.isFeatured,
+      },
+    });
+    return { id, ...data };
+  },
+
+  async updateRider(id, data) {
+    try {
+      await apiClient.put(`/admin/riders/${id}`, data);
+    } catch (err) {
+      console.warn('Backend update rider notice:', err.message);
+    }
+    accountRegistry.updateAccount(id, {
+      fullName: data.fullName,
+      email: data.email,
+      phone: data.phone,
+      imageUrl: data.imageUrl,
+      entityData: {
+        vehicleType: data.vehicleType,
+        vehicleNumber: data.vehicleNumber,
+        licenseNumber: data.licenseNumber,
+        city: data.city,
+        imageUrl: data.imageUrl,
+      },
+    });
+    return { id, ...data };
+  },
+
+  async updateUser(id, data) {
+    try {
+      await apiClient.put(`/admin/users/${id}/access`, {
+        roleName: 'PATIENT',
+        status: data.status || 'ACTIVE',
+      });
+    } catch (err) {
+      console.warn('Backend update user notice:', err.message);
+    }
+    accountRegistry.updateAccount(id, {
+      fullName: data.fullName,
+      email: data.email,
+      phone: data.phone,
+      imageUrl: data.imageUrl,
+    });
+    return { id, ...data };
+  },
+
+  // ================= ASSIGN DOCTOR TO CLINIC =================
+  async assignDoctorToClinic(payload) {
+    try {
+      const response = await apiClient.post('/doctors/assign', {
+        pharmacyId: payload.clinicId || payload.pharmacyId,
+        doctorId: payload.doctorId,
+        consultationFeePaise: Number(payload.consultationFeePaise) || 50000,
+        chamberNo: payload.chamberNo || 'Chamber 1',
+        availableDays: payload.availableDays || ['Mon', 'Wed', 'Fri'],
+        timeSlot: payload.timeSlot || '10:00 AM - 01:00 PM',
+      });
+      return response.data?.data || response.data;
+    } catch (err) {
+      console.warn('Backend assign doctor notice:', err.message);
+      // Persist in local assignments store
+      try {
+        const raw = localStorage.getItem('oshud_clinic_doctor_assignments');
+        const assignments = raw ? JSON.parse(raw) : [];
+        assignments.unshift({
+          id: `assign_${Date.now()}`,
+          ...payload,
+          createdAt: new Date().toISOString(),
+        });
+        localStorage.setItem('oshud_clinic_doctor_assignments', JSON.stringify(assignments));
+      } catch {}
+      return { success: true, ...payload };
+    }
+  },
 };
 
 export default adminApi;

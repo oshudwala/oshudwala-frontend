@@ -25,6 +25,8 @@ import {
   Activity,
   History,
   UserPlus,
+  Sliders,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -60,6 +62,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             items: [
               { label: 'Orders', path: '/admin/orders', icon: ShoppingBag, badge: pendingOrdersCount },
               { label: 'Prescriptions', path: '/admin/prescriptions', icon: FileText, badge: pendingRxCount },
+              { label: 'Appointments Tracker', path: '/admin/appointments', icon: CalendarCheck },
             ],
           },
           {
@@ -70,6 +73,13 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
               { label: 'Pharmacists', path: '/admin/pharmacies', icon: Building2 },
               { label: 'Riders', path: '/admin/riders', icon: Bike },
               { label: 'Users (Patients)', path: '/admin/users', icon: Users },
+            ],
+          },
+          {
+            title: 'Platform Controls',
+            items: [
+              { label: 'Patient Home Controls', path: '/admin/homepage-controls', icon: Sliders },
+              { label: 'Booking Rules', path: '/admin/booking-rules', icon: ShieldCheck },
             ],
           },
           {

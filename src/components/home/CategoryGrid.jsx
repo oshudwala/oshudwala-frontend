@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { parentCategories, categoryItemsByParent, categoryCardsData } from '../../data/categoriesData';
@@ -7,10 +7,34 @@ import { useLanguage } from '../../context/LanguageContext';
 export const CategoryGrid = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [categoriesList, setCategoriesList] = useState(parentCategories);
+  const [itemsMap, setItemsMap] = useState(categoryItemsByParent);
   const [activeParentTab, setActiveParentTab] = useState('personal-care');
 
+  useEffect(() => {
+    try {
+      const rawCats = localStorage.getItem('oshud_homepage_categories');
+      if (rawCats) {
+        const parsed = JSON.parse(rawCats);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCategoriesList(parsed);
+          if (parsed[0]?.id) {
+            setActiveParentTab(parsed[0].id);
+          }
+        }
+      }
+      const rawItems = localStorage.getItem('oshud_homepage_category_items');
+      if (rawItems) {
+        const parsed = JSON.parse(rawItems);
+        if (parsed && typeof parsed === 'object') {
+          setItemsMap(parsed);
+        }
+      }
+    } catch {}
+  }, []);
+
   // Dynamically filter cards based on the selected parent category tab
-  const currentCards = categoryItemsByParent[activeParentTab] || categoryCardsData;
+  const currentCards = itemsMap[activeParentTab] || categoryItemsByParent[activeParentTab] || categoryCardsData;
 
   const getParentCategoryName = (parent) => {
     const keyMap = {
@@ -50,7 +74,7 @@ export const CategoryGrid = () => {
       {/* TOP BAR: Horizontal Master Category Tabs (Like Reference Image) */}
       <div className="border-b border-brandBorder-subtle/80 pb-2 sm:pb-3 mb-3.5 sm:mb-6">
         <div className="flex gap-4 sm:gap-8 overflow-x-auto no-scrollbar scroll-smooth">
-          {parentCategories.map((parent) => {
+          {categoriesList.map((parent) => {
             const isActive = activeParentTab === parent.id;
             return (
               <button

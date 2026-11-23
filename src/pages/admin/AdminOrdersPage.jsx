@@ -12,6 +12,11 @@ import {
   Printer,
   ChevronRight,
   ExternalLink,
+  Calendar,
+  Tag,
+  Receipt,
+  Sparkles,
+  Filter,
 } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
@@ -20,6 +25,7 @@ import ConfirmationModal from '../../components/workspace/ConfirmationModal';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
+import { calculateOrderBill } from '../../services/pricingRules';
 
 export const AdminOrdersPage = () => {
   const { orders, riders, updateOrderStatus, assignRider } = useWorkspaceStore();
@@ -29,6 +35,10 @@ export const AdminOrdersPage = () => {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedRiderId, setSelectedRiderId] = useState('');
 
+  // Date Filtering State (Requirement 3)
+  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+  const [customDate, setCustomDate] = useState('');
+
   const filterOptions = [
     { label: 'Pending', value: 'PENDING' },
     { label: 'Preparing', value: 'PREPARING' },
@@ -36,6 +46,33 @@ export const AdminOrdersPage = () => {
     { label: 'Out for Delivery', value: 'OUT_FOR_DELIVERY' },
     { label: 'Delivered', value: 'DELIVERED' },
   ];
+
+  // Apply Date Filtering
+  const todayStr = new Date().toDateString();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toDateString();
+
+  const filteredOrders = orders.filter((order) => {
+    if (dateFilter === 'all') return true;
+    const orderDate = new Date(order.createdAt || Date.now());
+
+    if (dateFilter === 'today') return orderDate.toDateString() === todayStr;
+    if (dateFilter === 'yesterday') return orderDate.toDateString() === yesterdayStr;
+    if (dateFilter === 'week') {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return orderDate >= weekAgo;
+    }
+    if (dateFilter === 'month') {
+      const now = new Date();
+      return orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear();
+    }
+    if (dateFilter === 'custom' && customDate) {
+      return orderDate.toISOString().split('T')[0] === customDate;
+    }
+    return true;
+  });
 
   const handleAssignRiderSubmit = () => {
     if (!selectedRiderId || !selectedOrder) return;
@@ -132,10 +169,63 @@ export const AdminOrdersPage = () => {
         </div>
       </div>
 
+      {/* Date Filter & Control Strip (Requirement 3) */}
+      <div className="bg-surface-pure p-4 rounded-2xl border border-brandBorder-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-forest-900 flex items-center gap-1.5 mr-1">
+            <Calendar className="w-3.5 h-3.5 text-forest-600" />
+            <span>Filter by Date:</span>
+          </span>
+
+          <div className="inline-flex rounded-xl p-1 bg-surface-warm border border-brandBorder-subtle text-xs font-semibold">
+            {[
+              { id: 'all', label: 'All Dates' },
+              { id: 'today', label: 'Today' },
+              { id: 'yesterday', label: 'Yesterday' },
+              { id: 'week', label: 'Last 7 Days' },
+              { id: 'month', label: 'This Month' },
+            ].map((btn) => (
+              <button
+                key={btn.id}
+                type="button"
+                onClick={() => {
+                  setDateFilter(btn.id);
+                  setCustomDate('');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  dateFilter === btn.id && !customDate
+                    ? 'bg-forest-700 text-white shadow-sm font-bold'
+                    : 'text-brandText-secondary hover:text-forest-900'
+                }`}
+              >
+                {btn.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-surface-warm px-2.5 py-1 rounded-xl border border-brandBorder-subtle">
+            <span className="text-[11px] text-brandText-secondary font-medium">Custom:</span>
+            <input
+              type="date"
+              value={customDate}
+              onChange={(e) => {
+                setCustomDate(e.target.value);
+                setDateFilter('custom');
+              }}
+              className="bg-transparent text-xs font-semibold text-forest-900 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="text-xs text-brandText-secondary">
+          Showing <strong className="text-forest-900">{filteredOrders.length}</strong> of {orders.length} total orders
+        </div>
+      </div>
+
       {/* Main Orders Table */}
       <DataTable
         columns={columns}
-        data={orders}
+        data={filteredOrders}
         searchKey="customerName"
         searchPlaceholder="Search by customer name, phone, order ID..."
         filterOptions={filterOptions}
@@ -295,6 +385,69 @@ export const AdminOrdersPage = () => {
                 ))}
               </div>
             </div>
+
+            {/* Bill Breakdown (Requirement 3) */}
+            {(() => {
+              const bill = calculateOrderBill({
+                items: selectedOrder.items,
+                customSubtotal: selectedOrder.totalMrp || selectedOrder.subtotal || selectedOrder.total,
+                deliveryFee: selectedOrder.deliveryFee,
+              });
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-heading font-bold text-xs text-forest-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Receipt className="w-3.5 h-3.5 text-forest-600" />
+                      <span>Itemized Bill Breakdown</span>
+                    </h3>
+                    <span className="text-[10px] font-mono text-brandText-secondary uppercase">
+                      Rule Engine Verified
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-surface-warm border border-brandBorder-subtle space-y-1.5 text-xs font-mono">
+                    <div className="flex justify-between text-brandText-secondary">
+                      <span>Total MRP / Subtotal:</span>
+                      <span>₹{bill.totalMrp.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700 font-semibold">
+                      <span>
+                        {bill.isHighValueTier
+                          ? 'High-Value Tier Discount (18%):'
+                          : `Platform Discount (${bill.discountPercent}%):`}
+                      </span>
+                      <span>-₹{bill.discount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-brandText-secondary">
+                      <span>Packaging Charges (Fixed):</span>
+                      <span>+₹{bill.packagingFee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-brandText-secondary">
+                      <span>Platform Fee (Tiered):</span>
+                      <span>+₹{bill.platformFee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-brandText-secondary">
+                      <span>Delivery Charges:</span>
+                      <span>{bill.deliveryFee > 0 ? `+₹${bill.deliveryFee.toFixed(2)}` : 'FREE'}</span>
+                    </div>
+                    {bill.cashback > 0 && (
+                      <div className="flex justify-between text-emerald-800 font-bold bg-emerald-100/70 p-1.5 rounded-lg text-[10px]">
+                        <span>Wallet Cashback (2% credited to patient):</span>
+                        <span>+₹{bill.cashback.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="border-t border-brandBorder-subtle pt-2 flex justify-between font-bold text-forest-900 text-sm">
+                      <span>NET AMOUNT PAYABLE:</span>
+                      <span className="text-forest-800">₹{bill.finalTotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px] text-brandText-secondary pt-1 border-t border-dashed border-brandBorder-subtle font-sans">
+                      <span>Payment Mode: <strong>{selectedOrder.paymentMethod || 'COD'}</strong></span>
+                      <span>Status: <strong className="text-forest-700">{selectedOrder.paymentStatus || 'PENDING'}</strong></span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Order Timeline */}
             <div className="space-y-2">

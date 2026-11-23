@@ -7,28 +7,44 @@ import { useLanguage } from '../../context/LanguageContext';
 export const HeroBanner = ({ onOpenPrescription }) => {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const [activeBanners, setActiveBanners] = useState(bannersData);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const timerRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('oshud_homepage_banners');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const onlyActive = parsed.filter((b) => b.isActive !== false);
+          if (onlyActive.length > 0) {
+            setActiveBanners(onlyActive);
+          }
+        }
+      }
+    } catch {}
+  }, []);
 
   // Touch swipe support for mobile swiping
   const [touchStartX, setTouchStartX] = useState(null);
   const [touchEndX, setTouchEndX] = useState(null);
 
   const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % bannersData.length);
+    setCurrentSlide((prev) => (prev + 1) % activeBanners.length);
   };
 
   const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + bannersData.length) % bannersData.length);
+    setCurrentSlide((prev) => (prev - 1 + activeBanners.length) % activeBanners.length);
   };
 
   useEffect(() => {
-    if (!isHovered) {
+    if (!isHovered && activeBanners.length > 1) {
       timerRef.current = setInterval(nextSlide, 5500);
     }
     return () => clearInterval(timerRef.current);
-  }, [isHovered]);
+  }, [isHovered, activeBanners.length]);
 
   const handleTouchStart = (e) => {
     setTouchStartX(e.targetTouches[0].clientX);
@@ -50,7 +66,7 @@ export const HeroBanner = ({ onOpenPrescription }) => {
     setTouchEndX(null);
   };
 
-  const slide = bannersData[currentSlide];
+  const slide = activeBanners[currentSlide] || activeBanners[0];
   const slideIdx = currentSlide + 1;
 
   const headline = t(`banner_${slideIdx}_headline`, slide.headline);
@@ -179,7 +195,7 @@ export const HeroBanner = ({ onOpenPrescription }) => {
 
         {/* Pagination Indicators (Compact on mobile) */}
         <div className="absolute bottom-2 sm:bottom-3.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 sm:gap-2 z-20">
-          {bannersData.map((_, idx) => (
+          {activeBanners.map((_, idx) => (
             <button
               key={idx}
               onClick={(e) => {
