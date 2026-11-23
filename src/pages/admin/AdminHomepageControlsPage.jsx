@@ -23,6 +23,7 @@ import { useToast } from '../../context/ToastContext';
 import adminApi from '../../services/api/admin.api';
 import { bannersData as initialBanners } from '../../data/bannersData';
 import { parentCategories as initialCategories, categoryItemsByParent as initialCategoryItems } from '../../data/categoriesData';
+import ImageDropzone from '../../components/common/ImageDropzone';
 
 export const AdminHomepageControlsPage = () => {
   const { addToast } = useToast();
@@ -710,19 +711,13 @@ export const AdminHomepageControlsPage = () => {
               </div>
 
               <form onSubmit={handleSaveBanner} className="mt-4 space-y-3.5">
-                <div>
-                  <label className="block text-xs font-semibold text-brandText-main mb-1">
-                    Banner Image URL *
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    value={bannerForm.image}
-                    onChange={(e) => setBannerForm({ ...bannerForm, image: e.target.value })}
-                    placeholder="https://images.unsplash.com/..."
-                    className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-mono"
-                  />
-                </div>
+                <ImageDropzone
+                  value={bannerForm.image}
+                  onChange={(img) => setBannerForm((prev) => ({ ...prev, image: img }))}
+                  label="Banner Promotional Image *"
+                  description="Drag & drop promotional banner creative here or click to browse"
+                  aspectRatio="banner"
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -893,19 +888,13 @@ export const AdminHomepageControlsPage = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-brandText-main mb-1">
-                    Category Image / Icon URL *
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    value={categoryForm.image}
-                    onChange={(e) => setCategoryForm({ ...categoryForm, image: e.target.value })}
-                    placeholder="https://images.unsplash.com/..."
-                    className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-mono"
-                  />
-                </div>
+                <ImageDropzone
+                  value={categoryForm.image}
+                  onChange={(img) => setCategoryForm((prev) => ({ ...prev, image: img }))}
+                  label="Category Image / Icon *"
+                  description="Drag & drop category icon or graphic here or click to browse"
+                  aspectRatio="square"
+                />
 
                 <div className="pt-3 border-t border-brandBorder-subtle flex items-center justify-end gap-2.5">
                   <Button
@@ -997,19 +986,13 @@ export const AdminHomepageControlsPage = () => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-brandText-main mb-1">
-                    Product Image URL *
-                  </label>
-                  <input
-                    type="url"
-                    required
-                    value={itemForm.image}
-                    onChange={(e) => setItemForm({ ...itemForm, image: e.target.value })}
-                    placeholder="https://images.unsplash.com/..."
-                    className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-mono"
-                  />
-                </div>
+                <ImageDropzone
+                  value={itemForm.image}
+                  onChange={(img) => setItemForm((prev) => ({ ...prev, image: img }))}
+                  label="Product Medicine Image *"
+                  description="Drag & drop product packaging or bottle image here or browse"
+                  aspectRatio="square"
+                />
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>

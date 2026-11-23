@@ -236,6 +236,47 @@ export const riderApi = {
   },
 
   /**
+   * Provide a cash-finance summary for admin and rider finance views.
+   * Reuses getRiderMetrics so both views share the same COD calculations.
+   */
+  getFinanceOverview(riderId) {
+    const targetId = riderId || 'usr-rider-01';
+    const metrics = this.getRiderMetrics(targetId);
+    const financeStore = loadFinanceStore();
+    const aliasIds = [targetId];
+
+    if (targetId === 'rider-01') aliasIds.push('usr-rider-01');
+    if (targetId === 'usr-rider-01') aliasIds.push('rider-01');
+    if (targetId === 'rider-02') aliasIds.push('usr-rider-02');
+    if (targetId === 'usr-rider-02') aliasIds.push('rider-02');
+
+    const matchingFinance = aliasIds
+      .map((id) => financeStore.riders[id])
+      .find((finance) => finance?.cashDeposited !== undefined);
+
+    return {
+      ...metrics,
+      cashDeposited: matchingFinance?.cashDeposited ?? metrics.cashDeposited ?? 0,
+      cashInHand: metrics.cashInHand ?? 0,
+    };
+  },
+
+  /**
+   * Record a rider cash remittance from the admin cash-workflow page.
+   */
+  recordCashDeposit(riderId, amount, refNo = '') {
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) {
+      throw new Error('Please enter a valid cash deposit amount.');
+    }
+
+    const note = refNo
+      ? `Admin cash remittance (Ref: ${refNo})`
+      : 'Admin cash remittance';
+    return this.depositCash(riderId, numAmount, note);
+  },
+
+  /**
    * Request a withdrawal (strictly within withdrawable balance)
    * Synced with SuperAdmin Settlement & Wallet
    */

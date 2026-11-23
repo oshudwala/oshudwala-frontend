@@ -305,7 +305,7 @@ export default function VoiceSearchOverlay({ open, onClose, onResult, locale = '
             )}
             <div className="relative z-10 flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 border-forest-200 bg-white p-3 shadow-lg">
               <img
-                src="/emblem.png"
+                src="/emblem-dark.png"
                 alt="Oshud Wala"
                 className="h-full w-full object-contain"
                 onError={(e) => {

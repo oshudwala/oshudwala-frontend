@@ -11,6 +11,7 @@ export const DataTable = ({
   onRowClick,
   itemsPerPage = 8,
   actions,
+  isLoading = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
@@ -83,7 +84,7 @@ export const DataTable = ({
                     : 'text-brandText-secondary hover:text-forest-800'
                 }`}
               >
-                All ({data.length})
+                All ({isLoading ? '...' : data.length})
               </button>
               {filterOptions.map((opt) => (
                 <button
@@ -126,7 +127,40 @@ export const DataTable = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-brandBorder-subtle/70">
-            {paginatedData.length > 0 ? (
+            {isLoading ? (
+              Array.from({ length: 6 }).map((_, rIdx) => (
+                <tr key={`skeleton-row-${rIdx}`} className="animate-pulse">
+                  {columns.map((col, colIdx) => (
+                    <td
+                      key={`skeleton-td-${colIdx}`}
+                      className={`py-3.5 px-4 text-xs ${
+                        col.align === 'right' ? 'text-right' : 'text-left'
+                      } ${col.className || ''}`}
+                    >
+                      {colIdx === 0 ? (
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-forest-100/80 shrink-0" />
+                          <div className="space-y-1.5 flex-1 min-w-[120px]">
+                            <div className="h-3.5 bg-forest-100/90 rounded w-28" />
+                            <div className="h-2.5 bg-forest-50 rounded w-40" />
+                          </div>
+                        </div>
+                      ) : colIdx === columns.length - 1 ? (
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="h-7 w-16 bg-forest-100/70 rounded-lg" />
+                          <div className="h-7 w-7 bg-forest-100/60 rounded-lg" />
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <div className="h-3 bg-forest-100/70 rounded w-20" />
+                          <div className="h-2 bg-forest-50 rounded w-14" />
+                        </div>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : paginatedData.length > 0 ? (
               paginatedData.map((row, rowIdx) => (
                 <tr
                   key={row.id || rowIdx}
@@ -167,7 +201,7 @@ export const DataTable = ({
       </div>
 
       {/* Pagination Footer */}
-      {filteredData.length > itemsPerPage && (
+      {!isLoading && filteredData.length > itemsPerPage && (
         <div className="p-3 border-t border-brandBorder-subtle bg-surface-warm/40 flex items-center justify-between text-xs text-brandText-secondary">
           <p className="text-[11px]">
             Showing <strong className="text-forest-900">{(currentPage - 1) * itemsPerPage + 1}</strong>{' '}

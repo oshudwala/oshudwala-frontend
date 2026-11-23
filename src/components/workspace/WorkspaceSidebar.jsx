@@ -27,6 +27,7 @@ import {
   UserPlus,
   Sliders,
   ShieldCheck,
+  DollarSign
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -58,21 +59,13 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             ],
           },
           {
-            title: 'Operations',
+            title: 'Operations & Management',
             items: [
               { label: 'Orders', path: '/admin/orders', icon: ShoppingBag, badge: pendingOrdersCount },
               { label: 'Prescriptions', path: '/admin/prescriptions', icon: FileText, badge: pendingRxCount },
               { label: 'Appointments Tracker', path: '/admin/appointments', icon: CalendarCheck },
-            ],
-          },
-          {
-            title: 'Management',
-            items: [
-              { label: 'Clinics', path: '/admin/clinics', icon: Activity },
-              { label: 'Doctors', path: '/admin/doctors', icon: Stethoscope },
-              { label: 'Pharmacists', path: '/admin/pharmacies', icon: Building2 },
-              { label: 'Riders', path: '/admin/riders', icon: Bike },
-              { label: 'Users (Patients)', path: '/admin/users', icon: Users },
+              { label: 'Staff Management', path: '/admin/staff', icon: Users },
+              { label: 'Assign Doctors', path: '/admin/assign-doctors', icon: UserPlus },
             ],
           },
           {
@@ -92,6 +85,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             title: 'Finance',
             items: [
               { label: 'Settlements & Wallet', path: '/admin/finance', icon: Wallet },
+              { label: 'Cash Workflow', path: '/admin/finance?tab=cash-workflow', icon: DollarSign },
             ],
           },
         ];
@@ -224,17 +218,29 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
               {group.items.map((item) => {
                 const Icon = item.icon;
                 const currentFullPath = `${location.pathname}${location.search}`;
-                const isActive =
-                  item.path === location.pathname ||
-                  item.path === currentFullPath ||
-                  (item.path !== '/admin' &&
-                    item.path !== '/doctor' &&
-                    item.path !== '/pharmacy' &&
-                    item.path !== '/rider' &&
-                    item.path !== '/receptionist' &&
-                    item.path !== '/receptionist/doctors' &&
-                    item.path !== '/receptionist/manage-doctors' &&
-                    location.pathname.startsWith(item.path));
+                const currentTab = new URLSearchParams(location.search).get('tab');
+
+                let isActive = false;
+                if (item.path.includes('?tab=')) {
+                  const itemTab = new URLSearchParams(item.path.split('?')[1]).get('tab');
+                  isActive = location.pathname === item.path.split('?')[0] && currentTab === itemTab;
+                } else if (item.path === '/admin/finance') {
+                  isActive = location.pathname === '/admin/finance' && (!currentTab || currentTab === 'settlements');
+                } else if (item.path === '/admin/staff') {
+                  const staffPaths = ['/admin/staff', '/admin/staff-management', '/admin/clinics', '/admin/doctors', '/admin/pharmacies', '/admin/riders', '/admin/users'];
+                  isActive = staffPaths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`));
+                } else {
+                  isActive =
+                    item.path === location.pathname ||
+                    (item.path !== '/admin' &&
+                      item.path !== '/doctor' &&
+                      item.path !== '/pharmacy' &&
+                      item.path !== '/rider' &&
+                      item.path !== '/receptionist' &&
+                      item.path !== '/receptionist/doctors' &&
+                      item.path !== '/receptionist/manage-doctors' &&
+                      location.pathname.startsWith(item.path));
+                }
 
                 return (
                   <NavLink
@@ -290,12 +296,6 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
 
         {/* Sidebar Footer Collapse Toggle */}
         <div className="p-3 border-t border-brandBorder-subtle bg-surface-warm/40 hidden lg:flex items-center justify-between">
-          {!isCollapsed && (
-            <div className="flex items-center gap-2 text-[11px] text-brandText-secondary font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Sync Connected</span>
-            </div>
-          )}
           <button
             type="button"
             onClick={onToggleCollapse}

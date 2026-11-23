@@ -269,25 +269,84 @@ export const accountRegistry = {
     return null;
   },
 
-  // Set account status (Active or Deactivated with 30-day deadline)
-  setAccountStatus(id, status, purgeDeadline = null) {
-    if (!id) return null;
-    const accounts = this.getAccounts();
-    const strId = String(id);
-    const index = accounts.findIndex((a) => String(a.id) === strId || String(a.userId) === strId);
-    if (index >= 0) {
-      accounts[index].status = status;
-      if (status === 'DEACTIVATED') {
-        accounts[index].deactivatedAt = new Date().toISOString();
-        accounts[index].purgeDeadline = purgeDeadline || (Date.now() + 30 * 24 * 60 * 60 * 1000);
-      } else {
-        delete accounts[index].deactivatedAt;
-        delete accounts[index].purgeDeadline;
-      }
-      this.saveAccounts(accounts);
-      return accounts[index];
+  // Read all explicit entity statuses
+  getEntityStatuses() {
+    try {
+      const raw = localStorage.getItem('oshud_deactivated_entity_statuses');
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
     }
-    return null;
+  },
+
+  saveEntityStatuses(statuses) {
+    try {
+      localStorage.setItem('oshud_deactivated_entity_statuses', JSON.stringify(statuses));
+    } catch {}
+  },
+
+  // Set account status (Active or Deactivated with 30-day deadline)
+  setAccountStatus(id, status, purgeDeadline = null, entityInfo = {}) {
+    if (!id && !entityInfo?.id) return null;
+    const accounts = this.getAccounts();
+    const strId = id ? String(id) : '';
+    const altId = entityInfo?.id ? String(entityInfo.id) : '';
+    const altUserId = entityInfo?.userId ? String(entityInfo.userId) : '';
+    const cleanEmail = entityInfo?.email ? entityInfo.email.trim().toLowerCase() : '';
+    const cleanPhone = entityInfo?.phone ? String(entityInfo.phone).replace(/[^0-9]/g, '') : '';
+
+    // 1. Record in explicit entity status registry
+    const statusStore = this.getEntityStatuses();
+    const record = {
+      status,
+      deactivatedAt: status === 'DEACTIVATED' ? new Date().toISOString() : null,
+      purgeDeadline: status === 'DEACTIVATED' ? (purgeDeadline || Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
+    };
+    if (strId) statusStore[strId] = record;
+    if (altId) statusStore[altId] = record;
+    if (altUserId) statusStore[altUserId] = record;
+    if (cleanEmail) statusStore[cleanEmail] = record;
+    if (cleanPhone) statusStore[cleanPhone] = record;
+    this.saveEntityStatuses(statusStore);
+
+    // 2. Locate and update in accounts list
+    let matchedIndex = accounts.findIndex((a) => {
+      if (strId && (String(a.id) === strId || String(a.userId) === strId)) return true;
+      if (altId && (String(a.id) === altId || String(a.userId) === altId)) return true;
+      if (altUserId && (String(a.id) === altUserId || String(a.userId) === altUserId)) return true;
+      if (cleanEmail && a.email && a.email.toLowerCase() === cleanEmail) return true;
+      if (cleanPhone && a.phone && String(a.phone).replace(/[^0-9]/g, '') === cleanPhone) return true;
+      return false;
+    });
+
+    if (matchedIndex >= 0) {
+      accounts[matchedIndex].status = status;
+      if (status === 'DEACTIVATED') {
+        accounts[matchedIndex].deactivatedAt = record.deactivatedAt;
+        accounts[matchedIndex].purgeDeadline = record.purgeDeadline;
+      } else {
+        delete accounts[matchedIndex].deactivatedAt;
+        delete accounts[matchedIndex].purgeDeadline;
+      }
+    } else {
+      // Dynamically add to registry so it persists
+      accounts.push({
+        id: altUserId || strId || altId || `usr_${Date.now()}`,
+        userId: altUserId || strId,
+        fullName: entityInfo.fullName || entityInfo.name || 'Account',
+        email: cleanEmail,
+        phone: cleanPhone,
+        role: entityInfo.role || 'PATIENT',
+        status,
+        deactivatedAt: record.deactivatedAt,
+        purgeDeadline: record.purgeDeadline,
+        entityData: entityInfo.entityData || {},
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    this.saveAccounts(accounts);
+    return record;
   },
 
   // Get all entities formatted for Management tab tables

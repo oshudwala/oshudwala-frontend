@@ -41,6 +41,7 @@ import Button from '../../components/common/Button';
 import { useToast } from '../../context/ToastContext';
 import adminApi from '../../services/api/admin.api';
 import accountRegistry from '../../services/api/accountRegistry';
+import ImageDropzone from '../../components/common/ImageDropzone';
 
 export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const navigate = useNavigate();
@@ -50,15 +51,18 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   // Tab: 'clinics' | 'doctors' | 'pharmacies' | 'riders' | 'users'
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  // Data states - load initial cached/registered entities immediately for 0ms latency
-  const initialEntities = accountRegistry.getEntities();
-  const [clinics, setClinics] = useState(initialEntities.clinics || []);
-  const [doctors, setDoctors] = useState(initialEntities.doctors || []);
-  const [pharmacies, setPharmacies] = useState(initialEntities.pharmacies || []);
-  const [riders, setRiders] = useState(initialEntities.riders || []);
-  const [users, setUsers] = useState(initialEntities.users || []);
-  const [isLoading, setIsLoading] = useState(false);
+  // Data states - load initial cached/registered entities
+  const hasCache = adminApi.hasCachedEntities();
+  const cached = adminApi.getCachedEntities();
+  const initialEntities = cached || accountRegistry.getEntities();
+  const [clinics, setClinics] = useState(cached?.clinics || initialEntities.clinics || []);
+  const [doctors, setDoctors] = useState(cached?.doctors || initialEntities.doctors || []);
+  const [pharmacies, setPharmacies] = useState(cached?.pharmacies || initialEntities.pharmacies || []);
+  const [riders, setRiders] = useState(cached?.riders || initialEntities.riders || []);
+  const [users, setUsers] = useState(cached?.users || initialEntities.users || []);
+  const [isLoading, setIsLoading] = useState(!hasCache);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [togglingStatusId, setTogglingStatusId] = useState(null);
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -115,18 +119,24 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     maxPatients: '25',
   });
 
-  // Sync tab with route if path changes
+  // Sync tab with route if path or query param changes
   useEffect(() => {
+    const searchTab = new URLSearchParams(location.search).get('tab');
     const path = location.pathname.split('/').pop();
-    if (['clinics', 'doctors', 'pharmacies', 'riders', 'users'].includes(path)) {
+    if (['clinics', 'doctors', 'pharmacies', 'riders', 'users'].includes(searchTab)) {
+      setActiveTab(searchTab);
+    } else if (['clinics', 'doctors', 'pharmacies', 'riders', 'users'].includes(path)) {
       setActiveTab(path);
     } else if (initialTab) {
       setActiveTab(initialTab);
     }
-  }, [location.pathname, initialTab]);
+  }, [location.pathname, location.search, initialTab]);
 
   // Load real data from backend
   const loadData = async (forceRefresh = false) => {
+    if (forceRefresh || !adminApi.hasCachedEntities()) {
+      setIsLoading(true);
+    }
     setIsSyncing(true);
     try {
       const [res, settingsRes] = await Promise.all([
@@ -167,7 +177,11 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    navigate(`/admin/${tab}`);
+    if (location.pathname.includes('/staff')) {
+      navigate(`/admin/staff?tab=${tab}`);
+    } else {
+      navigate(`/admin/${tab}`);
+    }
   };
 
   const handleInputChange = (e) => {
@@ -202,6 +216,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
   // Toggle Activate / Deactivate (30 Days Deadline)
   const handleToggleStatus = async (row, type) => {
+    const targetKey = row.id || row.userId;
+    setTogglingStatusId(targetKey);
+
     const currentStatus = row.status || row.user?.status || 'ACTIVE';
     const newStatus = currentStatus === 'DEACTIVATED' ? 'ACTIVE' : 'DEACTIVATED';
     const roleMap = {
@@ -214,17 +231,39 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     const roleName = roleMap[type] || 'PATIENT';
     const targetUserId = row.userId || row.user?.id || row.id;
 
+    // Instant Optimistic UI Update (0ms)
+    const updateList = (list) =>
+      list.map((item) => {
+        if (item.id === row.id || (row.userId && item.userId === row.userId)) {
+          return {
+            ...item,
+            status: newStatus,
+            purgeDeadline: newStatus === 'DEACTIVATED' ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null,
+            deactivatedAt: newStatus === 'DEACTIVATED' ? new Date().toISOString() : null,
+            user: item.user ? { ...item.user, status: newStatus } : item.user,
+          };
+        }
+        return item;
+      });
+
+    if (type === 'clinics') setClinics(updateList);
+    else if (type === 'doctors') setDoctors(updateList);
+    else if (type === 'pharmacies') setPharmacies(updateList);
+    else if (type === 'riders') setRiders(updateList);
+    else if (type === 'users') setUsers(updateList);
+
     try {
-      await adminApi.setStatus(targetUserId, roleName, newStatus);
+      await adminApi.setStatus(targetUserId, roleName, newStatus, row);
       addToast(
         newStatus === 'DEACTIVATED'
           ? `${row.fullName || row.name || 'Account'} deactivated. 30-day deadline scheduled before permanent purge.`
           : `${row.fullName || row.name || 'Account'} activated and login restored!`,
         'success'
       );
-      await loadData();
     } catch (err) {
       addToast(err.message || 'Failed to update account status.', 'error');
+    } finally {
+      setTogglingStatusId(null);
     }
   };
 
@@ -654,20 +693,25 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       align: 'right',
       render: (row) => {
         const isDeactivated = row.status === 'DEACTIVATED';
+        const isToggling = togglingStatusId === (row.id || row.userId);
         return (
           <div className="flex items-center justify-end gap-1.5">
             {/* Activate / Deactivate (30d) */}
             <button
               type="button"
+              disabled={isToggling}
               onClick={() => handleToggleStatus(row, 'clinics')}
-              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                isToggling ? 'opacity-60 cursor-not-allowed' : ''
+              } ${
                 isDeactivated
                   ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                   : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
               }`}
               title={isDeactivated ? 'Activate Clinic' : 'Deactivate with 30-day purge deadline'}
             >
-              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+              {isToggling && <RefreshCw className="w-3 h-3 animate-spin text-current" />}
+              <span>{isToggling ? 'Updating…' : isDeactivated ? 'Activate' : 'Deactivate (30d)'}</span>
             </button>
 
             {/* Edit */}
@@ -784,20 +828,25 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       align: 'right',
       render: (row) => {
         const isDeactivated = (row.user?.status || row.status) === 'DEACTIVATED';
+        const isToggling = togglingStatusId === (row.id || row.userId);
         return (
           <div className="flex items-center justify-end gap-1.5">
             {/* Activate / Deactivate (30d) */}
             <button
               type="button"
+              disabled={isToggling}
               onClick={() => handleToggleStatus(row, 'doctors')}
-              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                isToggling ? 'opacity-60 cursor-not-allowed' : ''
+              } ${
                 isDeactivated
                   ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                   : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
               }`}
               title={isDeactivated ? 'Activate Doctor' : 'Deactivate with 30-day purge deadline'}
             >
-              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+              {isToggling && <RefreshCw className="w-3 h-3 animate-spin text-current" />}
+              <span>{isToggling ? 'Updating…' : isDeactivated ? 'Activate' : 'Deactivate (30d)'}</span>
             </button>
 
             {/* Edit */}
@@ -888,20 +937,25 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       align: 'right',
       render: (row) => {
         const isDeactivated = row.status === 'DEACTIVATED';
+        const isToggling = togglingStatusId === (row.id || row.userId);
         return (
           <div className="flex items-center justify-end gap-1.5">
             {/* Activate / Deactivate (30d) */}
             <button
               type="button"
+              disabled={isToggling}
               onClick={() => handleToggleStatus(row, 'pharmacies')}
-              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                isToggling ? 'opacity-60 cursor-not-allowed' : ''
+              } ${
                 isDeactivated
                   ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                   : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
               }`}
               title={isDeactivated ? 'Activate Pharmacy' : 'Deactivate with 30-day purge deadline'}
             >
-              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+              {isToggling && <RefreshCw className="w-3 h-3 animate-spin text-current" />}
+              <span>{isToggling ? 'Updating…' : isDeactivated ? 'Activate' : 'Deactivate (30d)'}</span>
             </button>
 
             {/* Edit */}
@@ -985,20 +1039,25 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       align: 'right',
       render: (row) => {
         const isDeactivated = row.status === 'DEACTIVATED';
+        const isToggling = togglingStatusId === (row.id || row.userId);
         return (
           <div className="flex items-center justify-end gap-1.5">
             {/* Activate / Deactivate (30d) */}
             <button
               type="button"
+              disabled={isToggling}
               onClick={() => handleToggleStatus(row, 'riders')}
-              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                isToggling ? 'opacity-60 cursor-not-allowed' : ''
+              } ${
                 isDeactivated
                   ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                   : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
               }`}
               title={isDeactivated ? 'Activate Rider' : 'Deactivate with 30-day purge deadline'}
             >
-              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+              {isToggling && <RefreshCw className="w-3 h-3 animate-spin text-current" />}
+              <span>{isToggling ? 'Updating…' : isDeactivated ? 'Activate' : 'Deactivate (30d)'}</span>
             </button>
 
             {/* Edit */}
@@ -1090,20 +1149,25 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       align: 'right',
       render: (row) => {
         const isDeactivated = row.status === 'DEACTIVATED';
+        const isToggling = togglingStatusId === (row.id || row.userId);
         return (
           <div className="flex items-center justify-end gap-1.5">
             {/* Activate / Deactivate (30d) */}
             <button
               type="button"
+              disabled={isToggling}
               onClick={() => handleToggleStatus(row, 'users')}
-              className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                isToggling ? 'opacity-60 cursor-not-allowed' : ''
+              } ${
                 isDeactivated
                   ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                   : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
               }`}
               title={isDeactivated ? 'Activate Patient' : 'Deactivate with 30-day purge deadline'}
             >
-              {isDeactivated ? 'Activate' : 'Deactivate (30d)'}
+              {isToggling && <RefreshCw className="w-3 h-3 animate-spin text-current" />}
+              <span>{isToggling ? 'Updating…' : isDeactivated ? 'Activate' : 'Deactivate (30d)'}</span>
             </button>
 
             {/* Edit */}
@@ -1144,7 +1208,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-forest-900 tracking-tight">
-            Network Operations & Management
+            Staff Management
           </h1>
           <p className="text-xs sm:text-sm text-brandText-secondary mt-1">
             Manage authenticated profiles, image avatars, 30-day deactivation deadlines, clinic assignments & featured displays.
@@ -1152,17 +1216,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Requirement 9: Assign Doctor to Clinic */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsAssignModalOpen(true)}
-            leftIcon={Calendar}
-            className="text-xs border-forest-300 text-forest-800 hover:bg-forest-50 font-bold"
-          >
-            Assign Doctor to Clinic
-          </Button>
-
           <Button
             variant="outline"
             size="sm"
@@ -1199,7 +1252,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           }`}
         >
           <Activity className="w-4 h-4" />
-          <span>Clinics ({clinics.length})</span>
+          <span>Clinics ({isLoading ? '...' : clinics.length})</span>
         </button>
 
         <button
@@ -1211,7 +1264,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           }`}
         >
           <Stethoscope className="w-4 h-4" />
-          <span>Doctors ({doctors.length})</span>
+          <span>Doctors ({isLoading ? '...' : doctors.length})</span>
         </button>
 
         <button
@@ -1223,7 +1276,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>Pharmacists ({pharmacies.length})</span>
+          <span>Pharmacists ({isLoading ? '...' : pharmacies.length})</span>
         </button>
 
         <button
@@ -1235,7 +1288,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           }`}
         >
           <Bike className="w-4 h-4" />
-          <span>Riders ({riders.length})</span>
+          <span>Riders ({isLoading ? '...' : riders.length})</span>
         </button>
 
         <button
@@ -1247,63 +1300,59 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Patients ({users.length})</span>
+          <span>Patients ({isLoading ? '...' : users.length})</span>
         </button>
       </div>
 
-      {/* Main Data Tables */}
-      {isLoading ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-surface-pure rounded-3xl border border-brandBorder-subtle">
-          <RefreshCw className="w-8 h-8 text-forest-600 animate-spin mb-3" />
-          <p className="text-xs font-semibold text-brandText-secondary">Fetching real profiles from database...</p>
-        </div>
-      ) : (
-        <>
-          {activeTab === 'clinics' && (
-            <DataTable
-              columns={clinicColumns}
-              data={clinics}
-              searchKey="name"
-              searchPlaceholder="Search clinic by name or city..."
-            />
-          )}
+      {/* Main Data Tables with Dedicated Skeleton Loaders per Section */}
+      {activeTab === 'clinics' && (
+        <DataTable
+          columns={clinicColumns}
+          data={clinics}
+          searchKey="name"
+          searchPlaceholder="Search clinic by name or city..."
+          isLoading={isLoading}
+        />
+      )}
 
-          {activeTab === 'doctors' && (
-            <DataTable
-              columns={doctorColumns}
-              data={doctors}
-              searchKey="fullName"
-              searchPlaceholder="Search doctor by name, qualification or specialization..."
-            />
-          )}
+      {activeTab === 'doctors' && (
+        <DataTable
+          columns={doctorColumns}
+          data={doctors}
+          searchKey="fullName"
+          searchPlaceholder="Search doctor by name, qualification or specialization..."
+          isLoading={isLoading}
+        />
+      )}
 
-          {activeTab === 'pharmacies' && (
-            <DataTable
-              columns={pharmacyColumns}
-              data={pharmacies}
-              searchKey="name"
-              searchPlaceholder="Search pharmacy store by name or license..."
-            />
-          )}
+      {activeTab === 'pharmacies' && (
+        <DataTable
+          columns={pharmacyColumns}
+          data={pharmacies}
+          searchKey="name"
+          searchPlaceholder="Search pharmacy store by name or license..."
+          isLoading={isLoading}
+        />
+      )}
 
-          {activeTab === 'riders' && (
-            <DataTable
-              columns={riderColumns}
-              data={riders}
-              searchKey="fullName"
-              searchPlaceholder="Search rider by name, phone or vehicle..."
-            />
-          )}
+      {activeTab === 'riders' && (
+        <DataTable
+          columns={riderColumns}
+          data={riders}
+          searchKey="fullName"
+          searchPlaceholder="Search rider by name, phone or vehicle..."
+          isLoading={isLoading}
+        />
+      )}
 
-          {activeTab === 'users' && (
-            <DataTable
-              columns={userColumns}
-              data={users}
-              searchKey="fullName"
-              searchPlaceholder="Search registered patient by name or phone..."
-            />
-          )}
-        </>
+      {activeTab === 'users' && (
+        <DataTable
+          columns={userColumns}
+          data={users}
+          searchKey="fullName"
+          searchPlaceholder="Search registered patient by name or phone..."
+          isLoading={isLoading}
+        />
       )}
 
       {/* ============================================================== */}
@@ -1351,32 +1400,22 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
               {/* Form */}
               <form onSubmit={handleAddSubmit} className="mt-4 space-y-4">
-                {/* Image Upload / URL field with live preview */}
-                <div className="p-3 bg-surface-warm border border-brandBorder-subtle rounded-2xl flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-surface-pure border border-dashed border-forest-300 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {formData.imageUrl ? (
-                      <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <Camera className="w-6 h-6 text-forest-600" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Profile / Store Image URL
-                    </label>
-                    <input
-                      type="url"
-                      name="imageUrl"
-                      value={formData.imageUrl}
-                      onChange={handleInputChange}
-                      placeholder="https://images.unsplash.com/... or image link"
-                      className="w-full px-3 py-1.5 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
-                    />
-                    <p className="text-[10px] text-brandText-muted mt-0.5">
-                      Enter direct image URL. Shown on patient home, search, and directory.
-                    </p>
-                  </div>
-                </div>
+                {/* Drag and Drop Image Upload */}
+                <ImageDropzone
+                  value={formData.imageUrl}
+                  onChange={(img) => setFormData((prev) => ({ ...prev, imageUrl: img }))}
+                  label={
+                    activeTab === 'clinics'
+                      ? 'Clinic / Facility Photo'
+                      : activeTab === 'doctors'
+                      ? 'Doctor Profile Photo'
+                      : activeTab === 'pharmacies'
+                      ? 'Pharmacy Store Front / Logo'
+                      : 'Rider Profile Photo'
+                  }
+                  description="Drag & drop profile photo here or click to browse. Shown on search and booking."
+                  aspectRatio="square"
+                />
 
                 {/* 1. Name */}
                 {activeTab === 'clinics' ? (
@@ -1788,29 +1827,22 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
               {/* Form */}
               <form onSubmit={handleEditSubmit} className="mt-4 space-y-4">
-                {/* Image URL with live preview */}
-                <div className="p-3 bg-surface-warm border border-brandBorder-subtle rounded-2xl flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-surface-pure border border-dashed border-forest-300 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    {editFormData.imageUrl ? (
-                      <img src={editFormData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <Camera className="w-6 h-6 text-forest-600" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Profile / Logo Image URL
-                    </label>
-                    <input
-                      type="url"
-                      name="imageUrl"
-                      value={editFormData.imageUrl || ''}
-                      onChange={handleEditInputChange}
-                      placeholder="https://images.unsplash.com/..."
-                      className="w-full px-3 py-1.5 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
-                    />
-                  </div>
-                </div>
+                {/* Drag and Drop Image Upload */}
+                <ImageDropzone
+                  value={editFormData.imageUrl || ''}
+                  onChange={(img) => setEditFormData((prev) => ({ ...prev, imageUrl: img }))}
+                  label={
+                    itemToEdit?.entityType === 'clinics'
+                      ? 'Clinic / Facility Photo'
+                      : itemToEdit?.entityType === 'doctors'
+                      ? 'Doctor Profile Photo'
+                      : itemToEdit?.entityType === 'pharmacies'
+                      ? 'Pharmacy Store Front / Logo'
+                      : 'Rider Profile Photo'
+                  }
+                  description="Drag & drop new photo or click to browse from device."
+                  aspectRatio="square"
+                />
 
                 {/* Common fields: Name, Email, Phone */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2042,203 +2074,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         </div>
       )}
 
-      {/* ============================================================== */}
-      {/* MODAL: ASSIGN DOCTOR TO CLINIC (Requirement 9)                 */}
-      {/* ============================================================== */}
-      {isAssignModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div
-            className="fixed inset-0 bg-forest-950/60 backdrop-blur-sm transition-opacity"
-            onClick={() => setIsAssignModalOpen(false)}
-          />
-          <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center">
-            <div className="w-full max-w-xl bg-surface-pure rounded-3xl p-6 sm:p-7 shadow-floating border border-brandBorder-subtle text-left relative overflow-hidden animate-scale-up my-6">
-              {/* Header */}
-              <div className="flex items-center justify-between pb-4 border-b border-brandBorder-subtle">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-forest-50 border border-forest-100 flex items-center justify-center text-forest-700">
-                    <Calendar className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-heading font-extrabold text-forest-800">
-                      Assign Doctor to Clinic Chamber
-                    </h2>
-                    <p className="text-xs text-brandText-secondary">
-                      Link verified doctors with clinic branches, schedule slots, and consultation fees.
-                    </p>
-                  </div>
-                </div>
 
-                <button
-                  onClick={() => setIsAssignModalOpen(false)}
-                  className="p-2 text-brandText-secondary hover:text-forest-700 hover:bg-forest-50 rounded-full"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Form */}
-              <form onSubmit={handleAssignSubmit} className="mt-4 space-y-4">
-                {/* 1. Clinic & Doctor Selection */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Select Clinic / Branch *
-                    </label>
-                    <select
-                      required
-                      value={assignData.clinicId}
-                      onChange={(e) => setAssignData({ ...assignData, clinicId: e.target.value })}
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                    >
-                      <option value="">-- Choose Clinic --</option>
-                      {clinics.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.city})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Select Doctor *
-                    </label>
-                    <select
-                      required
-                      value={assignData.doctorId}
-                      onChange={(e) => setAssignData({ ...assignData, doctorId: e.target.value })}
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                    >
-                      <option value="">-- Choose Doctor --</option>
-                      {doctors.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.fullName} ({d.specialization})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* 2. Chamber & Fee */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Chamber Number
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={assignData.chamberNo}
-                      onChange={(e) => setAssignData({ ...assignData, chamberNo: e.target.value })}
-                      placeholder="e.g. Chamber 3"
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Consultation Fee (₹)
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      value={assignData.consultationFee}
-                      onChange={(e) => setAssignData({ ...assignData, consultationFee: e.target.value })}
-                      placeholder="500"
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Max Patients / Shift
-                    </label>
-                    <input
-                      type="number"
-                      value={assignData.maxPatients}
-                      onChange={(e) => setAssignData({ ...assignData, maxPatients: e.target.value })}
-                      placeholder="25"
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                    />
-                  </div>
-                </div>
-
-                {/* 3. Shift Time Slot */}
-                <div>
-                  <label className="block text-xs font-semibold text-brandText-main mb-1">
-                    Consultation Shift Timing
-                  </label>
-                  <select
-                    value={assignData.timeSlot}
-                    onChange={(e) => setAssignData({ ...assignData, timeSlot: e.target.value })}
-                    className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                  >
-                    <option value="10:00 AM - 01:00 PM">Morning Shift (10:00 AM - 01:00 PM)</option>
-                    <option value="02:00 PM - 05:00 PM">Afternoon Shift (02:00 PM - 05:00 PM)</option>
-                    <option value="05:00 PM - 08:30 PM">Evening Shift (05:00 PM - 08:30 PM)</option>
-                    <option value="06:00 PM - 09:30 PM">Night Shift (06:00 PM - 09:30 PM)</option>
-                  </select>
-                </div>
-
-                {/* 4. Consultation Days */}
-                <div>
-                  <label className="block text-xs font-semibold text-brandText-main mb-1.5">
-                    Available Consultation Days
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
-                      const isSelected = assignData.availableDays.includes(day);
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => {
-                            const newDays = isSelected
-                              ? assignData.availableDays.filter((d) => d !== day)
-                              : [...assignData.availableDays, day];
-                            setAssignData({ ...assignData, availableDays: newDays });
-                          }}
-                          className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-                            isSelected
-                              ? 'bg-forest-800 text-white shadow-sm'
-                              : 'bg-surface-warm text-brandText-secondary hover:bg-forest-50 border border-brandBorder-subtle'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="pt-3 border-t border-brandBorder-subtle flex items-center justify-end gap-2.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsAssignModalOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    isLoading={isSubmitting}
-                    disabled={isSubmitting}
-                    className="font-bold shadow-card px-5"
-                  >
-                    Confirm Doctor Assignment
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ============================================================== */}
       {/* MODAL: DELETE / REMOVE CONFIRMATION                            */}

@@ -105,6 +105,16 @@ let lastEntitiesFetch = 0;
 const ENTITIES_CACHE_TTL = 15000; // 15 seconds
 
 export const adminApi = {
+  // Read in-memory cached entities synchronously
+  getCachedEntities() {
+    return cachedEntities;
+  },
+
+  // Check if fresh cache is ready
+  hasCachedEntities() {
+    return Boolean(cachedEntities && Date.now() - lastEntitiesFetch < ENTITIES_CACHE_TTL);
+  },
+
   // Invalidate in-memory cache on mutations
   invalidateCache() {
     cachedEntities = null;
@@ -122,15 +132,17 @@ export const adminApi = {
     let backendDoctors = [];
     let backendPharmacies = [];
     let backendRiders = [];
+    let backendLocations = [];
     let backendSettings = [];
 
     // Parallel fetch real backend endpoints only (No failing 404 routes!)
     try {
-      const [usersRes, docsRes, pharmsRes, ridersRes, settingsRes] = await Promise.allSettled([
-        apiClient.get('/admin/users', { params: { limit: 100 } }),
+      const [usersRes, docsRes, pharmsRes, ridersRes, locationsRes, settingsRes] = await Promise.allSettled([
+        apiClient.get('/admin/users', { params: { limit: 500 } }),
         apiClient.get('/doctors'),
         apiClient.get('/pharmacies'),
         apiClient.get('/riders'),
+        apiClient.get('/locations/admin/all').catch(() => apiClient.get('/locations')),
         apiClient.get('/admin/settings'),
       ]);
 
@@ -150,6 +162,10 @@ export const adminApi = {
         const d = ridersRes.value.data?.data || ridersRes.value.data;
         backendRiders = Array.isArray(d?.riders) ? d.riders : Array.isArray(d) ? d : [];
       }
+      if (locationsRes.status === 'fulfilled') {
+        const d = locationsRes.value.data?.data || locationsRes.value.data;
+        backendLocations = Array.isArray(d?.items) ? d.items : Array.isArray(d) ? d : [];
+      }
       if (settingsRes.status === 'fulfilled') {
         backendSettings = settingsRes.value.data?.data || settingsRes.value.data || [];
       }
@@ -157,174 +173,363 @@ export const adminApi = {
       console.warn('Backend fetch all entities notice:', e.message);
     }
 
-    // 1. DOCTORS
-    const doctors = [...local.doctors];
+    const isRemoved = (id, userId) => accountRegistry.isEntityRemoved(id, userId);
+
+    // 1. DOCTORS (Backend first as source of truth)
+    const doctors = [];
+    const seenDocIds = new Set();
+    const seenDocEmails = new Set();
+    const seenDocPhones = new Set();
+
     backendDoctors.forEach((bd) => {
-      if (!accountRegistry.isEntityRemoved(bd.id) && !doctors.some((d) => d.id === bd.id || d.userId === bd.userId || (bd.email && d.email === bd.email))) {
-        doctors.push({
-          id: bd.id,
-          userId: bd.userId || bd.id,
-          fullName: bd.fullName || bd.name,
-          email: bd.email,
-          phone: bd.phone,
-          imageUrl: bd.imageUrl || bd.photoUrl || '',
-          registrationNumber: bd.registrationNumber || 'WBMC-REG',
-          qualifications: bd.qualifications || 'MBBS',
-          experienceYears: bd.experienceYears || 5,
-          specialization: bd.specialization || bd.specializations?.[0]?.specialization?.name || 'General Physician',
-          consultationFeePaise: bd.consultationFeePaise || 50000,
-          status: bd.status || 'ACTIVE',
-          user: { id: bd.userId || bd.id, email: bd.email, phone: bd.phone, status: bd.status || 'ACTIVE' },
-        });
-      }
+      if (isRemoved(bd.id, bd.userId)) return;
+      const cleanEmail = bd.email ? bd.email.trim().toLowerCase() : '';
+      const cleanPhone = bd.phone ? String(bd.phone).replace(/[^0-9]/g, '') : '';
+      const localMatch = local.doctors.find(
+        (ld) =>
+          ld.id === bd.id ||
+          ld.userId === bd.userId ||
+          (cleanEmail && ld.email?.toLowerCase() === cleanEmail) ||
+          (cleanPhone && ld.phone && String(ld.phone).replace(/[^0-9]/g, '') === cleanPhone)
+      );
+
+      doctors.push({
+        id: bd.id,
+        userId: bd.userId || bd.id,
+        fullName: bd.fullName || bd.name,
+        email: bd.email,
+        phone: bd.phone,
+        imageUrl: bd.imageUrl || bd.photoUrl || localMatch?.imageUrl || '',
+        registrationNumber: bd.registrationNumber || 'WBMC-REG',
+        qualifications: bd.qualifications || 'MBBS',
+        experienceYears: bd.experienceYears || 5,
+        specialization: bd.specialization || bd.specializations?.[0]?.specialization?.name || 'General Physician',
+        consultationFeePaise: bd.consultationFeePaise || localMatch?.consultationFeePaise || 50000,
+        status: bd.status || 'ACTIVE',
+        user: { id: bd.userId || bd.id, email: bd.email, phone: bd.phone, status: bd.status || 'ACTIVE' },
+        isFeatured: bd.isFeatured ?? localMatch?.isFeatured ?? false,
+      });
+
+      seenDocIds.add(bd.id);
+      if (bd.userId) seenDocIds.add(bd.userId);
+      if (cleanEmail) seenDocEmails.add(cleanEmail);
+      if (cleanPhone) seenDocPhones.add(cleanPhone);
     });
+
     backendUsers.filter((u) => u.role?.name === 'DOCTOR' || u.role === 'DOCTOR').forEach((u) => {
-      if (!accountRegistry.isEntityRemoved(u.id) && !doctors.some((d) => d.id === u.id || d.userId === u.id || (u.email && d.email === u.email))) {
-        doctors.push({
-          id: u.id,
-          userId: u.id,
-          fullName: u.fullName,
-          email: u.email,
-          phone: u.phone,
-          imageUrl: u.imageUrl || '',
-          registrationNumber: 'WBMC-REG',
-          qualifications: 'MBBS',
-          experienceYears: 5,
-          specialization: 'General Physician',
-          consultationFeePaise: 50000,
-          status: u.status || 'ACTIVE',
-          user: { id: u.id, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
-        });
-      }
+      if (isRemoved(u.id)) return;
+      const cleanEmail = u.email ? u.email.trim().toLowerCase() : '';
+      const cleanPhone = u.phone ? String(u.phone).replace(/[^0-9]/g, '') : '';
+      if (seenDocIds.has(u.id) || (cleanEmail && seenDocEmails.has(cleanEmail)) || (cleanPhone && seenDocPhones.has(cleanPhone))) return;
+
+      const localMatch = local.doctors.find(
+        (ld) =>
+          ld.id === u.id ||
+          ld.userId === u.id ||
+          (cleanEmail && ld.email?.toLowerCase() === cleanEmail) ||
+          (cleanPhone && ld.phone && String(ld.phone).replace(/[^0-9]/g, '') === cleanPhone)
+      );
+
+      doctors.push({
+        id: u.id,
+        userId: u.id,
+        fullName: u.fullName,
+        email: u.email,
+        phone: u.phone,
+        imageUrl: u.imageUrl || localMatch?.imageUrl || '',
+        registrationNumber: 'WBMC-REG',
+        qualifications: 'MBBS',
+        experienceYears: 5,
+        specialization: 'General Physician',
+        consultationFeePaise: localMatch?.consultationFeePaise || 50000,
+        status: u.status || 'ACTIVE',
+        user: { id: u.id, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
+        isFeatured: localMatch?.isFeatured || false,
+      });
+
+      seenDocIds.add(u.id);
+      if (cleanEmail) seenDocEmails.add(cleanEmail);
+      if (cleanPhone) seenDocPhones.add(cleanPhone);
     });
 
-    // 2. PHARMACIES
-    const pharmacies = [...local.pharmacies];
+    local.doctors.forEach((ld) => {
+      if (isRemoved(ld.id, ld.userId)) return;
+      const cleanEmail = ld.email ? ld.email.trim().toLowerCase() : '';
+      const cleanPhone = ld.phone ? String(ld.phone).replace(/[^0-9]/g, '') : '';
+      if (seenDocIds.has(ld.id) || (ld.userId && seenDocIds.has(ld.userId)) || (cleanEmail && seenDocEmails.has(cleanEmail))) return;
+      doctors.push(ld);
+      seenDocIds.add(ld.id);
+    });
+
+    // 2. PHARMACIES (Backend first as source of truth)
+    const pharmacies = [];
+    const seenPharmIds = new Set();
+    const seenPharmEmails = new Set();
+
     backendPharmacies.forEach((bp) => {
-      if (!accountRegistry.isEntityRemoved(bp.id) && !pharmacies.some((p) => p.id === bp.id || (bp.email && p.email === bp.email))) {
-        pharmacies.push({
-          id: bp.id,
-          userId: bp.ownerId || bp.id,
-          name: bp.name,
-          email: bp.email,
-          phone: bp.phone,
-          imageUrl: bp.imageUrl || '',
-          licenseNumber: bp.licenseNumber || 'WB-DL-REG',
-          line1: bp.line1 || 'Sector V',
-          city: bp.city || 'Kolkata',
-          state: bp.state || 'West Bengal',
-          pincode: bp.pincode || '700091',
-          status: bp.status || 'ACTIVE',
-          owner: { id: bp.id, fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone },
-          staff: [{ staffRole: 'OWNER', user: { fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone, status: bp.status || 'ACTIVE' } }],
-        });
-      }
+      if (isRemoved(bp.id, bp.ownerId)) return;
+      const cleanEmail = bp.email ? bp.email.trim().toLowerCase() : '';
+      const localMatch = local.pharmacies.find(
+        (lp) => lp.id === bp.id || (cleanEmail && lp.email?.toLowerCase() === cleanEmail)
+      );
+
+      pharmacies.push({
+        id: bp.id,
+        userId: bp.ownerId || bp.id,
+        name: bp.name,
+        email: bp.email,
+        phone: bp.phone,
+        imageUrl: bp.imageUrl || localMatch?.imageUrl || '',
+        licenseNumber: bp.licenseNumber || 'WB-DL-REG',
+        line1: bp.line1 || 'Sector V',
+        city: bp.city || 'Kolkata',
+        state: bp.state || 'West Bengal',
+        pincode: bp.pincode || '700091',
+        status: bp.status || 'ACTIVE',
+        owner: { id: bp.id, fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone },
+        staff: [{ staffRole: 'OWNER', user: { fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone, status: bp.status || 'ACTIVE' } }],
+      });
+
+      seenPharmIds.add(bp.id);
+      if (cleanEmail) seenPharmEmails.add(cleanEmail);
     });
+
     backendUsers.filter((u) => u.role?.name === 'PHARMACY' || u.role === 'PHARMACY').forEach((u) => {
-      if (!accountRegistry.isEntityRemoved(u.id) && !pharmacies.some((p) => p.id === u.id || (u.email && p.email === u.email))) {
-        pharmacies.push({
-          id: u.id,
-          userId: u.id,
-          name: `${u.fullName} Pharmacy`,
-          email: u.email,
-          phone: u.phone,
-          imageUrl: '',
-          licenseNumber: 'WB-DL-REG',
-          line1: 'Sector V',
-          city: 'Kolkata',
-          state: 'West Bengal',
-          pincode: '700091',
-          status: u.status || 'ACTIVE',
-          owner: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
-          staff: [{ staffRole: 'OWNER', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
-        });
-      }
+      if (isRemoved(u.id)) return;
+      const cleanEmail = u.email ? u.email.trim().toLowerCase() : '';
+      if (seenPharmIds.has(u.id) || (cleanEmail && seenPharmEmails.has(cleanEmail))) return;
+
+      const localMatch = local.pharmacies.find(
+        (lp) => lp.id === u.id || (cleanEmail && lp.email?.toLowerCase() === cleanEmail)
+      );
+
+      pharmacies.push({
+        id: u.id,
+        userId: u.id,
+        name: `${u.fullName} Pharmacy`,
+        email: u.email,
+        phone: u.phone,
+        imageUrl: localMatch?.imageUrl || '',
+        licenseNumber: 'WB-DL-REG',
+        line1: 'Sector V',
+        city: 'Kolkata',
+        state: 'West Bengal',
+        pincode: '700091',
+        status: u.status || 'ACTIVE',
+        owner: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
+        staff: [{ staffRole: 'OWNER', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
+      });
+
+      seenPharmIds.add(u.id);
+      if (cleanEmail) seenPharmEmails.add(cleanEmail);
     });
 
-    // 3. CLINICS
-    const clinics = [...local.clinics];
+    local.pharmacies.forEach((lp) => {
+      if (isRemoved(lp.id, lp.userId)) return;
+      const cleanEmail = lp.email ? lp.email.trim().toLowerCase() : '';
+      if (seenPharmIds.has(lp.id) || (cleanEmail && seenPharmEmails.has(cleanEmail))) return;
+      pharmacies.push(lp);
+      seenPharmIds.add(lp.id);
+    });
+
+    // 3. CLINICS (Backend Locations & Receptionists first)
+    const clinics = [];
+    const seenClinicIds = new Set();
+    const seenClinicEmails = new Set();
+
+    backendLocations.forEach((loc) => {
+      if (isRemoved(loc.id)) return;
+      const localMatch = local.clinics.find(
+        (lc) => lc.id === loc.id || (lc.name && lc.name.toLowerCase().includes(loc.city?.toLowerCase()))
+      );
+
+      clinics.push({
+        id: loc.id,
+        userId: loc.id,
+        name: loc.area ? `${loc.area} Clinic (${loc.city})` : `${loc.city} Health Hub`,
+        email: localMatch?.email || `clinic.${String(loc.city || 'hub').toLowerCase().replace(/\s+/g, '')}@oshudwala.com`,
+        phone: localMatch?.phone || '9876543210',
+        imageUrl: loc.imageUrl || localMatch?.imageUrl || '',
+        chamberCount: loc.chamberCount || localMatch?.chamberCount || '6 Chambers',
+        line1: loc.area ? `${loc.area}, ${loc.city}` : loc.city,
+        city: loc.city,
+        state: loc.state,
+        pincode: loc.pincode,
+        status: loc.isActive === false ? 'DEACTIVATED' : 'ACTIVE',
+        manager: { id: loc.id, fullName: localMatch?.manager?.fullName || `${loc.city} Manager`, email: localMatch?.email, phone: localMatch?.phone },
+        staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: localMatch?.manager?.fullName || `${loc.city} Manager`, status: loc.isActive === false ? 'DEACTIVATED' : 'ACTIVE' } }],
+        settings: { chamberCount: loc.chamberCount || localMatch?.chamberCount || '6 Chambers' },
+        isFeatured: localMatch?.isFeatured || false,
+      });
+
+      seenClinicIds.add(loc.id);
+    });
+
     backendUsers.filter((u) => u.role?.name === 'RECEPTIONIST' || u.role === 'RECEPTIONIST').forEach((u) => {
-      if (!accountRegistry.isEntityRemoved(u.id) && !clinics.some((c) => c.id === u.id || (u.email && c.email === u.email))) {
-        clinics.push({
-          id: u.id,
-          userId: u.id,
-          name: `${u.fullName} Polyclinic`,
-          email: u.email,
-          phone: u.phone,
-          imageUrl: '',
-          chamberCount: '6 Chambers',
-          line1: 'Salt Lake Sector 1',
-          city: 'Kolkata',
-          state: 'West Bengal',
-          pincode: '700064',
-          status: u.status || 'ACTIVE',
-          manager: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
-          staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
-          settings: { chamberCount: '6 Chambers' },
-        });
-      }
+      if (isRemoved(u.id)) return;
+      const cleanEmail = u.email ? u.email.trim().toLowerCase() : '';
+      if (seenClinicIds.has(u.id) || (cleanEmail && seenClinicEmails.has(cleanEmail))) return;
+
+      const localMatch = local.clinics.find(
+        (lc) => lc.id === u.id || (cleanEmail && lc.email?.toLowerCase() === cleanEmail)
+      );
+
+      clinics.push({
+        id: u.id,
+        userId: u.id,
+        name: `${u.fullName} Polyclinic`,
+        email: u.email,
+        phone: u.phone,
+        imageUrl: localMatch?.imageUrl || '',
+        chamberCount: localMatch?.chamberCount || '6 Chambers',
+        line1: 'Salt Lake Sector 1',
+        city: 'Kolkata',
+        state: 'West Bengal',
+        pincode: '700064',
+        status: u.status || 'ACTIVE',
+        manager: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
+        staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
+        settings: { chamberCount: '6 Chambers' },
+        isFeatured: localMatch?.isFeatured || false,
+      });
+
+      seenClinicIds.add(u.id);
+      if (cleanEmail) seenClinicEmails.add(cleanEmail);
     });
 
-    // 4. RIDERS
-    const riders = [...local.riders];
-    backendRiders.forEach((br) => {
-      if (!accountRegistry.isEntityRemoved(br.id) && !riders.some((r) => r.id === br.id || r.userId === br.userId || (br.phone && r.phone === br.phone))) {
-        riders.push({
-          id: br.id,
-          userId: br.userId || br.id,
-          fullName: br.user?.fullName || br.fullName || 'Rider',
-          email: br.user?.email || br.email,
-          phone: br.user?.phone || br.phone,
-          imageUrl: br.imageUrl || '',
-          vehicleType: br.vehicleType || 'Motorcycle',
-          vehicleNumber: br.vehicleNumber || 'WB-01-AB-1234',
-          licenseNumber: br.licenseNumber || 'DL-WB-Verified',
-          user: { id: br.userId || br.id, fullName: br.fullName, email: br.email, phone: br.phone, status: br.status || 'ACTIVE' },
-          status: br.status || 'AVAILABLE',
-        });
-      }
+    local.clinics.forEach((lc) => {
+      if (isRemoved(lc.id, lc.userId)) return;
+      const cleanEmail = lc.email ? lc.email.trim().toLowerCase() : '';
+      if (seenClinicIds.has(lc.id) || (cleanEmail && seenClinicEmails.has(cleanEmail))) return;
+      clinics.push(lc);
+      seenClinicIds.add(lc.id);
     });
+
+    // 4. RIDERS (Backend first as source of truth)
+    const riders = [];
+    const seenRiderIds = new Set();
+    const seenRiderPhones = new Set();
+
+    backendRiders.forEach((br) => {
+      if (isRemoved(br.id, br.userId)) return;
+      const cleanPhone = br.phone || br.user?.phone ? String(br.phone || br.user?.phone).replace(/[^0-9]/g, '') : '';
+      const localMatch = local.riders.find(
+        (lr) => lr.id === br.id || lr.userId === br.userId || (cleanPhone && lr.phone && String(lr.phone).replace(/[^0-9]/g, '') === cleanPhone)
+      );
+
+      riders.push({
+        id: br.id,
+        userId: br.userId || br.id,
+        fullName: br.user?.fullName || br.fullName || localMatch?.fullName || 'Rider',
+        email: br.user?.email || br.email || localMatch?.email,
+        phone: br.user?.phone || br.phone || localMatch?.phone,
+        imageUrl: br.imageUrl || localMatch?.imageUrl || '',
+        vehicleType: br.vehicleType || localMatch?.vehicleType || 'Motorcycle',
+        vehicleNumber: br.vehicleNumber || localMatch?.vehicleNumber || 'WB-01-AB-1234',
+        licenseNumber: br.licenseNumber || localMatch?.licenseNumber || 'DL-WB-Verified',
+        user: { id: br.userId || br.id, fullName: br.fullName, email: br.email, phone: br.phone, status: br.status || 'ACTIVE' },
+        status: br.status || 'AVAILABLE',
+      });
+
+      seenRiderIds.add(br.id);
+      if (br.userId) seenRiderIds.add(br.userId);
+      if (cleanPhone) seenRiderPhones.add(cleanPhone);
+    });
+
     backendUsers.filter((u) => u.role?.name === 'RIDER' || u.role === 'RIDER').forEach((u) => {
-      if (!accountRegistry.isEntityRemoved(u.id) && !riders.some((r) => r.id === u.id || r.userId === u.id || (u.phone && r.phone === u.phone))) {
-        riders.push({
-          id: u.id,
-          userId: u.id,
-          fullName: u.fullName,
-          email: u.email,
-          phone: u.phone,
-          imageUrl: '',
-          vehicleType: 'Motorcycle',
-          vehicleNumber: 'WB-01-AB-1234',
-          licenseNumber: 'DL-WB-Verified',
-          user: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
-          status: u.status || 'AVAILABLE',
-        });
-      }
+      if (isRemoved(u.id)) return;
+      const cleanPhone = u.phone ? String(u.phone).replace(/[^0-9]/g, '') : '';
+      if (seenRiderIds.has(u.id) || (cleanPhone && seenRiderPhones.has(cleanPhone))) return;
+
+      const localMatch = local.riders.find(
+        (lr) => lr.id === u.id || lr.userId === u.id || (cleanPhone && lr.phone && String(lr.phone).replace(/[^0-9]/g, '') === cleanPhone)
+      );
+
+      riders.push({
+        id: u.id,
+        userId: u.id,
+        fullName: u.fullName,
+        email: u.email,
+        phone: u.phone,
+        imageUrl: localMatch?.imageUrl || '',
+        vehicleType: localMatch?.vehicleType || 'Motorcycle',
+        vehicleNumber: localMatch?.vehicleNumber || 'WB-01-AB-1234',
+        licenseNumber: localMatch?.licenseNumber || 'DL-WB-Verified',
+        user: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
+        status: u.status || 'AVAILABLE',
+      });
+
+      seenRiderIds.add(u.id);
+      if (cleanPhone) seenRiderPhones.add(cleanPhone);
+    });
+
+    local.riders.forEach((lr) => {
+      if (isRemoved(lr.id, lr.userId)) return;
+      const cleanPhone = lr.phone ? String(lr.phone).replace(/[^0-9]/g, '') : '';
+      if (seenRiderIds.has(lr.id) || (lr.userId && seenRiderIds.has(lr.userId)) || (cleanPhone && seenRiderPhones.has(cleanPhone))) return;
+      riders.push(lr);
+      seenRiderIds.add(lr.id);
     });
 
     // 5. PATIENTS / USERS
-    const users = [...local.users];
-    backendUsers.filter((u) => !u.role?.name || u.role?.name === 'PATIENT' || u.role === 'PATIENT').forEach((u) => {
-      if (!accountRegistry.isEntityRemoved(u.id) && !users.some((eu) => eu.id === u.id || (u.phone && eu.phone === u.phone))) {
+    const users = [];
+    const seenUserIds = new Set();
+    const seenUserPhones = new Set();
+
+    backendUsers
+      .filter((u) => !u.role?.name || u.role?.name === 'PATIENT' || u.role === 'PATIENT')
+      .forEach((u) => {
+        if (isRemoved(u.id)) return;
+        const cleanPhone = u.phone ? String(u.phone).replace(/[^0-9]/g, '') : '';
+
         users.push({
           id: u.id,
           fullName: u.fullName,
           email: u.email,
           phone: u.phone,
-          imageUrl: '',
+          imageUrl: u.imageUrl || '',
           createdAt: u.createdAt,
           role: { name: 'PATIENT' },
           status: u.status || 'ACTIVE',
         });
-      }
+
+        seenUserIds.add(u.id);
+        if (cleanPhone) seenUserPhones.add(cleanPhone);
+      });
+
+    local.users.forEach((lu) => {
+      if (isRemoved(lu.id, lu.userId)) return;
+      const cleanPhone = lu.phone ? String(lu.phone).replace(/[^0-9]/g, '') : '';
+      if (seenUserIds.has(lu.id) || (cleanPhone && seenUserPhones.has(cleanPhone))) return;
+      users.push(lu);
+      seenUserIds.add(lu.id);
     });
 
+    const statusStore = accountRegistry.getEntityStatuses();
+    const applyStatus = (item) => {
+      const match =
+        statusStore[item.id] ||
+        (item.userId && statusStore[item.userId]) ||
+        (item.email && statusStore[item.email.toLowerCase()]) ||
+        (item.phone && statusStore[String(item.phone).replace(/[^0-9]/g, '')]);
+      if (match) {
+        return {
+          ...item,
+          status: match.status,
+          deactivatedAt: match.deactivatedAt,
+          purgeDeadline: match.purgeDeadline,
+          user: item.user ? { ...item.user, status: match.status } : item.user,
+        };
+      }
+      return item;
+    };
+
     const result = {
-      clinics: clinics.filter((c) => !accountRegistry.isEntityRemoved(c.id)),
-      doctors: doctors.filter((d) => !accountRegistry.isEntityRemoved(d.id)),
-      pharmacies: pharmacies.filter((p) => !accountRegistry.isEntityRemoved(p.id)),
-      riders: riders.filter((r) => !accountRegistry.isEntityRemoved(r.id)),
-      users: users.filter((u) => !accountRegistry.isEntityRemoved(u.id)),
+      clinics: clinics.filter((c) => !accountRegistry.isEntityRemoved(c.id)).map(applyStatus),
+      doctors: doctors.filter((d) => !accountRegistry.isEntityRemoved(d.id)).map(applyStatus),
+      pharmacies: pharmacies.filter((p) => !accountRegistry.isEntityRemoved(p.id)).map(applyStatus),
+      riders: riders.filter((r) => !accountRegistry.isEntityRemoved(r.id)).map(applyStatus),
+      users: users.filter((u) => !accountRegistry.isEntityRemoved(u.id)).map(applyStatus),
       settings: backendSettings,
     };
 
@@ -802,20 +1007,30 @@ export const adminApi = {
   },
 
   // ================= ENTITY STATUS & DEACTIVATION (30-DAY DEADLINE) =================
-  async setStatus(id, roleName, status) {
+  async setStatus(id, roleName, status, entityInfo = {}) {
     this.invalidateCache();
     const purgeDeadline = status === 'DEACTIVATED' ? Date.now() + 30 * 24 * 60 * 60 * 1000 : null;
+
+    // 1. Immediately record in persistent registry
+    accountRegistry.setAccountStatus(id, status, purgeDeadline, {
+      ...entityInfo,
+      role: roleName,
+    });
+
+    // 2. Try backend sync with short timeout so network latency never blocks the UI
     try {
-      await apiClient.put(`/admin/users/${id}/access`, {
+      const targetUserId = entityInfo.userId || entityInfo.id || id;
+      const apiPromise = apiClient.put(`/admin/users/${targetUserId}/access`, {
         roleName: roleName || 'PATIENT',
         status,
       });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Network timeout')), 2500)
+      );
+      await Promise.race([apiPromise, timeoutPromise]);
     } catch (err) {
       console.warn('Backend update status notice:', err.message);
     }
-
-    // Save in accountRegistry
-    accountRegistry.setAccountStatus(id, status, purgeDeadline);
 
     return { id, status, purgeDeadline };
   },
@@ -944,31 +1159,145 @@ export const adminApi = {
   },
 
   // ================= ASSIGN DOCTOR TO CLINIC =================
+  async getDoctorClinicAssignments() {
+    try {
+      const raw = localStorage.getItem('oshud_clinic_doctor_assignments');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+
+    const defaultAssignments = [
+      {
+        id: 'assign_seed_1',
+        clinicId: 'cln-01',
+        clinicName: 'Apollo Clinic & Polyclinic',
+        clinicAddress: 'Sector 1, Salt Lake City, Kolkata',
+        doctorId: 'doc-01',
+        doctorName: 'Dr. Priya Sharma',
+        doctorSpecialization: 'General Medicine & Diabetology',
+        doctorQualifications: 'MBBS, MD (Medicine)',
+        consultationFee: 500,
+        chamberNo: 'Chamber 1 (Room 204)',
+        startTime: '09:30 AM',
+        endTime: '01:30 PM',
+        timeSlot: '09:30 AM - 01:30 PM',
+        maxCapacity: 25,
+        scheduleType: 'DAILY',
+        scheduleSummary: 'Daily (Mon - Sun)',
+        availableDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        status: 'ACTIVE',
+        createdAt: '2026-11-20T10:00:00.000Z',
+      },
+      {
+        id: 'assign_seed_2',
+        clinicId: 'cln-01',
+        clinicName: 'Apollo Clinic & Polyclinic',
+        clinicAddress: 'Sector 1, Salt Lake City, Kolkata',
+        doctorId: 'doc-02',
+        doctorName: 'Dr. Rohit Mehta',
+        doctorSpecialization: 'Cardiology',
+        doctorQualifications: 'MBBS, MD, DM (Cardio)',
+        consultationFee: 700,
+        chamberNo: 'Chamber 2 (Room 206)',
+        startTime: '10:00 AM',
+        endTime: '02:00 PM',
+        timeSlot: '10:00 AM - 02:00 PM',
+        maxCapacity: 20,
+        scheduleType: 'WEEKLY_CUSTOM',
+        scheduleSummary: 'Weekly: Mon, Wed, Fri',
+        availableDays: ['Mon', 'Wed', 'Fri'],
+        status: 'ACTIVE',
+        createdAt: '2026-11-21T11:00:00.000Z',
+      },
+      {
+        id: 'assign_seed_3',
+        clinicId: 'cln-02',
+        clinicName: 'CarePlus Poly Clinic',
+        clinicAddress: 'Main Road, New Town, Kolkata',
+        doctorId: 'doc-03',
+        doctorName: 'Dr. Sneha Das',
+        doctorSpecialization: 'Dermatology & Cosmetology',
+        doctorQualifications: 'MBBS, MD (DVL)',
+        consultationFee: 650,
+        chamberNo: 'Room 102',
+        startTime: '02:00 PM',
+        endTime: '06:00 PM',
+        timeSlot: '02:00 PM - 06:00 PM',
+        maxCapacity: 15,
+        scheduleType: 'MONTHLY_SPECIFIC_WEEKDAY',
+        scheduleSummary: 'Monthly: 1st & 3rd Saturday',
+        availableDays: ['Sat'],
+        scheduleDetails: {
+          weeks: ['Week 1', 'Week 3'],
+          weekday: 'Saturday',
+        },
+        status: 'ACTIVE',
+        createdAt: '2026-11-22T09:00:00.000Z',
+      },
+    ];
+
+    try {
+      localStorage.setItem('oshud_clinic_doctor_assignments', JSON.stringify(defaultAssignments));
+    } catch {}
+    return defaultAssignments;
+  },
+
   async assignDoctorToClinic(payload) {
     try {
-      const response = await apiClient.post('/doctors/assign', {
+      await apiClient.post('/doctors/assign', {
         pharmacyId: payload.clinicId || payload.pharmacyId,
         doctorId: payload.doctorId,
-        consultationFeePaise: Number(payload.consultationFeePaise) || 50000,
+        consultationFeePaise: (Number(payload.consultationFee) || 500) * 100,
         chamberNo: payload.chamberNo || 'Chamber 1',
         availableDays: payload.availableDays || ['Mon', 'Wed', 'Fri'],
-        timeSlot: payload.timeSlot || '10:00 AM - 01:00 PM',
+        timeSlot: payload.timeSlot || `${payload.startTime || '10:00 AM'} - ${payload.endTime || '01:00 PM'}`,
       });
-      return response.data?.data || response.data;
     } catch (err) {
       console.warn('Backend assign doctor notice:', err.message);
-      // Persist in local assignments store
-      try {
-        const raw = localStorage.getItem('oshud_clinic_doctor_assignments');
-        const assignments = raw ? JSON.parse(raw) : [];
-        assignments.unshift({
-          id: `assign_${Date.now()}`,
-          ...payload,
-          createdAt: new Date().toISOString(),
-        });
-        localStorage.setItem('oshud_clinic_doctor_assignments', JSON.stringify(assignments));
-      } catch {}
+    }
+
+    try {
+      const raw = localStorage.getItem('oshud_clinic_doctor_assignments');
+      const assignments = raw ? JSON.parse(raw) : [];
+      const newAssignment = {
+        id: `assign_${Date.now()}`,
+        ...payload,
+        status: 'ACTIVE',
+        createdAt: new Date().toISOString(),
+      };
+      assignments.unshift(newAssignment);
+      localStorage.setItem('oshud_clinic_doctor_assignments', JSON.stringify(assignments));
+      return newAssignment;
+    } catch (e) {
       return { success: true, ...payload };
+    }
+  },
+
+  async removeDoctorClinicAssignment(id) {
+    try {
+      const raw = localStorage.getItem('oshud_clinic_doctor_assignments');
+      const assignments = raw ? JSON.parse(raw) : [];
+      const filtered = assignments.filter((a) => a.id !== id);
+      localStorage.setItem('oshud_clinic_doctor_assignments', JSON.stringify(filtered));
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  async toggleAssignmentStatus(id) {
+    try {
+      const raw = localStorage.getItem('oshud_clinic_doctor_assignments');
+      const assignments = raw ? JSON.parse(raw) : [];
+      const updated = assignments.map((a) => {
+        if (a.id === id) {
+          return { ...a, status: a.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE' };
+        }
+        return a;
+      });
+      localStorage.setItem('oshud_clinic_doctor_assignments', JSON.stringify(updated));
+      return updated;
+    } catch (e) {
+      return [];
     }
   },
 };

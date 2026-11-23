@@ -34,6 +34,20 @@ export function calculatePlatformFee(subtotal) {
 }
 
 /**
+ * Calculates delivery fee based on order subtotal / MRP.
+ * Rule: Below ₹499 is ₹30 delivery charge, ₹499 and above is FREE delivery.
+ * @param {number} subtotal 
+ * @param {boolean} isPickup 
+ * @returns {number}
+ */
+export function calculateDeliveryFee(subtotal, isPickup = false) {
+  if (isPickup) return 0;
+  const amount = Number(subtotal) || 0;
+  if (amount <= 0) return 0;
+  return amount >= 499 ? 0 : 30;
+}
+
+/**
  * Calculates discount and cashback for an order
  * @param {number} subtotal
  * @param {object|null} coupon
@@ -152,14 +166,14 @@ export function calculateOrderBill({
   // 3. Platform Fee based on order value tier (Rule b - g)
   const platformFee = calculatePlatformFee(totalMrp);
 
-  // 4. Delivery Fee (Free for in-store pickup or orders >= ₹500)
+  // 4. Delivery Fee (Rule: Below ₹499 is ₹30, ₹499 and above is FREE delivery)
   let resolvedDeliveryFee = 0;
   if (isPickup) {
     resolvedDeliveryFee = 0;
   } else if (deliveryFee !== null && deliveryFee !== undefined) {
     resolvedDeliveryFee = Number(deliveryFee) || 0;
   } else {
-    resolvedDeliveryFee = totalMrp >= 500 || totalMrp === 0 ? 0 : 30;
+    resolvedDeliveryFee = calculateDeliveryFee(totalMrp, isPickup);
   }
 
   // 5. Discount and Cashback (Rule h)
@@ -201,6 +215,7 @@ export function calculateOrderBill({
 export default {
   PACKAGING_FEE,
   calculatePlatformFee,
+  calculateDeliveryFee,
   calculateDiscountsAndCashback,
   calculateWalletEligibility,
   calculateOrderBill,

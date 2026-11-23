@@ -265,12 +265,17 @@ export const CartPage = () => {
                   <span>Delivery Fee</span>
                   <span className="font-bold text-brandText-main">
                     {deliveryFee === 0 ? (
-                      <span className="text-emerald-700 font-bold">FREE (Above ₹500)</span>
+                      <span className="text-emerald-700 font-bold">FREE (Above ₹499)</span>
                     ) : (
                       `₹${deliveryFee}`
                     )}
                   </span>
                 </div>
+                {subtotal > 0 && subtotal < 499 && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
+                    Add ₹{499 - subtotal} more for <strong>FREE Delivery</strong>!
+                  </p>
+                )}
 
                 {appliedCoupon && (
                   <div className="flex justify-between text-emerald-700 font-bold">
