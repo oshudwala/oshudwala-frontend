@@ -33,7 +33,14 @@ export const ShopPage = () => {
           prescriptionRequired: rxReq,
           sort: sortBy
         });
-        setProducts(res.products);
+        const items = Array.isArray(res?.products)
+          ? res.products
+          : Array.isArray(res?.items)
+          ? res.items
+          : Array.isArray(res)
+          ? res
+          : [];
+        setProducts(items);
       } finally {
         setLoading(false);
       }
@@ -187,12 +194,12 @@ export const ShopPage = () => {
       {/* Results Header */}
       <div className="flex items-center justify-between text-xs text-brandText-secondary px-1">
         <span>
-          Showing <span className="font-bold text-forest-800">{products.length}</span> genuine medicines & products
+          Showing <span className="font-bold text-forest-800">{(products || []).length}</span> genuine medicines & products
         </span>
       </div>
 
       {/* Products Grid */}
-      {products.length === 0 ? (
+      {(products || []).length === 0 ? (
         <div className="bg-surface-pure rounded-3xl p-12 text-center border border-brandBorder-subtle space-y-3">
           <div className="w-16 h-16 mx-auto rounded-full bg-forest-50 text-forest-600 flex items-center justify-center">
             <Search className="w-7 h-7" />
@@ -226,7 +233,7 @@ export const ShopPage = () => {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-          {products.map((product) => (
+          {(products || []).map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>

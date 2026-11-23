@@ -1,5 +1,5 @@
 import React from 'react';
-import { Star, Calendar, MapPin, Award, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Star, Calendar, MapPin } from 'lucide-react';
 import Button from '../common/Button';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -11,38 +11,18 @@ export const DoctorCard = ({ doctor, onBook, onSelect }) => {
   return (
     <div
       onClick={() => onSelect && onSelect(doctor)}
-      className="group bg-surface-pure rounded-3xl p-3 sm:p-4 border border-brandBorder-subtle hover:border-forest-400 shadow-subtle hover:shadow-card transition-all duration-300 flex flex-col justify-between cursor-pointer relative h-full select-none hover:-translate-y-1"
+      className="group bg-surface-pure rounded-2xl sm:rounded-3xl p-3.5 sm:p-4 border border-brandBorder-subtle hover:border-forest-400/80 shadow-subtle hover:shadow-card transition-all duration-300 flex flex-col justify-between cursor-pointer relative h-full select-none hover:-translate-y-1"
     >
       <div>
-        {/* Creative Doctor Portrait Container */}
-        <div className="relative mb-3 w-full aspect-square rounded-2xl overflow-hidden bg-forest-50/70 border border-forest-100/90 shadow-2xs">
-          <img
-            src={doctor.image}
-            alt={doctor.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            loading="lazy"
-          />
-
-          {/* Top-Left Floating Specialty Tag */}
-          <div className="absolute top-2 left-2 z-10">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-forest-950/80 backdrop-blur-md text-emerald-300 text-[10px] font-extrabold shadow-sm border border-emerald-400/20">
-              {t(doctor.specialization, doctor.specialization)}
-            </span>
-          </div>
-
-          {/* Top-Right Floating Rating */}
-          <div className="absolute top-2 right-2 z-10">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/95 backdrop-blur-md text-amber-900 text-[10px] font-extrabold shadow-sm border border-amber-200">
-              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
-              <span>{doctor.rating}</span>
-            </span>
-          </div>
-
-          {/* Verified Doctor Badge at Bottom-Right */}
-          <div className="absolute bottom-2 right-2 z-10" title="Verified Medical Practitioner">
-            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-md ring-2 ring-white">
-              <ShieldCheck className="w-3.5 h-3.5" />
-            </div>
+        {/* Doctor Image with Theme-Matched Radiant Glow & Delicate Border */}
+        <div className="relative mb-3.5 w-full aspect-square rounded-2xl p-[1.5px] bg-gradient-to-br from-forest-500/35 via-emerald-400/25 to-forest-700/40 shadow-[0_4px_18px_rgba(24,78,63,0.13)] group-hover:shadow-[0_6px_25px_rgba(16,185,129,0.25)] group-hover:from-forest-400/60 group-hover:to-emerald-500/60 transition-all duration-300">
+          <div className="w-full h-full rounded-[14px] overflow-hidden bg-forest-50/70">
+            <img
+              src={doctor.image}
+              alt={doctor.name}
+              className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500 ease-out"
+              loading="lazy"
+            />
           </div>
         </div>
 
@@ -53,38 +33,47 @@ export const DoctorCard = ({ doctor, onBook, onSelect }) => {
           </h3>
 
           <p className="text-[11px] text-brandText-secondary font-medium truncate">
-            {doctor.degrees || 'MBBS, MD'}
+            {doctor.specialization || doctor.specialty || 'General Physician'}
+            {doctor.degrees ? ` • ${doctor.degrees.split('(')[0].trim()}` : ''}
           </p>
 
           {/* Chamber / Clinic Location */}
-          <div className="flex items-center gap-1 text-[11px] text-forest-800 font-semibold truncate pt-0.5">
+          <div className="flex items-center gap-1 text-[11px] text-forest-800 font-medium truncate pt-0.5">
             <MapPin className="w-3 h-3 text-forest-600 flex-shrink-0" />
-            <span className="truncate">{doctor.clinicName || 'Apollo Clinic, Salt Lake'}</span>
+            <span className="truncate">{doctor.clinicName || 'Partner Chamber, Kolkata'}</span>
           </div>
 
-          {/* Badges Row: Experience + Live Status */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1.5">
-            {doctor.experienceYears && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-surface-warm text-brandText-secondary border border-brandBorder-subtle">
-                <Award className="w-3 h-3 text-forest-600" />
-                <span>{doctor.experienceYears}+ {t('experience_years', 'Yrs Exp')}</span>
+          {/* Minimalist Meta Row: Rating, Experience & Status */}
+          <div className="flex items-center justify-between text-[11px] pt-2 text-brandText-secondary">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <span className="inline-flex items-center gap-0.5 font-bold text-forest-900">
+                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                <span>{doctor.rating || 4.8}</span>
               </span>
-            )}
+              <span className="text-brandBorder-subtle">•</span>
+              <span className="text-[10px] text-brandText-muted">
+                {doctor.experienceYears || 5}+ yrs exp
+              </span>
+            </div>
 
-            {/* Live Chamber Status */}
+            {/* Clean Live Status Indicator */}
             {liveStatus === 'ON_BREAK' ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200/60">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>{t('on_break', 'On Break')}</span>
+                <span>{t('on_break', 'Break')}</span>
               </span>
             ) : liveStatus === 'OFFLINE' ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500">
                 <span>{t('chamber_offline', 'Offline')}</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md border border-emerald-200/60">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>{liveStatus === 'IN_CONSULTATION' ? t('in_chamber', 'In Chamber') : t('available_today', 'Available')}</span>
+                <span>
+                  {liveStatus === 'IN_CONSULTATION'
+                    ? t('in_chamber', 'In Chamber')
+                    : t('available_today', 'Available')}
+                </span>
               </span>
             )}
           </div>
@@ -92,9 +81,9 @@ export const DoctorCard = ({ doctor, onBook, onSelect }) => {
       </div>
 
       {/* Fee & Action Button */}
-      <div className="pt-3 mt-2 border-t border-brandBorder-light/70 flex items-center justify-between gap-2">
+      <div className="pt-3 mt-2.5 border-t border-brandBorder-light/70 flex items-center justify-between gap-2">
         <div className="text-left">
-          <span className="text-[9px] uppercase font-bold text-brandText-muted block leading-none">
+          <span className="text-[9px] uppercase tracking-wider font-bold text-brandText-muted block leading-none">
             {t('consultation_fee', 'Fee')}
           </span>
           <span className="font-mono font-extrabold text-xs sm:text-sm text-forest-900 mt-0.5 block">
@@ -110,7 +99,7 @@ export const DoctorCard = ({ doctor, onBook, onSelect }) => {
             e.stopPropagation();
             onBook && onBook(doctor);
           }}
-          className="text-[11px] sm:text-xs py-1.5 sm:py-2 px-3 sm:px-4 font-bold shadow-xs group-hover:shadow rounded-xl bg-forest-800 hover:bg-forest-900 flex-1 max-w-[140px] justify-center"
+          className="text-[11px] sm:text-xs py-1.5 sm:py-2 px-3 sm:px-4 font-bold rounded-xl bg-forest-800 hover:bg-forest-900 flex-1 max-w-[130px] justify-center shadow-xs"
         >
           {t('book_appointment', 'Book')}
         </Button>

@@ -15,6 +15,7 @@ import {
   Phone,
   MapPin,
   ShieldCheck,
+  Wallet,
 } from 'lucide-react';
 import MetricCard from '../../components/workspace/MetricCard';
 import StatusBadge from '../../components/workspace/StatusBadge';
@@ -379,6 +380,35 @@ export const PharmacyOverview = () => {
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Quick Access to Wallet & Daily Bills */}
+          <div className="bg-gradient-to-br from-forest-900 to-forest-950 rounded-3xl p-5 text-white shadow-card space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-forest-800/80 text-emerald-400">
+                  <Wallet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-sm text-white">
+                    Pharmacy Wallet & Billing
+                  </h3>
+                  <p className="text-[11px] text-forest-200">
+                    Daily order list & bill statements
+                  </p>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-forest-200/90 leading-relaxed">
+              Track itemized bills for all daily prescriptions and orders, request payouts, and monitor COD settlements.
+            </p>
+            <Link
+              to="/pharmacy/wallet"
+              className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-forest-950 font-heading font-bold text-xs transition-colors shadow-sm"
+            >
+              <span>Open Wallet & Daily Bills</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </div>

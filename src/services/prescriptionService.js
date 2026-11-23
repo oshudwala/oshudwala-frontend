@@ -28,12 +28,21 @@ export const prescriptionService = {
 
   /**
    * Retrieve uploaded prescriptions for authenticated user
-   * GET /api/v1/prescriptions
+   * GET /api/v1/prescriptions/my
    */
   async getUserPrescriptions() {
     try {
-      const response = await apiClient.get('/prescriptions');
-      return response.data?.data || response.data || [];
+      let response;
+      try {
+        response = await apiClient.get('/prescriptions/my');
+      } catch {
+        response = await apiClient.get('/prescriptions');
+      }
+      const data = response?.data?.data || response?.data;
+      if (Array.isArray(data)) return data;
+      if (Array.isArray(data?.prescriptions)) return data.prescriptions;
+      if (Array.isArray(data?.items)) return data.items;
+      return [];
     } catch {
       return [];
     }

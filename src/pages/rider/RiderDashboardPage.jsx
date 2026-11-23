@@ -22,6 +22,7 @@ import Button from '../../components/common/Button';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import apiClient from '../../services/api/client';
 import { riderApi } from '../../services/api/rider.api';
 import PharmacyPickupModal from '../../components/rider/PharmacyPickupModal';
 import DeliveryOtpModal from '../../components/rider/DeliveryOtpModal';
@@ -73,6 +74,8 @@ export const RiderDashboardPage = () => {
   const handlePickupVerified = (orderId, pickupCode) => {
     try {
       verifyPickup(orderId, pickupCode);
+      // Synchronize pickup verification with backend
+      apiClient.post('/deliveries/pickup-qr/scan', { qrToken: pickupCode }).catch(() => {});
       addToast(`Pickup confirmed for Order ${orderId}! Package contents verified.`, 'success');
       setPickupModalOrder(null);
     } catch (err) {

@@ -43,6 +43,7 @@ import PrescriptionReviewPage from '../pages/pharmacy/PrescriptionReviewPage';
 import PharmacyOrdersPage from '../pages/pharmacy/PharmacyOrdersPage';
 import QRPickupVerificationPage from '../pages/pharmacy/QRPickupVerificationPage';
 import PharmacyInventoryPage from '../pages/pharmacy/PharmacyInventoryPage';
+import PharmacyWalletPage from '../pages/pharmacy/PharmacyWalletPage';
 
 // Rider Workspace Pages
 import RiderDashboardPage from '../pages/rider/RiderDashboardPage';
@@ -173,6 +174,7 @@ export const AppRoutes = () => {
         <Route path="orders" element={<PharmacyOrdersPage />} />
         <Route path="pickup" element={<QRPickupVerificationPage />} />
         <Route path="inventory" element={<PharmacyInventoryPage />} />
+        <Route path="wallet" element={<PharmacyWalletPage />} />
       </Route>
 
       {/* 5. Rider Workspace */}

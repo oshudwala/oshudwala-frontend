@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { calculateOrderBill } from '../services/pricingRules';
 
 const CartContext = createContext(null);
 
@@ -102,21 +103,21 @@ export const CartProvider = ({ children }) => {
     setCouponError('');
   };
 
-  // Calculations
+  // Calculations using Platform Pricing Rules
   const itemCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-  const subtotal = cartItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const deliveryFee = subtotal >= 500 || cartItems.length === 0 ? 0 : 40;
+  const bill = calculateOrderBill({
+    items: cartItems,
+    appliedCoupon,
+    isPickup: false,
+  });
 
-  let discount = 0;
-  if (appliedCoupon) {
-    if (appliedCoupon.type === 'percent') {
-      discount = Math.round((subtotal * appliedCoupon.value) / 100);
-    } else if (appliedCoupon.type === 'fixed') {
-      discount = Math.min(subtotal, appliedCoupon.value);
-    }
-  }
-
-  const total = Math.max(0, subtotal + deliveryFee - discount);
+  const subtotal = bill.totalMrp;
+  const packagingFee = bill.packagingFee;
+  const platformFee = bill.platformFee;
+  const deliveryFee = bill.deliveryFee;
+  const discount = bill.discount;
+  const cashback = bill.cashback;
+  const total = bill.finalTotal;
   const hasPrescriptionRequiredItems = cartItems.some((item) => item.prescriptionRequired);
 
   return (
@@ -125,8 +126,12 @@ export const CartProvider = ({ children }) => {
         cartItems,
         itemCount,
         subtotal,
+        totalMrp: subtotal,
+        packagingFee,
+        platformFee,
         deliveryFee,
         discount,
+        cashback,
         total,
         appliedCoupon,
         couponError,

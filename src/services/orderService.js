@@ -13,8 +13,12 @@ export const orderService = {
     prescriptionId,
     couponCode,
     subtotal,
+    totalMrp,
+    packagingFee,
+    platformFee,
     deliveryFee,
     discount,
+    cashback,
     total,
   }) {
     try {
@@ -25,9 +29,12 @@ export const orderService = {
         deliverySlot,
         prescriptionId,
         couponCode,
-        subtotal,
+        subtotal: totalMrp || subtotal,
+        packagingFee: packagingFee || 6,
+        platformFee: platformFee || 9,
         deliveryFee,
         discount,
+        cashback,
         total,
       });
       return response.data?.data || response.data;

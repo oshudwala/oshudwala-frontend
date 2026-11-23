@@ -12,6 +12,9 @@ export const CartDrawer = () => {
     itemCount,
     subtotal,
     deliveryFee,
+    packagingFee,
+    platformFee,
+    cashback,
     discount,
     total,
     updateQuantity,
@@ -168,16 +171,30 @@ export const CartDrawer = () => {
                   <span>Subtotal</span>
                   <span className="font-semibold text-brandText-main">₹{subtotal}</span>
                 </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-emerald-600 font-medium">
+                    <span>Discount {appliedCoupon ? `(${appliedCoupon.code})` : ''}</span>
+                    <span>-₹{discount}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Packaging Charges</span>
+                  <span className="font-semibold text-brandText-main">₹{packagingFee || 6}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Platform Fee</span>
+                  <span className="font-semibold text-brandText-main">₹{platformFee || 9}</span>
+                </div>
                 <div className="flex justify-between">
                   <span>Delivery Fee</span>
                   <span className="font-semibold text-brandText-main">
                     {deliveryFee === 0 ? <span className="text-emerald-600 font-bold">FREE</span> : `₹${deliveryFee}`}
                   </span>
                 </div>
-                {appliedCoupon && (
-                  <div className="flex justify-between text-emerald-600 font-medium">
-                    <span>Coupon ({appliedCoupon.code})</span>
-                    <span>-₹{discount}</span>
+                {cashback > 0 && (
+                  <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded text-[11px]">
+                    <span>Wallet Cashback (2%)</span>
+                    <span>+₹{cashback}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-sm font-bold text-forest-800 pt-2 border-t border-brandBorder-subtle">

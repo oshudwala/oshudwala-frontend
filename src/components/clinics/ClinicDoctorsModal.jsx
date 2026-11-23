@@ -98,7 +98,7 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
                     <img
                       src={doctor.image}
                       alt={doctor.name}
-                      className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-forest-500 shadow-sm flex-shrink-0"
+                      className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-cover object-top border-2 border-forest-500 shadow-sm flex-shrink-0"
                     />
 
                     <div>

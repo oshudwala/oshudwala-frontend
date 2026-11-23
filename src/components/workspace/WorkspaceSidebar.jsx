@@ -115,6 +115,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
               { label: 'Prescription Review', path: '/pharmacy/prescriptions', icon: FileText, badge: pendingRxCount, highlight: true },
               { label: 'Orders Processing', path: '/pharmacy/orders', icon: ShoppingBag, badge: pendingOrdersCount },
               { label: 'QR Pickup Verification', path: '/pharmacy/pickup', icon: QrCode },
+              { label: 'Wallet & Daily Bills', path: '/pharmacy/wallet', icon: Wallet },
             ],
           },
           {

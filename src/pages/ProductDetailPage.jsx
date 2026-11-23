@@ -40,8 +40,9 @@ export const ProductDetailPage = () => {
       setQuantity(1);
 
       // fetch related
-      const rel = await productService.getProducts({ category: res.product?.category, limit: 4 });
-      setRelatedProducts(rel.products.filter(p => p.id !== id).slice(0, 4));
+      const rel = await productService.getProducts({ category: res?.product?.category, limit: 4 });
+      const relItems = Array.isArray(rel?.products) ? rel.products : (Array.isArray(rel?.items) ? rel.items : []);
+      setRelatedProducts(relItems.filter(p => p.id !== id).slice(0, 4));
     };
     fetch();
   }, [id]);

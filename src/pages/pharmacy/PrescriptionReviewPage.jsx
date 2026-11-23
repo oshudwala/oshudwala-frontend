@@ -15,54 +15,65 @@ import {
   Tag,
   Check,
   X,
-  Upload,
+  Clock,
   User,
   Phone,
   DollarSign,
   Percent,
+  CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
+import { calculateOrderBill } from '../../services/pricingRules';
 
 export const PrescriptionReviewPage = () => {
-  const { prescriptions, verifyPrescription, rejectPrescription, createOrder, addPrescription } = useWorkspaceStore();
+  const { prescriptions, verifyPrescription, rejectPrescription, createOrder } = useWorkspaceStore();
   const { addToast } = useToast();
 
+  // Queue View Tab: 'pending' (active audit) | 'history' (already verified/rejected)
+  const [activeQueueTab, setActiveQueueTab] = useState('pending');
+
+  const pendingPrescriptions = prescriptions.filter((p) => p.status === 'PENDING_VERIFICATION');
+  const historyPrescriptions = prescriptions.filter((p) => p.status !== 'PENDING_VERIFICATION');
+
+  const activeList = activeQueueTab === 'pending' ? pendingPrescriptions : historyPrescriptions;
+
   const [selectedRxId, setSelectedRxId] = useState(
-    prescriptions.find((p) => p.status === 'PENDING_VERIFICATION')?.id || prescriptions[0]?.id
+    pendingPrescriptions[0]?.id || prescriptions[0]?.id || ''
   );
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const [pharmacistNotes, setPharmacistNotes] = useState('All medicines verified against CDSCO / WBSPC Schedule H regulations.');
+  const [pharmacistNotes, setPharmacistNotes] = useState(
+    'All medicines verified against CDSCO / WBSPC Schedule H regulations.'
+  );
 
   // Approval Modal State
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
   const [orderPrice, setOrderPrice] = useState('500');
-  const [discountPercent, setDiscountPercent] = useState(15); // Standard 15% platform auto-discount
   const [approvedItems, setApprovedItems] = useState([
     { name: 'Augmentin 625 Duo Tablet', qty: 2, price: 200 },
     { name: 'Pan 40 Tablet', qty: 2, price: 100 },
   ]);
 
-  // Manual In-Store Order Modal State
+  // Manual In-Store Order Modal State (Payment method removed, directly approved with Total MRP)
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [manualCustomerName, setManualCustomerName] = useState('');
   const [manualCustomerPhone, setManualCustomerPhone] = useState('');
   const [manualNotes, setManualNotes] = useState('');
-  const [manualPaymentMethod, setManualPaymentMethod] = useState('CASH');
   const [manualItems, setManualItems] = useState([
     { name: 'Paracetamol 650mg (Dolo 650)', qty: 1, price: 35 },
   ]);
-  const [manualDiscountPercent, setManualDiscountPercent] = useState(15);
 
-  const currentRx = prescriptions.find((p) => p.id === selectedRxId) || prescriptions[0];
+  // Current active prescription being reviewed
+  const currentRx = activeList.find((p) => p.id === selectedRxId) || activeList[0] || null;
 
   const handleZoomIn = () => setZoomLevel((z) => Math.min(2.5, z + 0.25));
   const handleZoomOut = () => setZoomLevel((z) => Math.max(0.75, z - 0.25));
   const handleRotate = () => setRotation((r) => (r + 90) % 360);
 
-  // Call Clarification Action
+  // Direct Call Clarification to Patient
   const handleCallClarification = () => {
     if (!currentRx?.patientPhone) {
       addToast('No registered phone number found for this patient in backend.', 'error');
@@ -70,7 +81,10 @@ export const PrescriptionReviewPage = () => {
     }
     const cleanPhone = currentRx.patientPhone.replace(/\s+/g, '');
     window.location.href = `tel:${cleanPhone}`;
-    addToast(`Initiating direct call to patient ${currentRx.patientName} at ${currentRx.patientPhone}...`, 'info');
+    addToast(
+      `Initiating direct call to patient ${currentRx.patientName} at ${currentRx.patientPhone}...`,
+      'info'
+    );
   };
 
   const handleReject = () => {
@@ -81,16 +95,21 @@ export const PrescriptionReviewPage = () => {
     );
     if (reason) {
       rejectPrescription(currentRx.id, reason);
-      addToast(`Prescription ${currentRx.id} marked Rejected.`, 'error');
+      const remainingPending = pendingPrescriptions.filter((p) => p.id !== currentRx.id);
+      setSelectedRxId(remainingPending[0]?.id || '');
+      addToast(`Prescription ${currentRx.id} rejected and removed from pending queue.`, 'error');
     }
   };
 
-  // Calculations for Approval Modal
+  // Pricing rules calculation for Online Prescription Approval
   const numPrice = Number(orderPrice) || 0;
-  const autoDiscountAmount = (numPrice * discountPercent) / 100;
-  const finalPayableTotal = Math.max(0, numPrice - autoDiscountAmount);
+  const approvalBill = calculateOrderBill({
+    items: approvedItems,
+    customSubtotal: numPrice,
+    isPickup: false,
+  });
 
-  // Submit Approval and Store as Order
+  // Submit Approval: Marks Verified, Creates Order & Removes from Pending Queue immediately
   const handleConfirmApproval = (e) => {
     e.preventDefault();
     if (!currentRx) return;
@@ -100,41 +119,54 @@ export const PrescriptionReviewPage = () => {
       return;
     }
 
-    const formattedItems = approvedItems.length > 0
-      ? approvedItems
-      : [{ name: 'Prescribed Medicines Package', qty: 1, price: numPrice }];
+    const formattedItems =
+      approvedItems.length > 0
+        ? approvedItems
+        : [{ name: 'Prescribed Medicines Package', qty: 1, price: numPrice }];
 
-    // 1. Mark prescription verified
+    // 1. Mark prescription verified in store
     verifyPrescription(currentRx.id, formattedItems, pharmacistNotes);
 
-    // 2. Create Order in workspace store (Ready for Rider Pickup)
+    // 2. Create Order with packaging fee (₹6), tiered platform fee, and discount
     const newOrder = createOrder({
       customerName: currentRx.patientName,
       customerPhone: currentRx.patientPhone,
       address: 'Home Delivery Address (Provided by Patient)',
       area: 'Kolkata Central & Suburban',
       items: formattedItems,
-      subtotal: numPrice,
-      discount: autoDiscountAmount,
-      total: finalPayableTotal,
+      totalMrp: approvalBill.totalMrp,
+      subtotal: approvalBill.totalMrp,
+      packagingFee: approvalBill.packagingFee,
+      platformFee: approvalBill.platformFee,
+      deliveryFee: approvalBill.deliveryFee,
+      discount: approvalBill.discount,
+      cashback: approvalBill.cashback,
+      total: approvalBill.finalTotal,
       status: 'READY_FOR_PICKUP',
       paymentMethod: 'COD',
       prescriptionId: currentRx.id,
     });
 
+    // 3. Immediately advance selectedRxId to next pending prescription and close modal
+    const remainingPending = pendingPrescriptions.filter((p) => p.id !== currentRx.id);
+    setSelectedRxId(remainingPending[0]?.id || '');
     setIsApproveModalOpen(false);
+
     addToast(
-      `Prescription ${currentRx.id} approved! Order ${newOrder.id} created (₹${finalPayableTotal.toFixed(2)}) & Ready for Delivery.`,
+      `Prescription ${currentRx.id} approved! Order ${newOrder.id} created (₹${approvalBill.finalTotal.toFixed(
+        2
+      )}) & staged for dispatch.`,
       'success'
     );
   };
 
-  // Calculations for Manual In-Store Order
-  const manualSubtotal = manualItems.reduce((acc, curr) => acc + (Number(curr.price) || 0) * (Number(curr.qty) || 1), 0);
-  const manualDiscount = (manualSubtotal * manualDiscountPercent) / 100;
-  const manualTotal = Math.max(0, manualSubtotal - manualDiscount);
+  // Pricing rules calculation for Manual In-Store Order
+  const manualBill = calculateOrderBill({
+    items: manualItems,
+    isPickup: true, // In-store counter pickup
+  });
 
-  // Submit Manual In-Store Prescription Order
+  // Submit Manual In-Store Order: Directly approved, directly created as approved order, NO re-approval needed!
   const handleConfirmManualOrder = (e) => {
     e.preventDefault();
     if (!manualCustomerName.trim()) {
@@ -148,39 +180,36 @@ export const PrescriptionReviewPage = () => {
       return;
     }
 
-    // 1. Create prescription entry in workspace
-    const newRx = addPrescription({
-      patientName: manualCustomerName.trim(),
-      patientPhone: manualCustomerPhone.trim(),
-      patientAge: 35,
-      patientGender: 'Walk-in',
-      status: 'VERIFIED',
-      notes: `In-Store counter prescription verified. ${manualNotes}`,
-      extractedMedicines: manualItems,
-    });
-
-    // 2. Create order in workspace store
+    // Directly create the order in READY_FOR_PICKUP (already approved right at the counter!)
     const newOrder = createOrder({
       customerName: manualCustomerName.trim(),
       customerPhone: manualCustomerPhone.trim(),
-      address: 'In-Store Counter Pickup / Express Delivery',
+      address: 'In-Store Counter Pickup',
       area: 'In-Store Counter',
       items: manualItems,
-      subtotal: manualSubtotal,
-      discount: manualDiscount,
-      total: manualTotal,
+      totalMrp: manualBill.totalMrp,
+      subtotal: manualBill.totalMrp,
+      packagingFee: manualBill.packagingFee,
+      platformFee: manualBill.platformFee,
+      deliveryFee: 0,
+      discount: manualBill.discount,
+      cashback: manualBill.cashback,
+      total: manualBill.finalTotal,
       status: 'READY_FOR_PICKUP',
-      paymentMethod: manualPaymentMethod,
+      paymentMethod: 'IN_STORE_COUNTER',
       paymentStatus: 'PAID',
       isManualInStore: true,
-      prescriptionId: newRx.id,
+      notes: `In-Store counter prescription approved & dispensed. ${manualNotes}`,
     });
 
     setIsManualModalOpen(false);
     setManualCustomerName('');
     setManualCustomerPhone('');
     setManualNotes('');
-    addToast(`Manual In-Store Order ${newOrder.id} created successfully! Total: ₹${manualTotal.toFixed(2)}`, 'success');
+    addToast(
+      `In-Store Order ${newOrder.id} approved and billed! Total: ₹${manualBill.finalTotal.toFixed(2)}`,
+      'success'
+    );
   };
 
   return (
@@ -209,35 +238,88 @@ export const PrescriptionReviewPage = () => {
         </div>
       </div>
 
-      {/* Prescription Switcher Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-        {prescriptions.map((rx) => (
+      {/* Queue View Switcher: Pending Audit vs Audit History */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-pure p-3 rounded-2xl border border-brandBorder-subtle shadow-2xs">
+        <div className="flex items-center gap-2">
           <button
-            key={rx.id}
             type="button"
             onClick={() => {
-              setSelectedRxId(rx.id);
-              setZoomLevel(1);
-              setRotation(0);
+              setActiveQueueTab('pending');
+              if (pendingPrescriptions.length > 0) {
+                setSelectedRxId(pendingPrescriptions[0].id);
+              }
             }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              selectedRxId === rx.id
-                ? 'bg-forest-800 text-white shadow-sm'
-                : 'bg-surface-pure border border-brandBorder-subtle text-forest-900 hover:bg-forest-50'
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeQueueTab === 'pending'
+                ? 'bg-forest-800 text-white shadow-xs'
+                : 'text-brandText-secondary hover:bg-forest-50 hover:text-forest-800'
             }`}
           >
-            <span>{rx.id}</span>
+            <Clock className="w-3.5 h-3.5" />
+            <span>Pending Audit Queue</span>
             <span
-              className={`w-2 h-2 rounded-full ${
-                rx.status === 'VERIFIED'
-                  ? 'bg-emerald-400'
-                  : rx.status === 'REJECTED'
-                  ? 'bg-rose-400'
-                  : 'bg-amber-400'
+              className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                activeQueueTab === 'pending'
+                  ? 'bg-amber-400 text-forest-950 font-extrabold'
+                  : 'bg-forest-100 text-forest-800'
               }`}
-            />
+            >
+              {pendingPrescriptions.length}
+            </span>
           </button>
-        ))}
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveQueueTab('history');
+              if (historyPrescriptions.length > 0) {
+                setSelectedRxId(historyPrescriptions[0].id);
+              }
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeQueueTab === 'history'
+                ? 'bg-forest-800 text-white shadow-xs'
+                : 'text-brandText-secondary hover:bg-forest-50 hover:text-forest-800'
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>Audit History</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-forest-100 text-forest-800">
+              {historyPrescriptions.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Prescription Selection Pills for current tab */}
+        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full pb-0.5">
+          {activeList.map((rx) => (
+            <button
+              key={rx.id}
+              type="button"
+              onClick={() => {
+                setSelectedRxId(rx.id);
+                setZoomLevel(1);
+                setRotation(0);
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                selectedRxId === rx.id
+                  ? 'bg-forest-700 text-white shadow-xs ring-2 ring-forest-500/30'
+                  : 'bg-surface-warm border border-brandBorder-subtle text-forest-900 hover:bg-forest-50'
+              }`}
+            >
+              <span>{rx.id}</span>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  rx.status === 'VERIFIED'
+                    ? 'bg-emerald-400'
+                    : rx.status === 'REJECTED'
+                    ? 'bg-rose-400'
+                    : 'bg-amber-400 animate-pulse'
+                }`}
+              />
+            </button>
+          ))}
+        </div>
       </div>
 
       {currentRx ? (
@@ -251,6 +333,17 @@ export const PrescriptionReviewPage = () => {
                 <span className="font-mono font-bold text-xs text-forest-900">{currentRx.id}</span>
                 <span className="text-[10px] text-brandText-muted">
                   Submitted: {currentRx.submittedAt}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    currentRx.status === 'VERIFIED'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : currentRx.status === 'REJECTED'
+                      ? 'bg-rose-100 text-rose-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {currentRx.status.replace(/_/g, ' ')}
                 </span>
               </div>
 
@@ -299,115 +392,128 @@ export const PrescriptionReviewPage = () => {
                     currentRx.imageUrl ||
                     'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=800'
                   }
-                  alt="Original Stored Prescription Scan"
-                  className="max-h-[500px] object-contain rounded"
+                  alt={`Prescription ${currentRx.id}`}
+                  className="max-h-[520px] object-contain rounded select-none"
                 />
               </div>
-            </div>
-
-            <div className="p-3 bg-surface-warm border-t border-brandBorder-subtle flex items-center justify-between text-xs text-brandText-secondary">
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Original Document from Database Storage</span>
-              </span>
-              <span className="font-mono text-[11px]">CDSCO Schedule H Compliance Validated</span>
             </div>
           </div>
 
-          {/* Right Side (5 Cols): Patient Info, Call Clarification & Order Approval */}
+          {/* Right Side (5 Cols): Patient Info & Pharmacist Actions */}
           <div className="lg:col-span-5 bg-surface-pure rounded-3xl border border-brandBorder-subtle shadow-card p-6 flex flex-col justify-between space-y-6">
-            <div className="space-y-5">
-              {/* Patient Info Card (Doctor Details & Extracted Items REMOVED) */}
-              <div className="p-4 rounded-2xl bg-forest-50/70 border border-forest-100 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-heading font-extrabold text-base text-forest-900">
-                      {currentRx.patientName}
-                    </h3>
-                    <p className="text-xs text-brandText-secondary">
-                      {currentRx.patientGender}, {currentRx.patientAge} yrs
-                    </p>
-                  </div>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      currentRx.status === 'VERIFIED'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : currentRx.status === 'REJECTED'
-                        ? 'bg-rose-100 text-rose-800'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {currentRx.status.replace('_', ' ')}
+            <div className="space-y-4">
+              {/* Header Box */}
+              <div className="flex items-center justify-between pb-3 border-b border-brandBorder-subtle">
+                <div>
+                  <span className="text-[10px] font-bold text-forest-700 uppercase tracking-wider">
+                    Customer Audit Card
                   </span>
+                  <h2 className="font-heading font-extrabold text-lg text-forest-900">
+                    {currentRx.patientName}
+                  </h2>
                 </div>
-
-                <div className="pt-2 border-t border-forest-200/60 flex items-center justify-between text-xs text-forest-900">
-                  <div className="flex items-center gap-1.5 font-mono font-semibold">
-                    <Phone className="w-3.5 h-3.5 text-forest-600" />
-                    <span>{currentRx.patientPhone}</span>
-                  </div>
-                  <span className="text-[10px] text-brandText-muted">Verified Mobile</span>
+                <div className="text-right">
+                  <span className="text-[11px] font-mono font-bold text-forest-800">
+                    {currentRx.patientPhone}
+                  </span>
+                  <p className="text-[10px] text-brandText-muted">
+                    {currentRx.patientGender}, {currentRx.patientAge} yrs
+                  </p>
                 </div>
               </div>
 
-              {/* Patient Notes / Prescription Remarks */}
-              {currentRx.notes && (
-                <div className="p-3 bg-surface-warm rounded-2xl border border-brandBorder-subtle text-xs">
-                  <span className="font-bold text-forest-900 block mb-0.5">Patient Notes / Reference:</span>
-                  <p className="text-brandText-secondary">{currentRx.notes}</p>
+              {/* Patient Submission Details */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-forest-900 block">
+                  Patient Notes & Instructions
+                </label>
+                <div className="p-3 bg-surface-warm rounded-2xl border border-brandBorder-subtle text-xs text-brandText-secondary">
+                  {currentRx.notes ||
+                    'Please dispense standard branded dosage for 7 days with invoice.'}
                 </div>
-              )}
+              </div>
 
-              {/* Pharmacist Compliance Sign-Off Notes */}
-              <div>
-                <label className="text-xs font-bold text-forest-900">Pharmacist Sign-Off Note</label>
+              {/* Pharmacist CDSCO Verification Notes */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-forest-900 flex items-center justify-between">
+                  <span>Pharmacist CDSCO Compliance Audit</span>
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                </label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={pharmacistNotes}
                   onChange={(e) => setPharmacistNotes(e.target.value)}
-                  placeholder="Compliance and batch verification notes..."
-                  className="w-full mt-1 p-2.5 bg-surface-warm border border-brandBorder-subtle rounded-xl text-xs focus:outline-none focus:border-forest-500"
+                  disabled={currentRx.status !== 'PENDING_VERIFICATION'}
+                  placeholder="Enter CDSCO Schedule H batch remarks..."
+                  className="w-full p-3 text-xs font-medium bg-surface-warm border border-brandBorder-subtle rounded-2xl focus:outline-none focus:border-forest-500 disabled:opacity-75"
                 />
               </div>
             </div>
 
-            {/* Bottom Actions: Call Clarification, Reject, and Approve & Release Order */}
-            <div className="pt-4 border-t border-brandBorder-subtle space-y-2.5">
-              <div className="grid grid-cols-2 gap-2">
+            {/* Bottom Actions for Pending Prescription */}
+            {currentRx.status === 'PENDING_VERIFICATION' ? (
+              <div className="pt-4 border-t border-brandBorder-subtle space-y-2.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    leftIcon={PhoneCall}
+                    onClick={handleCallClarification}
+                    className="text-xs font-bold text-forest-800 border-forest-200 hover:bg-forest-50"
+                  >
+                    Call Clarification
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    leftIcon={XCircle}
+                    onClick={handleReject}
+                    className="text-xs font-bold"
+                  >
+                    Reject
+                  </Button>
+                </div>
+
                 <Button
-                  variant="outline"
-                  size="sm"
-                  leftIcon={PhoneCall}
-                  onClick={handleCallClarification}
-                  className="text-xs font-bold text-forest-800 border-forest-200 hover:bg-forest-50"
+                  variant="primary"
+                  size="md"
+                  leftIcon={CheckCircle}
+                  onClick={() => setIsApproveModalOpen(true)}
+                  className="w-full text-xs font-bold py-2.5 shadow-md flex items-center justify-center gap-2"
                 >
-                  Call Clarification
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  leftIcon={XCircle}
-                  onClick={handleReject}
-                  className="text-xs font-bold"
-                >
-                  Reject
+                  Approve & Set Order Price
                 </Button>
               </div>
-
-              <Button
-                variant="primary"
-                size="md"
-                leftIcon={CheckCircle}
-                onClick={() => setIsApproveModalOpen(true)}
-                className="w-full text-xs font-bold py-2.5 shadow-md flex items-center justify-center gap-2"
-              >
-                Approve & Set Order Price
-              </Button>
-            </div>
+            ) : (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-1">
+                <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto" />
+                <p className="text-xs font-bold text-emerald-900">
+                  Prescription Already {currentRx.status}
+                </p>
+                <p className="text-[11px] text-emerald-700">
+                  This document has been audited and billed.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       ) : (
-        <p className="text-xs text-brandText-secondary">No prescriptions available for audit.</p>
+        /* Empty State when queue is clear */
+        <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle p-12 text-center space-y-3 shadow-card">
+          <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100">
+            <CheckCircle2 className="w-7 h-7" />
+          </div>
+          <h3 className="text-lg font-heading font-extrabold text-forest-900">
+            {activeQueueTab === 'pending'
+              ? 'All Prescriptions Audited!'
+              : 'No History Prescriptions Available'}
+          </h3>
+          <p className="text-xs text-brandText-secondary max-w-sm mx-auto">
+            {activeQueueTab === 'pending'
+              ? 'Great job! There are currently no pending customer prescriptions waiting for audit in the queue.'
+              : 'Approved or rejected prescriptions will be archived here for your records.'}
+          </p>
+        </div>
       )}
 
       {/* APPROVAL & AUTO-DISCOUNT ORDER CREATION MODAL */}
@@ -444,7 +550,10 @@ export const PrescriptionReviewPage = () => {
                   <button
                     type="button"
                     onClick={() =>
-                      setApprovedItems([...approvedItems, { name: 'Additional Medicine', qty: 1, price: 100 }])
+                      setApprovedItems([
+                        ...approvedItems,
+                        { name: 'Additional Medicine', qty: 1, price: 100 },
+                      ])
                     }
                     className="text-[11px] font-bold text-forest-700 hover:underline flex items-center gap-1"
                   >
@@ -453,7 +562,7 @@ export const PrescriptionReviewPage = () => {
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                   {approvedItems.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-surface-warm p-2 rounded-xl text-xs">
                       <input
@@ -491,60 +600,61 @@ export const PrescriptionReviewPage = () => {
                 </div>
               </div>
 
-              {/* Medicine Price Input & Auto-Discount */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div>
-                  <label className="text-xs font-bold text-forest-900">Medicines MRP / Total (₹)</label>
-                  <div className="relative mt-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-brandText-muted">
-                      ₹
-                    </span>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      step="any"
-                      value={orderPrice}
-                      onChange={(e) => setOrderPrice(e.target.value)}
-                      className="w-full pl-7 pr-3 py-2 text-sm font-bold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-forest-900">Auto Platform Discount (%)</label>
-                  <div className="relative mt-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-brandText-muted">
-                      %
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="90"
-                      value={discountPercent}
-                      onChange={(e) => setDiscountPercent(Number(e.target.value) || 0)}
-                      className="w-full pl-7 pr-3 py-2 text-sm font-bold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                    />
-                  </div>
+              {/* Medicine MRP / Total Input */}
+              <div>
+                <label className="text-xs font-bold text-forest-900">Medicines Total MRP (₹)</label>
+                <div className="relative mt-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-brandText-muted">
+                    ₹
+                  </span>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    step="any"
+                    value={orderPrice}
+                    onChange={(e) => setOrderPrice(e.target.value)}
+                    className="w-full pl-7 pr-3 py-2 text-sm font-bold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                  />
                 </div>
               </div>
 
-              {/* Price Calculation Summary Breakdown */}
+              {/* Price Calculation Summary Breakdown according to Rules */}
               <div className="p-3.5 rounded-2xl bg-forest-50/80 border border-forest-100 text-xs space-y-1.5">
                 <div className="flex justify-between text-brandText-secondary">
-                  <span>Gross Medicine Price:</span>
-                  <span className="font-mono font-semibold">₹{numPrice.toFixed(2)}</span>
+                  <span>Total MRP:</span>
+                  <span className="font-mono font-semibold">₹{approvalBill.totalMrp.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span className="flex items-center gap-1">
                     <Tag className="w-3.5 h-3.5" />
-                    <span>Auto-Applied Discount ({discountPercent}%):</span>
+                    <span>
+                      {approvalBill.isHighValueTier
+                        ? 'High-Value Discount (18%):'
+                        : `Platform Discount (${approvalBill.discountPercent}%):`}
+                    </span>
                   </span>
-                  <span className="font-mono">-₹{autoDiscountAmount.toFixed(2)}</span>
+                  <span className="font-mono">-₹{approvalBill.discount.toFixed(2)}</span>
                 </div>
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Packaging Charges (Fixed):</span>
+                  <span className="font-mono">₹{approvalBill.packagingFee.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Platform Fee:</span>
+                  <span className="font-mono">₹{approvalBill.platformFee.toFixed(2)}</span>
+                </div>
+                {approvalBill.cashback > 0 && (
+                  <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-100/60 px-2 py-1 rounded-lg">
+                    <span>Wallet Cashback (2%):</span>
+                    <span className="font-mono">+₹{approvalBill.cashback.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="border-t border-forest-200/80 pt-1.5 flex justify-between font-bold text-forest-900 text-sm">
-                  <span>Final Amount to Collect (COD):</span>
-                  <span className="font-mono text-forest-800">₹{finalPayableTotal.toFixed(2)}</span>
+                  <span>Final Net Total (COD):</span>
+                  <span className="font-mono text-forest-800">
+                    ₹{approvalBill.finalTotal.toFixed(2)}
+                  </span>
                 </div>
               </div>
 
@@ -574,6 +684,7 @@ export const PrescriptionReviewPage = () => {
       )}
 
       {/* MANUAL IN-STORE PRESCRIPTION ORDER MODAL */}
+      {/* Payment method removed, displays Total MRP, directly approved on creation */}
       {isManualModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
@@ -587,7 +698,7 @@ export const PrescriptionReviewPage = () => {
                   New In-Store Walk-in Prescription Order
                 </h3>
                 <p className="text-xs text-brandText-secondary">
-                  Create order for walk-in patient with counter prescription verification
+                  Directly verified & approved at the counter with instant billing
                 </p>
               </div>
               <button
@@ -618,6 +729,7 @@ export const PrescriptionReviewPage = () => {
                   <input
                     type="tel"
                     required
+                    maxLength={10}
                     value={manualCustomerPhone}
                     onChange={(e) => setManualCustomerPhone(e.target.value)}
                     placeholder="e.g. 9830112233"
@@ -629,7 +741,7 @@ export const PrescriptionReviewPage = () => {
               {/* Medicine Item Rows */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-forest-900">Medicine Items</label>
+                  <label className="text-xs font-bold text-forest-900">Medicine Items & MRP</label>
                   <button
                     type="button"
                     onClick={() =>
@@ -642,7 +754,7 @@ export const PrescriptionReviewPage = () => {
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
                   {manualItems.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-surface-warm p-2 rounded-xl text-xs">
                       <input
@@ -679,7 +791,7 @@ export const PrescriptionReviewPage = () => {
                           updated[idx].price = Number(e.target.value) || 0;
                           setManualItems(updated);
                         }}
-                        placeholder="Price"
+                        placeholder="MRP"
                         className="w-16 text-right bg-surface-pure border border-brandBorder-subtle rounded-lg py-0.5 px-1 font-bold"
                       />
                       {manualItems.length > 1 && (
@@ -696,47 +808,39 @@ export const PrescriptionReviewPage = () => {
                 </div>
               </div>
 
-              {/* Payment Mode & Auto-Discount */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-forest-900">Payment Mode</label>
-                  <select
-                    value={manualPaymentMethod}
-                    onChange={(e) => setManualPaymentMethod(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 text-xs font-bold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                  >
-                    <option value="CASH">Cash at Counter</option>
-                    <option value="UPI">UPI / QR Code</option>
-                    <option value="CARD">Debit / Credit Card</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-forest-900">Auto In-Store Discount (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="50"
-                    value={manualDiscountPercent}
-                    onChange={(e) => setManualDiscountPercent(Number(e.target.value) || 0)}
-                    className="w-full mt-1 px-3 py-2 text-xs font-bold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                  />
-                </div>
-              </div>
-
-              {/* Price Summary */}
-              <div className="p-3.5 rounded-2xl bg-forest-50/80 border border-forest-100 text-xs space-y-1">
-                <div className="flex justify-between text-brandText-secondary">
-                  <span>Gross Total:</span>
-                  <span className="font-mono">₹{manualSubtotal.toFixed(2)}</span>
+              {/* Price Summary with Total MRP, Packaging Fee (₹6), Platform Fee & Discount */}
+              <div className="p-3.5 rounded-2xl bg-forest-50/80 border border-forest-100 text-xs space-y-1.5">
+                <div className="flex justify-between font-bold text-forest-900">
+                  <span>Total MRP:</span>
+                  <span className="font-mono text-sm">₹{manualBill.totalMrp.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-emerald-700 font-semibold">
-                  <span>Discount ({manualDiscountPercent}%):</span>
-                  <span className="font-mono">-₹{manualDiscount.toFixed(2)}</span>
+                  <span>
+                    {manualBill.isHighValueTier
+                      ? 'High-Value Discount (18%):'
+                      : `Platform Discount (${manualBill.discountPercent}%):`}
+                  </span>
+                  <span className="font-mono">-₹{manualBill.discount.toFixed(2)}</span>
                 </div>
-                <div className="border-t border-forest-200/80 pt-1 flex justify-between font-bold text-forest-900 text-sm">
-                  <span>Net Payable:</span>
-                  <span className="font-mono text-forest-800">₹{manualTotal.toFixed(2)}</span>
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Packaging Charges (Fixed):</span>
+                  <span className="font-mono">₹{manualBill.packagingFee.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Platform Fee:</span>
+                  <span className="font-mono">₹{manualBill.platformFee.toFixed(2)}</span>
+                </div>
+                {manualBill.cashback > 0 && (
+                  <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-100/60 px-2 py-1 rounded-lg">
+                    <span>Wallet Cashback (2%):</span>
+                    <span className="font-mono">+₹{manualBill.cashback.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="border-t border-forest-200/80 pt-1.5 flex justify-between font-bold text-forest-900 text-sm">
+                  <span>Net Payable at Counter:</span>
+                  <span className="font-mono text-forest-800">
+                    ₹{manualBill.finalTotal.toFixed(2)}
+                  </span>
                 </div>
               </div>
 
@@ -754,10 +858,10 @@ export const PrescriptionReviewPage = () => {
                   type="submit"
                   variant="primary"
                   size="sm"
-                  leftIcon={ShoppingBag}
+                  leftIcon={CheckCircle}
                   className="text-xs font-bold px-4 py-2"
                 >
-                  Confirm & Create Order
+                  Approve & Create In-Store Order
                 </Button>
               </div>
             </form>
