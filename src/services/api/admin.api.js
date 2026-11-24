@@ -95,6 +95,102 @@ async function registerUserInDatabase({ fullName, phone, email, password, roleNa
   return { userId, fullName: cleanName, phone: cleanPhone, email: cleanEmail };
 }
 
+/**
+ * Ensure image data URLs are compressed and lightweight before sending over HTTP
+ * to prevent HTTP 413 (Content Too Large) errors from Render / Express.
+ */
+async function ensureOptimizedImageUrl(dataUrl, maxWidth = 480, maxHeight = 480, quality = 0.72) {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+
+  // Standard web links (http/https) are already short strings
+  if (dataUrl.startsWith('http://') || dataUrl.startsWith('https://')) {
+    return dataUrl;
+  }
+
+  // If already under 35KB, it's safe to send
+  if (dataUrl.startsWith('data:image') && dataUrl.length < 35 * 1024) {
+    return dataUrl;
+  }
+
+  // Compress oversized base64 data URLs in browser
+  if (dataUrl.startsWith('data:image') && typeof window !== 'undefined' && typeof document !== 'undefined') {
+    try {
+      return await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          let compressed = canvas.toDataURL('image/jpeg', quality);
+          if (compressed.length > 45 * 1024) {
+            compressed = canvas.toDataURL('image/jpeg', 0.55);
+          }
+          resolve(compressed);
+        };
+        img.onerror = () => resolve(dataUrl.slice(0, 30000));
+        img.src = dataUrl;
+      });
+    } catch {
+      return dataUrl.slice(0, 30000);
+    }
+  }
+
+  return dataUrl;
+}
+
+/**
+ * Clean up image dictionaries so old uncompressed images (> 50KB) don't accumulate
+ * and blow past the settings API request limit.
+ */
+function cleanImageMap(imgMap) {
+  if (!imgMap || typeof imgMap !== 'object') return {};
+  const cleaned = {};
+  for (const [id, url] of Object.entries(imgMap)) {
+    if (typeof url === 'string') {
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        cleaned[id] = url;
+      } else if (url.startsWith('data:image') && url.length < 50 * 1024) {
+        cleaned[id] = url;
+      }
+    }
+  }
+  return cleaned;
+}
+
+// Clean up any bloated local storage entries from previous uncompressed uploads
+try {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    ['oshud_facility_images', 'oshud_doctor_images'].forEach((storageKey) => {
+      const raw = localStorage.getItem(storageKey);
+      if (raw && raw.length > 80 * 1024) {
+        try {
+          const parsed = JSON.parse(raw);
+          const cleaned = cleanImageMap(parsed);
+          localStorage.setItem(storageKey, JSON.stringify(cleaned));
+        } catch {}
+      }
+    });
+  }
+} catch {}
+
 // In-memory cache for ultra-fast instant rendering
 let cachedEntities = null;
 let lastEntitiesFetch = 0;
@@ -782,6 +878,7 @@ export const adminApi = {
       riders: riders.filter((r) => !accountRegistry.isEntityRemoved(r.id)).map(applyStatus),
       receptionists: receptionists.filter((rec) => !accountRegistry.isEntityRemoved(rec.id)).map(applyStatus),
       users: users.filter((u) => !accountRegistry.isEntityRemoved(u.id)).map(applyStatus),
+      locations: backendLocations,
       settings: backendSettings,
     };
 
@@ -814,6 +911,82 @@ export const adminApi = {
   async getUsers() {
     const all = await this.fetchAllEntities();
     return { users: all.users, total: all.users.length };
+  },
+
+  // ================= LOCATIONS =================
+  async getLocations(params = { page: 1, limit: 100 }) {
+    try {
+      const response = await apiClient.get('/locations', { params });
+      const data = response.data?.data || response.data;
+      const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      return { locations: items, total: data?.total || items.length };
+    } catch (err) {
+      console.warn('Backend getLocations notice:', err.message);
+      const cached = this.getCachedEntities();
+      return { locations: cached?.locations || [], total: (cached?.locations || []).length };
+    }
+  },
+
+  async createLocation(data) {
+    this.invalidateCache();
+    const payload = {
+      city: data.city ? data.city.trim() : 'Durgapur',
+      area: data.area ? data.area.trim() : 'City Centre',
+      state: data.state ? data.state.trim() : 'WB',
+      pincode: data.pincode ? String(data.pincode).trim() : '713216',
+    };
+
+    let created = null;
+    try {
+      const res = await apiClient.post('/locations', payload);
+      created = res.data?.data || res.data;
+    } catch (err) {
+      console.warn('POST /locations notice:', err.response?.data || err.message);
+      created = {
+        id: `loc_${Date.now()}`,
+        ...payload,
+        country: 'India',
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    return created;
+  },
+
+  async updateLocationStatus(id, isActive) {
+    this.invalidateCache();
+    try {
+      const res = await apiClient.patch(`/locations/${id}/status`, { isActive });
+      return res.data?.data || res.data;
+    } catch (err) {
+      console.warn('PATCH /locations/:id/status notice:', err.message);
+      return { id, isActive };
+    }
+  },
+
+  // ================= SPECIALIZATIONS =================
+  async getSpecializations() {
+    try {
+      const response = await apiClient.get('/specializations');
+      const data = response.data?.data || response.data;
+      const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+      return items;
+    } catch (err) {
+      console.warn('Backend getSpecializations notice:', err.message);
+      return [];
+    }
+  },
+
+  async createSpecialization(name) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return null;
+    try {
+      const res = await apiClient.post('/specializations', { name: trimmed });
+      return res.data?.data || res.data;
+    } catch (err) {
+      console.warn('POST /specializations notice:', err.response?.data || err.message);
+      return { id: `spec_${Date.now()}`, name: trimmed };
+    }
   },
 
   async updateUserAccess(id, { roleName, status }) {
@@ -859,6 +1032,9 @@ export const adminApi = {
     // 0. Strict check across all profiles and backend database
     await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
 
+    // Ensure image payload is optimized to prevent HTTP 413 Content Too Large
+    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
+
     // 1. First register user credentials in database with role DOCTOR
     let registeredUser = null;
     try {
@@ -877,22 +1053,24 @@ export const adminApi = {
     }
 
     // 2. Fetch or create Specialization in PostgreSQL
-    let specializationId = null;
-    try {
-      const specRes = await apiClient.get('/specializations');
-      const specs = specRes.data?.data || specRes.data || [];
-      const specName = (data.specialization || 'General Physician').toLowerCase();
-      const match = Array.isArray(specs) ? specs.find((s) => s.name?.toLowerCase() === specName) : null;
-      if (match?.id) {
-        specializationId = match.id;
-      } else if (Array.isArray(specs) && specs.length > 0) {
-        specializationId = specs[0].id;
-      } else {
-        const createSpecRes = await apiClient.post('/specializations', { name: data.specialization || 'General Physician' });
-        specializationId = createSpecRes.data?.data?.id || createSpecRes.data?.id;
+    let specializationId = data.specializationId || (Array.isArray(data.specializationIds) ? data.specializationIds[0] : null);
+    if (!specializationId) {
+      try {
+        const specRes = await apiClient.get('/specializations');
+        const specs = specRes.data?.data || specRes.data || [];
+        const specName = (data.specialization || 'General Physician').toLowerCase();
+        const match = Array.isArray(specs) ? specs.find((s) => s.name?.toLowerCase() === specName) : null;
+        if (match?.id) {
+          specializationId = match.id;
+        } else if (Array.isArray(specs) && specs.length > 0) {
+          specializationId = specs[0].id;
+        } else {
+          const createSpecRes = await apiClient.post('/specializations', { name: data.specialization || 'General Physician' });
+          specializationId = createSpecRes.data?.data?.id || createSpecRes.data?.id;
+        }
+      } catch (specErr) {
+        console.warn('Specialization lookup notice:', specErr.message);
       }
-    } catch (specErr) {
-      console.warn('Specialization lookup notice:', specErr.message);
     }
 
     // 3. Create Doctor directory record in database via POST /doctors
@@ -935,13 +1113,13 @@ export const adminApi = {
     const userId = registeredUser?.userId || createdDoctor?.userId || doctorId;
 
     // Persist doctor custom image in platform settings if provided
-    if (data.imageUrl) {
+    const finalDoctorImage = optimizedImage || data.imageUrl;
+    if (finalDoctorImage) {
       try {
         const curSettings = await this.getSettings();
-        const curImages = curSettings?.find?.((s) => s.key === 'doctor_images')?.value || {};
-        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
-        updatedImages[doctorId] = data.imageUrl;
-        if (userId) updatedImages[userId] = data.imageUrl;
+        const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'doctor_images')?.value || {});
+        const updatedImages = { ...curImages, [doctorId]: finalDoctorImage };
+        if (userId) updatedImages[userId] = finalDoctorImage;
         await this.setSetting('doctor_images', updatedImages);
         localStorage.setItem('oshud_doctor_images', JSON.stringify(updatedImages));
       } catch (imgErr) {
@@ -969,7 +1147,7 @@ export const adminApi = {
       phone: cleanPhone,
       password: data.password || 'Doctor123',
       role: 'DOCTOR',
-      imageUrl: data.imageUrl || '',
+      imageUrl: finalDoctorImage || '',
       isFeatured: Boolean(data.isFeatured),
       entityData: {
         registrationNumber: data.registrationNumber || 'WBMC-REG',
@@ -977,7 +1155,7 @@ export const adminApi = {
         experienceYears: Number(data.experienceYears) || 5,
         specialization: data.specialization || 'General Physician',
         consultationFeePaise: Number(data.consultationFeePaise) || 50000,
-        imageUrl: data.imageUrl || '',
+        imageUrl: finalDoctorImage || '',
         isFeatured: Boolean(data.isFeatured),
       },
     });
@@ -1034,6 +1212,9 @@ export const adminApi = {
     // 0. Strict check across all profiles and backend database
     await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
 
+    // Optimize image payload to prevent HTTP 413 Content Too Large
+    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
+
     // 1. Get or find active Location ID from PostgreSQL
     let locationId = data.locationId;
     if (!locationId) {
@@ -1083,32 +1264,59 @@ export const adminApi = {
         isPrimary: Boolean(data.isPrimary),
         hasClinicService,
         hasMedicineService,
-        logoUrl: data.imageUrl || null,
+        logoUrl: optimizedImage || null,
         isFeatured: Boolean(data.isFeatured),
       });
       createdPharmacy = resp.data?.data || resp.data;
     } catch (phErr) {
-      if (
-        phErr.response?.status === 400 ||
-        phErr.response?.status === 409 ||
-        phErr.response?.data?.message?.toLowerCase().includes('already') ||
-        phErr.message?.includes('Already used credentials')
-      ) {
-        throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+      // If 413 Payload Too Large occurred despite compression, auto-retry with logoUrl: null
+      if (phErr.response?.status === 413 && optimizedImage) {
+        try {
+          const retryResp = await apiClient.post('/pharmacies/admin-create', {
+            name: data.name,
+            ownerName: data.ownerName || data.fullName || 'Pharmacy Owner',
+            ownerEmail: validEmail,
+            ownerPassword: data.password || 'Pharmacy123',
+            phone: cleanPhone,
+            locationId: locationId,
+            line1: data.line1 || data.address || 'Main Road',
+            line2: data.line2 || null,
+            isPrimary: Boolean(data.isPrimary),
+            hasClinicService,
+            hasMedicineService,
+            logoUrl: null,
+            isFeatured: Boolean(data.isFeatured),
+          });
+          createdPharmacy = retryResp.data?.data || retryResp.data;
+        } catch (retryErr) {
+          phErr = retryErr;
+        }
       }
-      console.warn('POST /pharmacies/admin-create notice:', phErr.response?.data || phErr.message);
-      // Fallback: register user directly
-      await registerUserInDatabase({
-        fullName: data.ownerName || data.name,
-        phone: cleanPhone,
-        email: validEmail,
-        password: data.password || 'Pharmacy123',
-        roleName: 'PHARMACY',
-      });
+
+      if (!createdPharmacy) {
+        if (
+          phErr.response?.status === 400 ||
+          phErr.response?.status === 409 ||
+          phErr.response?.data?.message?.toLowerCase().includes('already') ||
+          phErr.message?.includes('Already used credentials')
+        ) {
+          throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+        }
+        console.warn('POST /pharmacies/admin-create notice:', phErr.response?.data || phErr.message);
+        // Fallback: register user directly
+        await registerUserInDatabase({
+          fullName: data.ownerName || data.name,
+          phone: cleanPhone,
+          email: validEmail,
+          password: data.password || 'Pharmacy123',
+          roleName: 'PHARMACY',
+        });
+      }
     }
 
     const pharmacyId = createdPharmacy?.id || `pharm_${Date.now()}`;
     const ownerId = createdPharmacy?.ownerId || pharmacyId;
+    const finalPharmacyImage = optimizedImage || data.imageUrl;
 
     // 3. Ensure service flags and media are synced on backend
     if (createdPharmacy?.id) {
@@ -1121,10 +1329,10 @@ export const adminApi = {
         console.warn('Sync pharmacy services notice:', svcErr.message);
       }
 
-      if (data.imageUrl) {
+      if (finalPharmacyImage) {
         try {
           await apiClient.put(`/pharmacies/${createdPharmacy.id}/media`, {
-            logoUrl: data.imageUrl,
+            logoUrl: finalPharmacyImage,
           });
         } catch (mErr) {
           console.warn('Sync pharmacy media notice:', mErr.message);
@@ -1133,12 +1341,11 @@ export const adminApi = {
     }
 
     // 4. Persist facility image and isFeatured in settings
-    if (data.imageUrl) {
+    if (finalPharmacyImage) {
       try {
         const curSettings = await this.getSettings();
-        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
-        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
-        updatedImages[pharmacyId] = data.imageUrl;
+        const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'facility_images')?.value || {});
+        const updatedImages = { ...curImages, [pharmacyId]: finalPharmacyImage };
         await this.setSetting('facility_images', updatedImages);
         localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
       } catch {}
@@ -1163,7 +1370,7 @@ export const adminApi = {
       phone: cleanPhone,
       password: data.password || 'Pharmacy123',
       role: 'PHARMACY',
-      imageUrl: data.imageUrl || '',
+      imageUrl: finalPharmacyImage || '',
       isFeatured: Boolean(data.isFeatured),
       hasClinicService,
       hasMedicineService,
@@ -1245,6 +1452,9 @@ export const adminApi = {
     // 0. Strict check across all profiles and backend database
     await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
 
+    // Optimize image payload to prevent HTTP 413 Content Too Large
+    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
+
     // 1. Get or find active Location ID from PostgreSQL
     let locationId = data.locationId;
     if (!locationId) {
@@ -1294,74 +1504,100 @@ export const adminApi = {
         isPrimary: false,
         hasClinicService,
         hasMedicineService,
-        logoUrl: data.imageUrl || null,
+        logoUrl: optimizedImage || null,
         isFeatured: Boolean(data.isFeatured),
       });
       createdClinic = resp.data?.data || resp.data;
-
-      // 3. Enable clinic service on this entity
-      if (createdClinic?.id) {
+    } catch (err) {
+      // If 413 Payload Too Large occurred despite compression, auto-retry with logoUrl: null
+      if (err.response?.status === 413 && optimizedImage) {
         try {
-          await apiClient.put(`/pharmacies/${createdClinic.id}/services`, {
+          const retryResp = await apiClient.post('/pharmacies/admin-create', {
+            name: data.name,
+            ownerName: data.managerName || data.fullName || 'Clinic Receptionist',
+            ownerEmail: validEmail,
+            ownerPassword: data.password || 'Clinic123',
+            phone: cleanPhone,
+            locationId: locationId,
+            line1: data.line1 || data.address || 'Clinic Road',
+            line2: data.line2 || null,
+            isPrimary: false,
             hasClinicService,
             hasMedicineService,
+            logoUrl: null,
+            isFeatured: Boolean(data.isFeatured),
           });
-        } catch (svcErr) {
-          console.warn('Enable clinic service notice:', svcErr.message);
-        }
-
-        if (data.imageUrl) {
-          try {
-            await apiClient.put(`/pharmacies/${createdClinic.id}/media`, {
-              logoUrl: data.imageUrl,
-            });
-          } catch (mErr) {
-            console.warn('Sync clinic media notice:', mErr.message);
-          }
-        }
-
-        // 4. Create receptionist staff entry
-        try {
-          await apiClient.post(`/pharmacies/${createdClinic.id}/receptionists`, {
-            fullName: data.managerName || data.name,
-            phone: cleanPhone,
-            email: validEmail,
-            password: data.password || 'Reception123',
-          });
-        } catch (recErr) {
-          console.warn('Create receptionist notice:', recErr.message);
+          createdClinic = retryResp.data?.data || retryResp.data;
+        } catch (retryErr) {
+          err = retryErr;
         }
       }
-    } catch (err) {
-      if (
-        err.response?.status === 400 ||
-        err.response?.status === 409 ||
-        err.response?.data?.message?.toLowerCase().includes('already') ||
-        err.message?.includes('Already used credentials')
-      ) {
-        throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+
+      if (!createdClinic) {
+        if (
+          err.response?.status === 400 ||
+          err.response?.status === 409 ||
+          err.response?.data?.message?.toLowerCase().includes('already') ||
+          err.message?.includes('Already used credentials')
+        ) {
+          throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+        }
+        console.warn('POST /pharmacies/admin-create for clinic notice:', err.response?.data || err.message);
+        // Fallback: register user with RECEPTIONIST role
+        await registerUserInDatabase({
+          fullName: data.managerName || data.name,
+          phone: cleanPhone,
+          email: validEmail,
+          password: data.password || 'Clinic123',
+          roleName: 'RECEPTIONIST',
+        });
       }
-      console.warn('POST /pharmacies/admin-create for clinic notice:', err.response?.data || err.message);
-      // Fallback: register user with RECEPTIONIST role
-      await registerUserInDatabase({
-        fullName: data.managerName || data.name,
-        phone: cleanPhone,
-        email: validEmail,
-        password: data.password || 'Clinic123',
-        roleName: 'RECEPTIONIST',
-      });
     }
 
     const clinicId = createdClinic?.id || `clinic_${Date.now()}`;
     const managerId = createdClinic?.ownerId || clinicId;
+    const finalClinicImage = optimizedImage || data.imageUrl;
+
+    // 3. Enable clinic service on this entity
+    if (createdClinic?.id) {
+      try {
+        await apiClient.put(`/pharmacies/${createdClinic.id}/services`, {
+          hasClinicService,
+          hasMedicineService,
+        });
+      } catch (svcErr) {
+        console.warn('Enable clinic service notice:', svcErr.message);
+      }
+
+      if (finalClinicImage) {
+        try {
+          await apiClient.put(`/pharmacies/${createdClinic.id}/media`, {
+            logoUrl: finalClinicImage,
+          });
+        } catch (mErr) {
+          console.warn('Sync clinic media notice:', mErr.message);
+        }
+      }
+
+      // 4. Create receptionist staff entry
+      try {
+        await apiClient.post(`/pharmacies/${createdClinic.id}/receptionists`, {
+          fullName: data.managerName || data.name,
+          phone: cleanPhone,
+          email: validEmail,
+          password: data.password || 'Reception123',
+        });
+      } catch (recErr) {
+        console.warn('Create receptionist notice:', recErr.message);
+      }
+    }
 
     // Persist facility image and isFeatured in settings
-    if (data.imageUrl) {
+    if (finalClinicImage) {
       try {
         const curSettings = await this.getSettings();
-        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
-        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
-        updatedImages[clinicId] = data.imageUrl;
+        const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'facility_images')?.value || {});
+        const updatedImages = { ...curImages, [clinicId]: finalClinicImage };
         await this.setSetting('facility_images', updatedImages);
         localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
       } catch {}
@@ -1386,7 +1622,7 @@ export const adminApi = {
       phone: cleanPhone,
       password: data.password || 'Clinic123',
       role: 'RECEPTIONIST',
-      imageUrl: data.imageUrl || '',
+      imageUrl: finalClinicImage || '',
       isFeatured: Boolean(data.isFeatured),
       hasClinicService,
       hasMedicineService,
@@ -1397,7 +1633,7 @@ export const adminApi = {
         city: data.city || 'Kolkata',
         state: data.state || 'West Bengal',
         pincode: data.pincode || '700064',
-        imageUrl: data.imageUrl || '',
+        imageUrl: finalClinicImage || '',
         isFeatured: Boolean(data.isFeatured),
         hasClinicService,
         hasMedicineService,
@@ -1689,11 +1925,18 @@ export const adminApi = {
 
   async setSetting(key, value) {
     let saved = null;
-    try {
-      const response = await apiClient.post('/admin/settings', { key, value });
-      saved = response.data?.data || response.data;
-    } catch (err) {
-      console.warn('Backend setSetting notice:', err.message);
+    const jsonStr = JSON.stringify(value || '');
+
+    // Only send to backend /admin/settings if body is under 35KB to avoid HTTP 413 (Content Too Large)
+    if (jsonStr.length < 35 * 1024) {
+      try {
+        const response = await apiClient.post('/admin/settings', { key, value });
+        saved = response.data?.data || response.data;
+      } catch (err) {
+        console.warn('Backend setSetting notice:', err.response?.data || err.message);
+      }
+    } else {
+      console.warn(`Setting "${key}" payload size (${Math.round(jsonStr.length / 1024)}KB) exceeds server limit; stored safely in local storage.`);
     }
 
     try {
@@ -1834,13 +2077,14 @@ export const adminApi = {
     }
 
     // Persist doctor image if present
-    if (data.imageUrl && id) {
+    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
+    const finalDoctorImage = optimizedImage || data.imageUrl;
+    if (finalDoctorImage && id) {
       try {
         const curSettings = await this.getSettings();
-        const curImages = curSettings?.find?.((s) => s.key === 'doctor_images')?.value || {};
-        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
-        updatedImages[id] = data.imageUrl;
-        if (data.userId) updatedImages[data.userId] = data.imageUrl;
+        const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'doctor_images')?.value || {});
+        const updatedImages = { ...curImages, [id]: finalDoctorImage };
+        if (data.userId) updatedImages[data.userId] = finalDoctorImage;
         await this.setSetting('doctor_images', updatedImages);
         localStorage.setItem('oshud_doctor_images', JSON.stringify(updatedImages));
       } catch {}
@@ -1850,7 +2094,7 @@ export const adminApi = {
       fullName: data.fullName,
       email: data.email,
       phone: data.phone,
-      imageUrl: data.imageUrl,
+      imageUrl: finalDoctorImage || data.imageUrl,
       isFeatured: data.isFeatured,
       entityData: {
         specialization: data.specialization,
@@ -1858,7 +2102,7 @@ export const adminApi = {
         registrationNumber: data.registrationNumber,
         experienceYears: Number(data.experienceYears) || 0,
         consultationFeePaise: Number(data.consultationFeePaise) || 50000,
-        imageUrl: data.imageUrl,
+        imageUrl: finalDoctorImage || data.imageUrl,
         isFeatured: data.isFeatured,
       },
     });
@@ -1900,12 +2144,13 @@ export const adminApi = {
       console.warn('Backend update pharmacy notice:', err.message);
     }
 
-    if (data.imageUrl && id) {
+    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
+    const finalPharmacyImage = optimizedImage || data.imageUrl;
+    if (finalPharmacyImage && id) {
       try {
         const curSettings = await this.getSettings();
-        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
-        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
-        updatedImages[id] = data.imageUrl;
+        const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'facility_images')?.value || {});
+        const updatedImages = { ...curImages, [id]: finalPharmacyImage };
         await this.setSetting('facility_images', updatedImages);
         localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
       } catch {}
@@ -1916,7 +2161,7 @@ export const adminApi = {
       name: data.name,
       email: data.email,
       phone: data.phone,
-      imageUrl: data.imageUrl,
+      imageUrl: finalPharmacyImage || data.imageUrl,
       hasClinicService,
       hasMedicineService,
       entityData: {
@@ -1926,7 +2171,7 @@ export const adminApi = {
         city: data.city,
         state: data.state,
         pincode: data.pincode,
-        imageUrl: data.imageUrl,
+        imageUrl: finalPharmacyImage || data.imageUrl,
         hasClinicService,
         hasMedicineService,
       },
@@ -1947,6 +2192,9 @@ export const adminApi = {
     const hasClinicService = data.hasClinicService !== false;
     const hasMedicineService = Boolean(data.hasMedicineService);
 
+    const optimizedClinicImage = await ensureOptimizedImageUrl(data.imageUrl);
+    const finalClinicImage = optimizedClinicImage || data.imageUrl;
+
     try {
       if (id && id.includes('-')) {
         await Promise.allSettled([
@@ -1954,7 +2202,7 @@ export const adminApi = {
             hasClinicService,
             hasMedicineService,
           }),
-          ...(data.imageUrl ? [apiClient.put(`/pharmacies/${id}/media`, { logoUrl: data.imageUrl })] : []),
+          ...(finalClinicImage ? [apiClient.put(`/pharmacies/${id}/media`, { logoUrl: finalClinicImage })] : []),
           apiClient.put(`/pharmacies/${id}`, {
             name: data.name,
             phone: data.phone,
@@ -1969,12 +2217,11 @@ export const adminApi = {
       console.warn('Backend update clinic notice:', err.message);
     }
 
-    if (data.imageUrl && id) {
+    if (finalClinicImage && id) {
       try {
         const curSettings = await this.getSettings();
-        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
-        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
-        updatedImages[id] = data.imageUrl;
+        const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'facility_images')?.value || {});
+        const updatedImages = { ...curImages, [id]: finalClinicImage };
         await this.setSetting('facility_images', updatedImages);
         localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
       } catch {}
@@ -1985,7 +2232,7 @@ export const adminApi = {
       name: data.name,
       email: data.email,
       phone: data.phone,
-      imageUrl: data.imageUrl,
+      imageUrl: finalClinicImage || data.imageUrl,
       isFeatured: data.isFeatured,
       hasClinicService,
       hasMedicineService,
@@ -1996,7 +2243,7 @@ export const adminApi = {
         city: data.city,
         state: data.state,
         pincode: data.pincode,
-        imageUrl: data.imageUrl,
+        imageUrl: finalClinicImage || data.imageUrl,
         isFeatured: data.isFeatured,
         hasClinicService,
         hasMedicineService,

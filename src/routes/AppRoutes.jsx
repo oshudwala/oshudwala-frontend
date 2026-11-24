@@ -141,6 +141,7 @@ export const AppRoutes = () => {
         <Route path="pharmacies" element={<AdminEntitiesPage initialTab="pharmacies" />} />
         <Route path="riders" element={<AdminEntitiesPage initialTab="riders" />} />
         <Route path="users" element={<AdminEntitiesPage initialTab="users" />} />
+        <Route path="locations" element={<AdminEntitiesPage initialTab="locations" />} />
 
         {/* Platform Controls */}
         <Route path="assign-doctors" element={<AdminAssignDoctorsPage />} />

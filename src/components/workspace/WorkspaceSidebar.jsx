@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   DollarSign,
   CalendarPlus,
+  MapPin,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -66,6 +67,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
               { label: 'Prescriptions', path: '/admin/prescriptions', icon: FileText, badge: pendingRxCount },
               { label: 'Appointments Tracker', path: '/admin/appointments', icon: CalendarCheck },
               { label: 'Staff Management', path: '/admin/staff', icon: Users },
+              { label: 'Locations Hub', path: '/admin/locations', icon: MapPin },
               { label: 'Assign Doctors', path: '/admin/assign-doctors', icon: UserPlus },
             ],
           },
@@ -231,6 +233,8 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
                 } else if (item.path === '/admin/staff') {
                   const staffPaths = ['/admin/staff', '/admin/staff-management', '/admin/clinics', '/admin/doctors', '/admin/pharmacies', '/admin/riders', '/admin/users'];
                   isActive = staffPaths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`));
+                } else if (item.path === '/admin/locations') {
+                  isActive = location.pathname === '/admin/locations';
                 } else {
                   isActive =
                     item.path === location.pathname ||

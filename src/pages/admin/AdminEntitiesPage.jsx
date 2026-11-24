@@ -51,7 +51,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const location = useLocation();
   const { addToast } = useToast();
 
-  // Tab: 'clinics' | 'doctors' | 'pharmacies' | 'riders' | 'receptionists' | 'users'
+  // Tab: 'clinics' | 'doctors' | 'pharmacies' | 'riders' | 'receptionists' | 'users' | 'locations'
   const [activeTab, setActiveTab] = useState(initialTab);
 
   // Data states - load cached entities if fresh, else start clean with loader
@@ -63,6 +63,10 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const [riders, setRiders] = useState(cached?.riders || []);
   const [receptionists, setReceptionists] = useState(cached?.receptionists || []);
   const [users, setUsers] = useState(cached?.users || []);
+  const [locations, setLocations] = useState(cached?.locations || []);
+  const [specializations, setSpecializations] = useState([]);
+  const [customSpecialization, setCustomSpecialization] = useState('');
+  const [editCustomSpecialization, setEditCustomSpecialization] = useState('');
   const [isLoading, setIsLoading] = useState(!hasCache);
   const [isSyncing, setIsSyncing] = useState(false);
   const [togglingStatusId, setTogglingStatusId] = useState(null);
@@ -72,10 +76,19 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isAddLocationModalOpen, setIsAddLocationModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [itemToEdit, setItemToEdit] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Form inputs for Add Location
+  const [locationFormData, setLocationFormData] = useState({
+    city: 'Durgapur',
+    area: 'City Centre',
+    state: 'WB',
+    pincode: '713216',
+  });
 
   // Form inputs for Add Entity
   const [formData, setFormData] = useState({
@@ -86,9 +99,10 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     password: '',
     phone: '',
     address: '',
-    city: 'Kolkata',
-    state: 'West Bengal',
-    pincode: '700064',
+    locationId: '',
+    city: 'Durgapur',
+    state: 'WB',
+    pincode: '713216',
     imageUrl: '',
     isFeatured: false,
     hasClinicService: true,
@@ -130,9 +144,10 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   useEffect(() => {
     const searchTab = new URLSearchParams(location.search).get('tab');
     const path = location.pathname.split('/').pop();
-    if (['clinics', 'doctors', 'pharmacies', 'riders', 'receptionists', 'users'].includes(searchTab)) {
+    const validTabs = ['clinics', 'doctors', 'pharmacies', 'riders', 'receptionists', 'users', 'locations'];
+    if (validTabs.includes(searchTab)) {
       setActiveTab(searchTab);
-    } else if (['clinics', 'doctors', 'pharmacies', 'riders', 'receptionists', 'users'].includes(path)) {
+    } else if (validTabs.includes(path)) {
       setActiveTab(path);
     } else if (initialTab) {
       setActiveTab(initialTab);
@@ -214,7 +229,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       if (match) {
         return {
           type: 'phone',
-          message: `Already used credentials. Mobile number is already assigned to ${match.role} "${match.name}".`,
+          message: `Already used credentials. Mobile number is already assigned.`,
           role: match.role,
           name: match.name,
         };
@@ -228,7 +243,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       if (match) {
         return {
           type: 'email',
-          message: `Already used credentials. Email address is already assigned to ${match.role} "${match.name}".`,
+          message: `Already used credentials. Email address is already assigned.`,
           role: match.role,
           name: match.name,
         };
@@ -243,14 +258,14 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     if (!formData.email || !formData.email.includes('@')) return null;
     const cleanEmail = formData.email.trim().toLowerCase();
     const match = allExistingProfiles.find((p) => p.email && p.email.trim().toLowerCase() === cleanEmail);
-    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+    return match ? `Already used credentials` : null;
   }, [formData.email, allExistingProfiles]);
 
   const addPhoneConflict = useMemo(() => {
     const cleanPhone = normalizePhoneNumber(formData.phone);
     if (cleanPhone.length < 10) return null;
     const match = allExistingProfiles.find((p) => p.phone && normalizePhoneNumber(p.phone) === cleanPhone);
-    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+    return match ? `Already used credentials` : null;
   }, [formData.phone, allExistingProfiles]);
 
   // Real-time conflict detection for Edit Modal
@@ -263,7 +278,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId))
       );
     const match = allExistingProfiles.find((p) => !isCurrent(p) && p.email && p.email.trim().toLowerCase() === cleanEmail);
-    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+    return match ? `Already used credentials` : null;
   }, [editFormData.email, itemToEdit, allExistingProfiles]);
 
   const editPhoneConflict = useMemo(() => {
@@ -276,8 +291,46 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId))
       );
     const match = allExistingProfiles.find((p) => !isCurrent(p) && p.phone && normalizePhoneNumber(p.phone) === cleanPhone);
-    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+    return match ? `Already used credentials` : null;
   }, [editFormData.phone, itemToEdit, allExistingProfiles]);
+
+  // Default specializations list for fallback
+  const defaultSpecializations = useMemo(() => [
+    'General Physician',
+    'General Medicine',
+    'Cardiologist',
+    'Pediatrician',
+    'Dermatologist',
+    'Orthopedic',
+    'Gynecologist',
+    'ENT Specialist',
+    'Neurologist',
+    'Psychiatrist',
+    'Ophthalmologist',
+    'Gastroenterologist',
+    'Pulmonologist',
+    'Urologist',
+  ], []);
+
+  // Combined specializations from backend DB + standard defaults
+  const allSpecializationsList = useMemo(() => {
+    const names = new Set();
+    const result = [];
+    (specializations || []).forEach((s) => {
+      const name = typeof s === 'string' ? s : s?.name;
+      if (name && !names.has(name.toLowerCase())) {
+        names.add(name.toLowerCase());
+        result.push(typeof s === 'string' ? { id: s, name } : s);
+      }
+    });
+    defaultSpecializations.forEach((name) => {
+      if (!names.has(name.toLowerCase())) {
+        names.add(name.toLowerCase());
+        result.push({ id: name, name });
+      }
+    });
+    return result;
+  }, [specializations, defaultSpecializations]);
 
   // Load real data from backend
   const loadData = async (forceRefresh = false) => {
@@ -286,9 +339,10 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     }
     setIsSyncing(true);
     try {
-      const [res, settingsRes] = await Promise.all([
+      const [res, settingsRes, specRes] = await Promise.all([
         adminApi.fetchAllEntities(forceRefresh),
         adminApi.getSettings(),
+        adminApi.getSpecializations().catch(() => []),
       ]);
 
       // Read featured lists from settings if available
@@ -317,6 +371,10 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       setRiders(res.riders || []);
       setReceptionists(res.receptionists || []);
       setUsers(res.users || []);
+      setLocations(res.locations || []);
+
+      const specList = Array.isArray(specRes) ? specRes : (specRes?.data || []);
+      setSpecializations(specList);
     } catch (err) {
       console.error('Error fetching admin entities:', err);
     } finally {
@@ -347,6 +405,77 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  // Dropdown Location Select for Add Clinic / Pharmacy
+  const handleLocationSelect = (e) => {
+    const selectedId = e.target.value;
+    const selectedLoc = locations.find((l) => l.id === selectedId);
+    if (selectedLoc) {
+      setFormData((prev) => ({
+        ...prev,
+        locationId: selectedLoc.id,
+        city: selectedLoc.city || prev.city,
+        state: selectedLoc.state || 'WB',
+        pincode: selectedLoc.pincode || prev.pincode,
+        address: prev.address || (selectedLoc.area ? `${selectedLoc.area}, ${selectedLoc.city}` : ''),
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        locationId: '',
+      }));
+    }
+  };
+
+  // Dropdown Location Select for Edit Clinic / Pharmacy
+  const handleEditLocationSelect = (e) => {
+    const selectedId = e.target.value;
+    const selectedLoc = locations.find((l) => l.id === selectedId);
+    if (selectedLoc) {
+      setEditFormData((prev) => ({
+        ...prev,
+        locationId: selectedLoc.id,
+        city: selectedLoc.city || prev.city,
+        state: selectedLoc.state || 'WB',
+        pincode: selectedLoc.pincode || prev.pincode,
+        address: prev.address || (selectedLoc.area ? `${selectedLoc.area}, ${selectedLoc.city}` : ''),
+      }));
+    } else {
+      setEditFormData((prev) => ({
+        ...prev,
+        locationId: '',
+      }));
+    }
+  };
+
+  // Create Location Handler (POST /locations)
+  const handleLocationSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const created = await adminApi.createLocation({
+        city: locationFormData.city,
+        area: locationFormData.area,
+        state: locationFormData.state,
+        pincode: locationFormData.pincode,
+      });
+
+      setLocations((prev) => [created, ...prev.filter((l) => l.id !== created.id)]);
+      addToast(`Location "${created.area || created.city}, ${created.city}" created successfully!`, 'success');
+      setIsAddLocationModalOpen(false);
+      setLocationFormData({
+        city: 'Durgapur',
+        area: 'City Centre',
+        state: 'WB',
+        pincode: '713216',
+      });
+      await loadData();
+    } catch (err) {
+      addToast(err.message || 'Failed to add location.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleEditInputChange = (e) => {
@@ -471,6 +600,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   // Open Edit Modal
   const handleOpenEdit = (row, type) => {
     setItemToEdit({ ...row, entityType: type });
+    setEditCustomSpecialization('');
     setEditFormData({
       id: row.id,
       userId: row.userId || row.user?.id || row.id,
@@ -479,10 +609,11 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       email: row.email || row.user?.email || '',
       phone: row.phone || row.user?.phone || '',
       imageUrl: row.imageUrl || row.user?.imageUrl || '',
+      locationId: row.locationId || '',
       address: row.line1 || row.address || '',
-      city: row.city || 'Kolkata',
-      state: row.state || 'West Bengal',
-      pincode: row.pincode || '700064',
+      city: row.city || 'Durgapur',
+      state: row.state || 'WB',
+      pincode: row.pincode || '713216',
       isFeatured: Boolean(row.isFeatured),
       hasClinicService: row.hasClinicService ?? (type === 'clinics'),
       hasMedicineService: row.hasMedicineService ?? (type === 'pharmacies'),
@@ -528,19 +659,43 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       const targetId = itemToEdit.id;
 
       if (type === 'doctors') {
+        let finalSpec = editFormData.specialization;
+        let finalSpecId = null;
+
+        if (editFormData.specialization === '__OTHER__' && editCustomSpecialization.trim()) {
+          try {
+            const createdSpec = await adminApi.createSpecialization(editCustomSpecialization.trim());
+            if (createdSpec?.id) {
+              finalSpec = createdSpec.name || editCustomSpecialization.trim();
+              finalSpecId = createdSpec.id;
+              setSpecializations((prev) => [...prev, createdSpec]);
+            }
+          } catch (spErr) {
+            finalSpec = editCustomSpecialization.trim();
+          }
+        } else {
+          const match = (specializations || []).find(
+            (s) => (s.name || s).toLowerCase() === (editFormData.specialization || '').toLowerCase()
+          );
+          if (match?.id) finalSpecId = match.id;
+        }
+
         await adminApi.updateDoctor(targetId, {
           fullName: editFormData.fullName,
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
           imageUrl: editFormData.imageUrl,
           isFeatured: Boolean(editFormData.isFeatured),
-          specialization: editFormData.specialization,
+          specialization: finalSpec,
+          specializationId: finalSpecId,
+          specializationIds: finalSpecId ? [finalSpecId] : [],
           qualifications: editFormData.qualifications,
           registrationNumber: editFormData.registrationNumber,
           experienceYears: Number(editFormData.experienceYears) || 0,
           consultationFeePaise: (Number(editFormData.consultationFee) || 500) * 100,
         });
         addToast(`Doctor ${editFormData.fullName} details updated successfully!`, 'success');
+        setEditCustomSpecialization('');
       } else if (type === 'pharmacies') {
         await adminApi.updatePharmacy(targetId, {
           name: editFormData.name,
@@ -551,6 +706,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           hasClinicService: Boolean(editFormData.hasClinicService),
           hasMedicineService: editFormData.hasMedicineService !== false,
           licenseNumber: editFormData.licenseNumber,
+          locationId: editFormData.locationId || undefined,
           line1: editFormData.address,
           city: editFormData.city,
           state: editFormData.state,
@@ -567,6 +723,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           hasClinicService: editFormData.hasClinicService !== false,
           hasMedicineService: Boolean(editFormData.hasMedicineService),
           chamberCount: editFormData.chamberCount,
+          locationId: editFormData.locationId || undefined,
           line1: editFormData.address,
           city: editFormData.city,
           state: editFormData.state,
@@ -628,6 +785,27 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
     try {
       if (activeTab === 'doctors') {
+        let finalSpec = formData.specialization;
+        let finalSpecId = null;
+
+        if (formData.specialization === '__OTHER__' && customSpecialization.trim()) {
+          try {
+            const createdSpec = await adminApi.createSpecialization(customSpecialization.trim());
+            if (createdSpec?.id) {
+              finalSpec = createdSpec.name || customSpecialization.trim();
+              finalSpecId = createdSpec.id;
+              setSpecializations((prev) => [...prev, createdSpec]);
+            }
+          } catch (spErr) {
+            finalSpec = customSpecialization.trim();
+          }
+        } else {
+          const match = (specializations || []).find(
+            (s) => (s.name || s).toLowerCase() === (formData.specialization || '').toLowerCase()
+          );
+          if (match?.id) finalSpecId = match.id;
+        }
+
         const payload = {
           fullName: formData.fullName,
           email: formData.email,
@@ -638,12 +816,15 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           registrationNumber: formData.registrationNumber,
           qualifications: formData.qualifications,
           experienceYears: Number(formData.experienceYears) || 0,
-          specialization: formData.specialization,
+          specialization: finalSpec,
+          specializationId: finalSpecId,
+          specializationIds: finalSpecId ? [finalSpecId] : [],
           consultationFeePaise: (Number(formData.consultationFee) || 500) * 100,
         };
         const created = await adminApi.createDoctor(payload);
         setDoctors((prev) => [created, ...prev]);
         addToast(`Doctor ${created.fullName} registered with photo! Profile active.`, 'success');
+        setCustomSpecialization('');
       } else if (activeTab === 'pharmacies') {
         const payload = {
           name: formData.name,
@@ -656,6 +837,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           hasMedicineService: formData.hasMedicineService !== false,
           ownerName: formData.ownerName || formData.fullName,
           licenseNumber: formData.licenseNumber,
+          locationId: formData.locationId || undefined,
           line1: formData.address,
           city: formData.city,
           state: formData.state,
@@ -675,6 +857,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           hasClinicService: formData.hasClinicService !== false,
           hasMedicineService: Boolean(formData.hasMedicineService),
           managerName: formData.managerName || formData.fullName,
+          locationId: formData.locationId || undefined,
           line1: formData.address,
           city: formData.city,
           state: formData.state,
@@ -722,10 +905,14 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         password: '',
         phone: '',
         address: '',
-        city: 'Kolkata',
-        state: 'West Bengal',
-        pincode: '700064',
+        locationId: '',
+        city: 'Durgapur',
+        state: 'WB',
+        pincode: '713216',
         imageUrl: '',
+        isFeatured: false,
+        hasClinicService: true,
+        hasMedicineService: false,
         registrationNumber: '',
         qualifications: '',
         experienceYears: '5',
@@ -1614,6 +1801,118 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     },
   ];
 
+  const locationColumns = [
+    {
+      header: 'Locality & Area Hub',
+      key: 'area',
+      render: (row) => (
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
+            <MapPin className="w-5 h-5 text-forest-700" />
+          </div>
+          <div>
+            <p className="font-bold text-xs text-forest-900">{row.area || row.city || 'Hub Location'}</p>
+            <p className="text-[11px] text-brandText-secondary">{row.city}, {row.state || 'WB'}</p>
+            <span className="inline-block mt-0.5 text-[10px] font-mono font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded">
+              PIN: {row.pincode}
+            </span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      header: 'City & State',
+      key: 'city',
+      render: (row) => (
+        <div>
+          <span className="text-xs font-semibold text-brandText-main">{row.city}</span>
+          <p className="text-[11px] text-brandText-muted">{row.state || 'WB'}, India</p>
+        </div>
+      ),
+    },
+    {
+      header: 'Postal Pincode',
+      key: 'pincode',
+      render: (row) => (
+        <span className="text-xs font-mono font-bold bg-surface-warm px-2 py-1 rounded-lg border border-brandBorder-subtle">
+          {row.pincode}
+        </span>
+      ),
+    },
+    {
+      header: 'Linked Facilities',
+      key: 'facilities',
+      render: (row) => {
+        const linkedClinics = clinics.filter(
+          (c) => c.locationId === row.id || (c.city?.toLowerCase() === row.city?.toLowerCase() && c.pincode === row.pincode)
+        );
+        const linkedPharms = pharmacies.filter(
+          (p) => p.locationId === row.id || (p.city?.toLowerCase() === row.city?.toLowerCase() && p.pincode === row.pincode)
+        );
+        const total = linkedClinics.length + linkedPharms.length;
+        return (
+          <div>
+            <span className="text-xs font-semibold text-forest-800">
+              {total} Service Hub{total === 1 ? '' : 's'}
+            </span>
+            <p className="text-[10px] text-brandText-muted">
+              {linkedClinics.length} clinics &bull; {linkedPharms.length} pharmacies
+            </p>
+          </div>
+        );
+      },
+    },
+    {
+      header: 'Status',
+      key: 'isActive',
+      render: (row) => (
+        <StatusBadge status={row.isActive !== false ? 'ACTIVE' : 'INACTIVE'} />
+      ),
+    },
+    {
+      header: 'Actions',
+      key: 'action',
+      align: 'right',
+      render: (row) => {
+        const isActive = row.isActive !== false;
+        const isToggling = togglingStatusId === row.id;
+        return (
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              disabled={isToggling}
+              onClick={async () => {
+                setTogglingStatusId(row.id);
+                try {
+                  await adminApi.updateLocationStatus(row.id, !isActive);
+                  setLocations((prev) =>
+                    prev.map((l) => (l.id === row.id ? { ...l, isActive: !isActive } : l))
+                  );
+                  addToast(`Location ${row.area || row.city} is now ${!isActive ? 'Active' : 'Inactive'}.`, 'success');
+                } catch (e) {
+                  addToast('Failed to update location status.', 'error');
+                } finally {
+                  setTogglingStatusId(null);
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                isToggling ? 'opacity-60 cursor-not-allowed' : ''
+              } ${
+                !isActive
+                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+              }`}
+              title={isActive ? 'Deactivate Location' : 'Activate Location'}
+            >
+              {isToggling && <RefreshCw className="w-3 h-3 animate-spin text-current" />}
+              <span>{isToggling ? 'Updating…' : isActive ? 'Deactivate' : 'Activate'}</span>
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header & Title */}
@@ -1644,16 +1943,22 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
               variant="primary"
               size="sm"
               leftIcon={Plus}
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => {
+                if (activeTab === 'locations') {
+                  setIsAddLocationModalOpen(true);
+                } else {
+                  setIsAddModalOpen(true);
+                }
+              }}
               className="text-xs shadow-card font-bold"
             >
-              Add {activeTab === 'clinics' ? 'Clinic' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'pharmacies' ? 'Pharmacy' : activeTab === 'receptionists' ? 'Receptionist' : 'Rider'}
+              Add {activeTab === 'clinics' ? 'Clinic' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'pharmacies' ? 'Pharmacy' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'locations' ? 'Location' : 'Rider'}
             </Button>
           )}
         </div>
       </div>
 
-      {/* 6 Dedicated Management Tabs */}
+      {/* 7 Dedicated Management Tabs */}
       <div className="flex items-center gap-1.5 sm:gap-2 border-b border-brandBorder-subtle pb-2 overflow-x-auto no-scrollbar">
         <button
           onClick={() => handleTabChange('clinics')}
@@ -1716,6 +2021,18 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         </button>
 
         <button
+          onClick={() => handleTabChange('locations')}
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            activeTab === 'locations'
+              ? 'bg-forest-800 text-white shadow-sm'
+              : 'text-brandText-secondary hover:bg-forest-50 hover:text-forest-800'
+          }`}
+        >
+          <MapPin className="w-4 h-4" />
+          <span>Locations ({isLoading ? '...' : locations.length})</span>
+        </button>
+
+        <button
           onClick={() => handleTabChange('users')}
           className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
             activeTab === 'users'
@@ -1775,6 +2092,16 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           data={receptionists}
           searchKey="fullName"
           searchPlaceholder="Search receptionist by name, phone or clinic..."
+          isLoading={isLoading}
+        />
+      )}
+
+      {activeTab === 'locations' && (
+        <DataTable
+          columns={locationColumns}
+          data={locations}
+          searchKey="area"
+          searchPlaceholder="Search location by area hub, city or pincode..."
           isLoading={isLoading}
         />
       )}
@@ -2042,17 +2369,14 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           name="specialization"
                           value={formData.specialization}
                           onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
                         >
-                          <option value="General Physician">General Physician</option>
-                          <option value="Cardiologist">Cardiologist</option>
-                          <option value="Pediatrician">Pediatrician</option>
-                          <option value="Dermatologist">Dermatologist</option>
-                          <option value="Orthopedic">Orthopedic</option>
-                          <option value="Gynecologist">Gynecologist</option>
-                          <option value="ENT Specialist">ENT Specialist</option>
-                          <option value="Neurologist">Neurologist</option>
-                          <option value="Psychiatrist">Psychiatrist</option>
+                          {allSpecializationsList.map((s) => (
+                            <option key={s.id || s.name} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
+                          <option value="__OTHER__">+ Other (Add New Specialization)</option>
                         </select>
                       </div>
 
@@ -2070,6 +2394,26 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         />
                       </div>
                     </div>
+
+                    {formData.specialization === '__OTHER__' && (
+                      <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1 animate-fade-in">
+                        <label className="block text-xs font-bold text-forest-800">
+                          Enter New Specialization Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={customSpecialization}
+                          onChange={(e) => setCustomSpecialization(e.target.value)}
+                          placeholder="e.g. Endocrinology, Oncology, Pediatric Cardiology"
+                          className="w-full px-3 py-2 text-xs bg-white border border-forest-300 rounded-lg focus:outline-none focus:border-forest-600 font-medium"
+                          autoFocus
+                        />
+                        <p className="text-[10px] text-forest-700">
+                          Will be saved to backend database via <code>POST /specializations</code> and assigned to this doctor.
+                        </p>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
@@ -2098,19 +2442,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                         />
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          Consultation Fee (₹) *
-                        </label>
-                        <input
-                          type="number"
-                          name="consultationFee"
-                          value={formData.consultationFee}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-bold"
-                        />
-                      </div>
                     </div>
                   </div>
                 )}
@@ -2118,8 +2449,53 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                 {(activeTab === 'pharmacies' || activeTab === 'clinics') && (
                   <div className="space-y-3">
                     <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-brandText-main">
+                          Operational Service Location Hub *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddLocationModalOpen(true)}
+                          className="text-[11px] font-bold text-forest-700 hover:text-forest-900 flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Add Location
+                        </button>
+                      </div>
+                      <select
+                        name="locationId"
+                        value={formData.locationId || ''}
+                        onChange={handleLocationSelect}
+                        required
+                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                      >
+                        <option value="">-- Select Stored Operational Location Hub --</option>
+                        {locations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.area ? `${loc.area}, ` : ''}{loc.city} &bull; PIN: {loc.pincode} ({loc.state || 'WB'})
+                          </option>
+                        ))}
+                      </select>
+                      {formData.locationId ? (
+                        <div className="mt-1.5 p-2 bg-forest-50/80 border border-forest-200/80 rounded-xl flex items-center justify-between text-[11px] text-forest-800">
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <MapPin className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
+                            <span>{formData.city}, {formData.state} &bull; <span className="font-mono font-bold">{formData.pincode}</span></span>
+                          </div>
+                          <span className="text-[10px] font-bold bg-forest-200/60 px-1.5 py-0.5 rounded text-forest-900">
+                            Linked Hub
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-amber-700 mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                          Select an operational location hub from the dropdown list.
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
                       <label className="block text-xs font-semibold text-brandText-main mb-1">
-                        Physical Address Line 1 *
+                        Physical Address Line 1 (Street / Building) *
                       </label>
                       <input
                         type="text"
@@ -2127,7 +2503,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         name="address"
                         value={formData.address}
                         onChange={handleInputChange}
-                        placeholder="Block DC, Sector 1, Salt Lake City"
+                        placeholder="e.g. Ground Floor, City Centre Complex, Main Bypass"
                         className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                       />
                     </div>
@@ -2139,8 +2515,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           type="text"
                           name="city"
                           value={formData.city}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          readOnly
+                          className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium cursor-not-allowed"
                         />
                       </div>
                       <div>
@@ -2150,8 +2526,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           maxLength={6}
                           name="pincode"
                           value={formData.pincode}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          readOnly
+                          className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium font-mono cursor-not-allowed"
                         />
                       </div>
                       <div>
@@ -2465,16 +2841,14 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           name="specialization"
                           value={editFormData.specialization || 'General Physician'}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
                         >
-                          <option value="General Physician">General Physician</option>
-                          <option value="Cardiologist">Cardiologist</option>
-                          <option value="Pediatrician">Pediatrician</option>
-                          <option value="Dermatologist">Dermatologist</option>
-                          <option value="Orthopedic">Orthopedic</option>
-                          <option value="Gynecologist">Gynecologist</option>
-                          <option value="ENT Specialist">ENT Specialist</option>
-                          <option value="Neurologist">Neurologist</option>
+                          {allSpecializationsList.map((s) => (
+                            <option key={s.id || s.name} value={s.name}>
+                              {s.name}
+                            </option>
+                          ))}
+                          <option value="__OTHER__">+ Other (Enter New Specialization)</option>
                         </select>
                       </div>
 
@@ -2489,6 +2863,26 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         />
                       </div>
                     </div>
+
+                    {editFormData.specialization === '__OTHER__' && (
+                      <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-1 animate-fade-in">
+                        <label className="block text-xs font-bold text-forest-800">
+                          Enter New Specialization Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editCustomSpecialization}
+                          onChange={(e) => setEditCustomSpecialization(e.target.value)}
+                          placeholder="e.g. Endocrinology, Oncology, Pediatric Cardiology"
+                          className="w-full px-3.5 py-2 text-xs bg-white border border-forest-300 rounded-lg focus:outline-none focus:border-forest-600 font-medium"
+                          autoFocus
+                        />
+                        <p className="text-[10px] text-forest-700">
+                          Will be created in database via <code>POST /specializations</code> and assigned to this doctor.
+                        </p>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
@@ -2528,12 +2922,41 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                 {(itemToEdit.entityType === 'clinics' || itemToEdit.entityType === 'pharmacies') && (
                   <div className="space-y-3 pt-2 border-t border-brandBorder-subtle">
                     <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">Address Line</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-semibold text-brandText-main">
+                          Operational Service Location Hub
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddLocationModalOpen(true)}
+                          className="text-[11px] font-bold text-forest-700 hover:text-forest-900 flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Add Location
+                        </button>
+                      </div>
+                      <select
+                        name="locationId"
+                        value={editFormData.locationId || ''}
+                        onChange={handleEditLocationSelect}
+                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                      >
+                        <option value="">-- Select Stored Operational Location Hub --</option>
+                        {locations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>
+                            {loc.area ? `${loc.area}, ` : ''}{loc.city} &bull; PIN: {loc.pincode} ({loc.state || 'WB'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-brandText-main mb-1">Physical Address Line</label>
                       <input
                         type="text"
                         name="address"
                         value={editFormData.address || ''}
                         onChange={handleEditInputChange}
+                        placeholder="Street / Building / Floor"
                         className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                       />
                     </div>
@@ -2544,8 +2967,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           type="text"
                           name="city"
                           value={editFormData.city || ''}
-                          onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          readOnly
+                          className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium cursor-not-allowed"
                         />
                       </div>
                       <div>
@@ -2554,8 +2977,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           type="text"
                           name="pincode"
                           value={editFormData.pincode || ''}
-                          onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          readOnly
+                          className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium font-mono cursor-not-allowed"
                         />
                       </div>
                       <div>
@@ -2705,6 +3128,139 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       )}
 
 
+
+      {/* ============================================================== */}
+      {/* MODAL: ADD NEW OPERATIONAL LOCATION (Requirement 1)           */}
+      {/* ============================================================== */}
+      {isAddLocationModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-forest-950/60 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsAddLocationModalOpen(false)}
+          />
+          <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center">
+            <div className="w-full max-w-lg bg-surface-pure rounded-3xl p-6 sm:p-7 shadow-floating border border-brandBorder-subtle text-left relative overflow-hidden animate-scale-up my-6">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-brandBorder-subtle">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-forest-50 border border-forest-100 flex items-center justify-center text-forest-700">
+                    <MapPin className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-heading font-extrabold text-forest-800">
+                      Add Operational Location
+                    </h2>
+                    <p className="text-xs text-brandText-secondary">
+                      Create and activate delivery zone via <code>POST /locations</code>.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsAddLocationModalOpen(false)}
+                  className="p-2 text-brandText-secondary hover:text-forest-700 hover:bg-forest-50 rounded-full"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleLocationSubmit} className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      City Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={locationFormData.city}
+                      onChange={(e) => setLocationFormData((prev) => ({ ...prev, city: e.target.value }))}
+                      placeholder="e.g. Durgapur, Asansol, Kolkata"
+                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Locality / Area Hub *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={locationFormData.area}
+                      onChange={(e) => setLocationFormData((prev) => ({ ...prev, area: e.target.value }))}
+                      placeholder="e.g. City Centre, Benachity, B-Zone"
+                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      State Code / Name *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={locationFormData.state}
+                      onChange={(e) => setLocationFormData((prev) => ({ ...prev, state: e.target.value }))}
+                      placeholder="e.g. WB"
+                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Postal Pincode (6 digits) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      pattern="[0-9]{6}"
+                      value={locationFormData.pincode}
+                      onChange={(e) => setLocationFormData((prev) => ({ ...prev, pincode: e.target.value }))}
+                      placeholder="e.g. 713216"
+                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3 bg-forest-50/70 border border-forest-100 rounded-2xl flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-forest-700 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-forest-900 leading-relaxed">
+                    Once created, this location will automatically appear in the <strong>Add Clinic</strong> and <strong>Add Pharmacy</strong> dropdown lists, ensuring accurate zone matching.
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-brandBorder-subtle flex items-center justify-end gap-2.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsAddLocationModalOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    isLoading={isSubmitting}
+                    disabled={isSubmitting}
+                    className="font-bold shadow-card px-5"
+                  >
+                    Save Location
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* MODAL: DELETE / REMOVE CONFIRMATION                            */}
