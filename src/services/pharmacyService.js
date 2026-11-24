@@ -12,6 +12,33 @@ export const pharmacyService = {
       const items = Array.isArray(data) ? data : data?.pharmacies || data?.items || [];
 
       if (items.length > 0) {
+        const savedImages = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_facility_images');
+            return raw ? JSON.parse(raw) : {};
+          } catch {
+            return {};
+          }
+        })();
+
+        const savedFeaturedClins = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_featured_clinics');
+            return raw ? JSON.parse(raw) : [];
+          } catch {
+            return [];
+          }
+        })();
+
+        const savedFeaturedPharms = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_featured_pharmacies');
+            return raw ? JSON.parse(raw) : [];
+          } catch {
+            return [];
+          }
+        })();
+
         return {
           pharmacies: items.map((p) => {
             const activeReceptionist =
@@ -19,6 +46,19 @@ export const pharmacyService = {
               p.staff?.find((s) => s.isActive !== false)?.user?.fullName || null;
             const assignedDoctorNames =
               p.doctors?.map((d) => d.doctor?.fullName).filter(Boolean) || [];
+
+            const facilityImage =
+              savedImages[p.id] ||
+              p.logoUrl ||
+              p.coverUrl ||
+              p.imageUrl ||
+              '';
+
+            const isItemFeatured = Boolean(
+              p.isFeatured ||
+              (p.hasClinicService && Array.isArray(savedFeaturedClins) && savedFeaturedClins.includes(p.id)) ||
+              (p.hasMedicineService !== false && Array.isArray(savedFeaturedPharms) && savedFeaturedPharms.includes(p.id))
+            );
 
             return {
               id: p.id,
@@ -31,8 +71,11 @@ export const pharmacyService = {
               pincode: p.pincode,
               rating: p.rating || 4.8,
               reviewsCount: p.reviewsCount || 120,
-              image: p.logoUrl || 'https://images.unsplash.com/photo-1586015555751-63bb77f4322a?auto=format&fit=crop&q=80&w=400',
-              isPrimary: p.isPrimary,
+              image: facilityImage,
+              imageUrl: facilityImage,
+              logoUrl: facilityImage || p.logoUrl || '',
+              isPrimary: Boolean(p.isPrimary),
+              isFeatured: isItemFeatured,
               hasClinicService: Boolean(p.hasClinicService),
               hasMedicineService: Boolean(p.hasMedicineService !== false),
               deliveryTime: '30-45 mins',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Building2, MapPin, Clock, Phone, Star, Calendar, ArrowRight, ShieldCheck, User } from 'lucide-react';
+import { X, Building2, MapPin, Clock, Phone, Star, Calendar, ArrowRight, ShieldCheck, User, Stethoscope } from 'lucide-react';
 import Button from '../common/Button';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -102,11 +102,22 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
                   className="p-3.5 sm:p-4 rounded-2xl bg-surface-warm/60 border border-brandBorder-subtle hover:border-forest-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3.5"
                 >
                   <div className="flex items-start sm:items-center gap-3.5">
-                    <img
-                      src={doctor.image}
-                      alt={doctor.name}
-                      className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-cover object-top border-2 border-forest-500 shadow-sm flex-shrink-0"
-                    />
+                    {doctor.image ? (
+                      <img
+                        src={doctor.image}
+                        alt={doctor.name}
+                        className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-cover object-top border-2 border-forest-500 shadow-sm flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-forest-100 border-2 border-forest-500/50 flex items-center justify-center text-forest-700 font-bold text-sm shadow-sm flex-shrink-0">
+                        {doctor.name
+                          ?.replace(/^Dr\.\s*/i, '')
+                          .split(' ')
+                          .map((n) => n[0])
+                          .slice(0, 2)
+                          .join('') || <Stethoscope className="w-6 h-6" />}
+                      </div>
+                    )}
 
                     <div>
                       <h4 className="font-heading font-bold text-sm sm:text-base text-forest-800">

@@ -53,6 +53,24 @@ export const doctorService = {
       const items = Array.isArray(data) ? data : (data?.doctors || data?.items || []);
 
       if (items.length > 0) {
+        const savedImages = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_doctor_images');
+            return raw ? JSON.parse(raw) : {};
+          } catch {
+            return {};
+          }
+        })();
+
+        const savedFeatured = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_featured_doctors');
+            return raw ? JSON.parse(raw) : [];
+          } catch {
+            return [];
+          }
+        })();
+
         let mapped = items.map((doc) => {
           const specNames = doc.specializations
             ?.map((s) => s.specialization?.name || s.name)
@@ -61,6 +79,18 @@ export const doctorService = {
 
           const primaryChamber = doc.pharmacies?.[0]?.pharmacy?.name || 'Partner Health Desk';
           const feePaise = doc.pharmacies?.[0]?.consultationFeePaise || 50000;
+          const docPhoto =
+            savedImages[doc.id] ||
+            (doc.userId && savedImages[doc.userId]) ||
+            doc.imageUrl ||
+            doc.photoUrl ||
+            doc.user?.imageUrl ||
+            '';
+
+          const isDocFeatured = Boolean(
+            doc.isFeatured ||
+            (Array.isArray(savedFeatured) && (savedFeatured.includes(doc.id) || (doc.userId && savedFeatured.includes(doc.userId))))
+          );
 
           return {
             id: doc.id,
@@ -73,7 +103,9 @@ export const doctorService = {
             fee: `₹${(feePaise / 100).toFixed(0)}`,
             clinicName: primaryChamber,
             clinicId: doc.pharmacies?.[0]?.pharmacy?.id,
-            image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
+            image: docPhoto,
+            imageUrl: docPhoto,
+            isFeatured: isDocFeatured,
             rating: 4.9,
             reviews: 'Verified Doctor',
             nextAvailable: 'Available Today',

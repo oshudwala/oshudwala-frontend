@@ -1,5 +1,5 @@
 import React from 'react';
-import { Star, Calendar, MapPin } from 'lucide-react';
+import { Star, Calendar, MapPin, Stethoscope } from 'lucide-react';
 import Button from '../common/Button';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -7,6 +7,7 @@ export const DoctorCard = ({ doctor, onBook, onSelect }) => {
   const { t } = useLanguage();
 
   const liveStatus = doctor.id ? localStorage.getItem(`oshud_doctor_status_${doctor.id}`) : null;
+  const photo = doctor.image || doctor.imageUrl;
 
   return (
     <div
@@ -16,13 +17,24 @@ export const DoctorCard = ({ doctor, onBook, onSelect }) => {
       <div>
         {/* Doctor Image with Theme-Matched Radiant Glow & Delicate Border */}
         <div className="relative mb-3.5 w-full aspect-square rounded-2xl p-[1.5px] bg-gradient-to-br from-forest-500/35 via-emerald-400/25 to-forest-700/40 shadow-[0_4px_18px_rgba(24,78,63,0.13)] group-hover:shadow-[0_6px_25px_rgba(16,185,129,0.25)] group-hover:from-forest-400/60 group-hover:to-emerald-500/60 transition-all duration-300">
-          <div className="w-full h-full rounded-[14px] overflow-hidden bg-forest-50/70">
-            <img
-              src={doctor.image}
-              alt={doctor.name}
-              className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500 ease-out"
-              loading="lazy"
-            />
+          <div className="w-full h-full rounded-[14px] overflow-hidden bg-forest-50/70 flex items-center justify-center">
+            {photo ? (
+              <img
+                src={photo}
+                alt={doctor.name}
+                className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-500 ease-out"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-forest-50 text-forest-700 select-none">
+                <div className="w-12 h-12 rounded-full bg-forest-100 flex items-center justify-center mb-1">
+                  <Stethoscope className="w-6 h-6 text-forest-700" />
+                </div>
+                <span className="text-[11px] font-bold text-forest-900 tracking-wider">
+                  {(doctor.name || 'DR').replace(/^(dr\.?\s*)/i, '').slice(0, 2).toUpperCase()}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

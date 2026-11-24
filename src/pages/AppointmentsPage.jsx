@@ -82,6 +82,15 @@ export const AppointmentsPage = () => {
       try {
         const res = await pharmacyService.getPharmacies();
         const allPharmacies = Array.isArray(res?.pharmacies) ? res.pharmacies : [];
+        const savedDoctorImages = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_doctor_images');
+            return raw ? JSON.parse(raw) : {};
+          } catch {
+            return {};
+          }
+        })();
+
         // Single Entity rule: Only pharmacies offering clinic doctor chamber services
         const clinicEntities = allPharmacies.filter(
           (p) => p.hasClinicService || (p.doctorsCount && p.doctorsCount > 0)
@@ -93,24 +102,31 @@ export const AppointmentsPage = () => {
           city: c.city,
           pincode: c.pincode,
           isPrimary: Boolean(c.isPrimary),
+          isFeatured: Boolean(c.isFeatured),
           chamberCount: `${c.doctorsCount > 0 ? c.doctorsCount : 2} Chambers`,
-          image: c.image || 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=350',
+          image: c.image || c.logoUrl || c.imageUrl || '',
+          imageUrl: c.image || c.logoUrl || c.imageUrl || '',
           rating: c.rating || 4.8,
           reviewCount: c.reviewsCount || 85,
           distance: 'Express Hub',
           timing: '09:00 AM - 09:00 PM',
           receptionistName: c.receptionistName,
           doctorNames: c.doctorNames || [],
-          doctors: c.raw?.doctors?.map((d) => ({
-            id: d.doctor?.id || d.id,
-            name: d.doctor?.fullName || 'Assigned Specialist',
-            fullName: d.doctor?.fullName || 'Assigned Specialist',
-            specialty: 'Chamber Specialist',
-            degree: d.doctor?.qualifications || 'MBBS',
-            fee: `₹${((d.consultationFeePaise || 50000) / 100).toFixed(0)}`,
-            image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
-            rating: 4.9,
-          })) || [],
+          doctors: c.raw?.doctors?.map((d) => {
+            const docId = d.doctor?.id || d.id;
+            const docPhoto = savedDoctorImages[docId] || d.doctor?.imageUrl || d.doctor?.photoUrl || '';
+            return {
+              id: docId,
+              name: d.doctor?.fullName || 'Assigned Specialist',
+              fullName: d.doctor?.fullName || 'Assigned Specialist',
+              specialty: 'Chamber Specialist',
+              degree: d.doctor?.qualifications || 'MBBS',
+              fee: `₹${((d.consultationFeePaise || 50000) / 100).toFixed(0)}`,
+              image: docPhoto,
+              imageUrl: docPhoto,
+              rating: 4.9,
+            };
+          }) || [],
         }));
         setClinics(formatted);
       } catch (e) {

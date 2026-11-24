@@ -270,11 +270,22 @@ export const TopSearchBar = () => {
                           className="flex items-center justify-between p-2 rounded-xl hover:bg-blue-50/50 transition-colors cursor-pointer group"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <img
-                              src={d.image}
-                              alt={d.name}
-                              className="w-8 h-8 rounded-full object-cover border border-brandBorder-subtle flex-shrink-0"
-                            />
+                            {d.image ? (
+                              <img
+                                src={d.image}
+                                alt={d.name}
+                                className="w-8 h-8 rounded-full object-cover border border-brandBorder-subtle flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-forest-100 border border-brandBorder-subtle flex items-center justify-center text-forest-700 font-bold text-[10px] flex-shrink-0">
+                                {d.name
+                                  ?.replace(/^Dr\.\s*/i, '')
+                                  .split(' ')
+                                  .map((n) => n[0])
+                                  .slice(0, 2)
+                                  .join('') || <Stethoscope className="w-4 h-4" />}
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-forest-900 group-hover:text-blue-700 truncate">
                                 {d.name}
@@ -311,11 +322,17 @@ export const TopSearchBar = () => {
                           className="flex items-center justify-between p-2 rounded-xl hover:bg-purple-50/50 transition-colors cursor-pointer group"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <img
-                              src={c.image}
-                              alt={c.name}
-                              className="w-8 h-8 rounded-lg object-cover border border-brandBorder-subtle flex-shrink-0"
-                            />
+                            {c.image ? (
+                              <img
+                                src={c.image}
+                                alt={c.name}
+                                className="w-8 h-8 rounded-lg object-cover border border-brandBorder-subtle flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-lg bg-forest-50 border border-brandBorder-subtle flex items-center justify-center text-forest-700 flex-shrink-0">
+                                <Building2 className="w-4 h-4" />
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-forest-900 group-hover:text-purple-700 truncate">
                                 {c.name}

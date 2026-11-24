@@ -12,13 +12,20 @@ export const ClinicCard = ({ clinic, onSelect }) => {
     >
       <div>
         {/* Clinic Image & Badges */}
-        <div className="relative mb-3 sm:mb-4 w-full aspect-[16/10] rounded-xl sm:rounded-2xl overflow-hidden bg-forest-50 border border-forest-100">
-          <img
-            src={clinic.image}
-            alt={clinic.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
+        <div className="relative mb-3 sm:mb-4 w-full aspect-[16/10] rounded-xl sm:rounded-2xl overflow-hidden bg-forest-50 border border-forest-100 flex items-center justify-center">
+          {clinic.image ? (
+            <img
+              src={clinic.image}
+              alt={clinic.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center bg-forest-50/90 text-forest-700">
+              <Building2 className="w-10 h-10 text-forest-600 mb-1" />
+              <span className="text-[11px] font-bold text-forest-800 line-clamp-1 px-2">{clinic.name}</span>
+            </div>
+          )}
           <div className="absolute top-2 left-2 bg-surface-pure/90 backdrop-blur-sm px-2 py-0.5 rounded-full text-[10px] font-bold text-forest-800 shadow-sm flex items-center gap-1">
             <Building2 className="w-3 h-3 text-forest-600" />
             <span>{clinic.chamberCount}</span>

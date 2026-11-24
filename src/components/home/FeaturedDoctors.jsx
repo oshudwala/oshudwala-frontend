@@ -20,7 +20,9 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
         const res = await doctorService.getDoctors();
         if (isMounted) {
           if (Array.isArray(res?.doctors) && res.doctors.length > 0) {
-            setFeaturedDoctorsList(res.doctors.slice(0, 8));
+            // Only show doctors marked as isFeatured = true
+            const featured = res.doctors.filter((d) => Boolean(d.isFeatured));
+            setFeaturedDoctorsList(featured);
           } else {
             setFeaturedDoctorsList([]);
           }

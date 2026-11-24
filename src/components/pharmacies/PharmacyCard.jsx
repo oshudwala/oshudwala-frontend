@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Star, ArrowRight, MapPin, Clock } from 'lucide-react';
+import { Star, ArrowRight, MapPin, Clock, Building2 } from 'lucide-react';
 import { pharmacyApi } from '../../services/api/pharmacy.api';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -28,13 +28,20 @@ export const PharmacyCard = ({ pharmacy, onSelect }) => {
     >
       <div>
         {/* Pharmacy Storefront Image */}
-        <div className="relative mb-2.5 sm:mb-3.5 w-full aspect-[16/10] rounded-xl sm:rounded-2xl overflow-hidden bg-forest-50 border border-forest-100">
-          <img
-            src={pharmacy.image}
-            alt={pharmacy.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
+        <div className="relative mb-2.5 sm:mb-3.5 w-full aspect-[16/10] rounded-xl sm:rounded-2xl overflow-hidden bg-forest-50 border border-forest-100 flex items-center justify-center">
+          {pharmacy.image ? (
+            <img
+              src={pharmacy.image}
+              alt={pharmacy.name}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center text-forest-700/80 p-4 text-center">
+              <Building2 className="w-8 h-8 mb-1 opacity-70" />
+              <span className="text-[11px] font-bold text-forest-800 line-clamp-1">{pharmacy.name}</span>
+            </div>
+          )}
           <div className="absolute top-2 right-2 bg-surface-pure/90 backdrop-blur-sm px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold text-forest-800 shadow-sm">
             {pharmacy.distance}
           </div>

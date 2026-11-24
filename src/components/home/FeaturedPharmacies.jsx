@@ -20,8 +20,8 @@ export const FeaturedPharmacies = ({ onSelectPharmacy }) => {
         const res = await pharmacyService.getPharmacies();
         if (isMounted) {
           const list = Array.isArray(res?.pharmacies) ? res.pharmacies : [];
-          // Prioritize pharmacies with medicine service (Single Entity rule)
-          const medicineHubs = list.filter((p) => p.hasMedicineService !== false);
+          // Prioritize pharmacies with medicine service that are marked as isFeatured
+          const medicineHubs = list.filter((p) => p.hasMedicineService !== false && Boolean(p.isFeatured));
           setPharmaciesList(medicineHubs);
         }
       } catch (err) {

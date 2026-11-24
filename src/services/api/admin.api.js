@@ -173,6 +173,24 @@ export const adminApi = {
       console.warn('Backend fetch all entities notice:', e.message);
     }
 
+    // Extract platform settings mappings
+    const getSettingVal = (k) => {
+      const s = Array.isArray(backendSettings) ? backendSettings.find((item) => item.key === k) : null;
+      if (s?.value) return s.value;
+      try {
+        const raw = localStorage.getItem(`oshud_${k}`);
+        return raw ? JSON.parse(raw) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const featuredDocs = getSettingVal('featured_doctors') || [];
+    const featuredClins = getSettingVal('featured_clinics') || [];
+    const featuredPharms = getSettingVal('featured_pharmacies') || [];
+    const doctorImages = getSettingVal('doctor_images') || {};
+    const facilityImages = getSettingVal('facility_images') || {};
+
     const isRemoved = (id, userId) => accountRegistry.isEntityRemoved(id, userId);
 
     // 1. DOCTORS (Backend first as source of truth)
@@ -197,13 +215,27 @@ export const adminApi = {
       const specName = bd.specializations?.[0]?.specialization?.name || bd.specialization || 'General Physician';
       const userStatus = bd.user?.status || (bd.isVerified ? 'ACTIVE' : 'ACTIVE');
 
+      const docImage =
+        doctorImages[bd.id] ||
+        (bd.userId && doctorImages[bd.userId]) ||
+        bd.imageUrl ||
+        bd.photoUrl ||
+        localMatch?.imageUrl ||
+        '';
+
+      const isDocFeatured = Boolean(
+        bd.isFeatured ||
+        (Array.isArray(featuredDocs) && (featuredDocs.includes(bd.id) || (bd.userId && featuredDocs.includes(bd.userId)))) ||
+        localMatch?.isFeatured
+      );
+
       doctors.push({
         id: bd.id,
         userId: bd.userId || bd.user?.id || bd.id,
         fullName: bd.fullName || bd.name,
         email: bd.email || bd.user?.email || '',
         phone: bd.phone || bd.user?.phone || '',
-        imageUrl: bd.imageUrl || bd.photoUrl || localMatch?.imageUrl || '',
+        imageUrl: docImage,
         registrationNumber: bd.registrationNumber || 'WBMC-REG',
         qualifications: bd.qualifications || 'MBBS',
         experienceYears: bd.experienceYears || 5,
@@ -213,7 +245,7 @@ export const adminApi = {
         consultationFeePaise: feePaise,
         status: userStatus,
         user: { id: bd.userId || bd.user?.id || bd.id, email: bd.email || bd.user?.email, phone: bd.phone || bd.user?.phone, status: userStatus },
-        isFeatured: bd.isFeatured ?? localMatch?.isFeatured ?? false,
+        isFeatured: isDocFeatured,
       });
 
       seenDocIds.add(bd.id);
@@ -237,13 +269,24 @@ export const adminApi = {
           (cleanPhone && ld.phone && String(ld.phone).replace(/[^0-9]/g, '') === cleanPhone)
       );
 
+      const docImage =
+        doctorImages[u.id] ||
+        u.imageUrl ||
+        localMatch?.imageUrl ||
+        '';
+
+      const isDocFeatured = Boolean(
+        (Array.isArray(featuredDocs) && featuredDocs.includes(u.id)) ||
+        localMatch?.isFeatured
+      );
+
       doctors.push({
         id: u.id,
         userId: u.id,
         fullName: u.fullName,
         email: u.email,
         phone: u.phone,
-        imageUrl: u.imageUrl || localMatch?.imageUrl || '',
+        imageUrl: docImage,
         registrationNumber: 'WBMC-REG',
         qualifications: 'MBBS',
         experienceYears: 5,
@@ -251,7 +294,7 @@ export const adminApi = {
         consultationFeePaise: localMatch?.consultationFeePaise || 50000,
         status: u.status || 'ACTIVE',
         user: { id: u.id, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
-        isFeatured: localMatch?.isFeatured || false,
+        isFeatured: isDocFeatured,
       });
 
       seenDocIds.add(u.id);
@@ -282,13 +325,27 @@ export const adminApi = {
         status: bp.status || 'ACTIVE',
       };
 
+      const pharmImage =
+        facilityImages[bp.id] ||
+        bp.logoUrl ||
+        bp.coverUrl ||
+        bp.imageUrl ||
+        localMatch?.imageUrl ||
+        '';
+
+      const isPharmFeatured = Boolean(
+        bp.isFeatured ||
+        (Array.isArray(featuredPharms) && featuredPharms.includes(bp.id)) ||
+        localMatch?.isFeatured
+      );
+
       pharmacies.push({
         id: bp.id,
         userId: bp.ownerId || ownerUser.id || bp.id,
         name: bp.name,
         email: bp.email || ownerUser.email || '',
         phone: bp.phone || ownerUser.phone || '',
-        imageUrl: bp.logoUrl || bp.coverUrl || bp.imageUrl || localMatch?.imageUrl || '',
+        imageUrl: pharmImage,
         licenseNumber: bp.licenseNumber || 'WB-DL-REG',
         line1: bp.line1 || 'Main Road',
         city: bp.city || 'Kolkata',
@@ -300,6 +357,7 @@ export const adminApi = {
         staff: bp.staff || [{ staffRole: 'OWNER', user: ownerUser }],
         hasClinicService: Boolean(bp.hasClinicService),
         hasMedicineService: true,
+        isFeatured: isPharmFeatured,
       });
 
       seenPharmIds.add(bp.id);
@@ -315,13 +373,18 @@ export const adminApi = {
         (lp) => lp.id === u.id || (cleanEmail && lp.email?.toLowerCase() === cleanEmail)
       );
 
+      const isPharmFeatured = Boolean(
+        (Array.isArray(featuredPharms) && featuredPharms.includes(u.id)) ||
+        localMatch?.isFeatured
+      );
+
       pharmacies.push({
         id: u.id,
         userId: u.id,
         name: `${u.fullName} Pharmacy`,
         email: u.email,
         phone: u.phone,
-        imageUrl: localMatch?.imageUrl || '',
+        imageUrl: facilityImages[u.id] || localMatch?.imageUrl || '',
         licenseNumber: 'WB-DL-REG',
         line1: 'Sector V',
         city: 'Kolkata',
@@ -333,6 +396,7 @@ export const adminApi = {
         staff: [{ staffRole: 'OWNER', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
         hasClinicService: false,
         hasMedicineService: true,
+        isFeatured: isPharmFeatured,
       });
 
       seenPharmIds.add(u.id);
@@ -366,13 +430,27 @@ export const adminApi = {
         status: bp.status || 'ACTIVE',
       };
 
+      const clinImage =
+        facilityImages[bp.id] ||
+        bp.logoUrl ||
+        bp.coverUrl ||
+        bp.imageUrl ||
+        localMatch?.imageUrl ||
+        '';
+
+      const isClinFeatured = Boolean(
+        bp.isFeatured ||
+        (Array.isArray(featuredClins) && featuredClins.includes(bp.id)) ||
+        localMatch?.isFeatured
+      );
+
       clinics.push({
         id: bp.id,
         userId: managerUser.id || bp.ownerId || bp.id,
         name: bp.name,
         email: bp.email || managerUser.email || '',
         phone: bp.phone || managerUser.phone || '',
-        imageUrl: bp.logoUrl || bp.coverUrl || bp.imageUrl || localMatch?.imageUrl || '',
+        imageUrl: clinImage,
         chamberCount: bp.settings?.chamberCount || localMatch?.chamberCount || '6 Chambers',
         line1: bp.line1 || 'Clinic Road',
         city: bp.city || 'Kolkata',
@@ -387,7 +465,7 @@ export const adminApi = {
         settings: { chamberCount: bp.settings?.chamberCount || '6 Chambers' },
         hasClinicService: true,
         hasMedicineService: Boolean(bp.hasMedicineService),
-        isFeatured: localMatch?.isFeatured || false,
+        isFeatured: isClinFeatured,
       });
 
       seenClinicIds.add(bp.id);
@@ -705,6 +783,33 @@ export const adminApi = {
     const doctorId = createdDoctor?.id || registeredUser?.userId || `doc_${Date.now()}`;
     const userId = registeredUser?.userId || createdDoctor?.userId || doctorId;
 
+    // Persist doctor custom image in platform settings if provided
+    if (data.imageUrl) {
+      try {
+        const curSettings = await this.getSettings();
+        const curImages = curSettings?.find?.((s) => s.key === 'doctor_images')?.value || {};
+        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
+        updatedImages[doctorId] = data.imageUrl;
+        if (userId) updatedImages[userId] = data.imageUrl;
+        await this.setSetting('doctor_images', updatedImages);
+        localStorage.setItem('oshud_doctor_images', JSON.stringify(updatedImages));
+      } catch (imgErr) {
+        console.warn('Persist doctor image notice:', imgErr.message);
+      }
+    }
+
+    // Persist isFeatured if flagged
+    if (data.isFeatured) {
+      try {
+        const curSettings = await this.getSettings();
+        const curFeatured = curSettings?.find?.((s) => s.key === 'featured_doctors')?.value || [];
+        const updatedList = Array.isArray(curFeatured) ? [...curFeatured] : [];
+        if (!updatedList.includes(doctorId)) updatedList.push(doctorId);
+        await this.setSetting('featured_doctors', updatedList);
+        localStorage.setItem('oshud_featured_doctors', JSON.stringify(updatedList));
+      } catch {}
+    }
+
     // 5. Register in accountRegistry for immediate offline access
     accountRegistry.registerAccount({
       id: doctorId,
@@ -713,6 +818,8 @@ export const adminApi = {
       phone: cleanPhone,
       password: data.password || 'Doctor123',
       role: 'DOCTOR',
+      imageUrl: data.imageUrl || '',
+      isFeatured: Boolean(data.isFeatured),
       entityData: {
         registrationNumber: data.registrationNumber || 'WBMC-REG',
         qualifications: data.qualifications || 'MBBS',
@@ -720,16 +827,19 @@ export const adminApi = {
         specialization: data.specialization || 'General Physician',
         consultationFeePaise: Number(data.consultationFeePaise) || 50000,
         imageUrl: data.imageUrl || '',
+        isFeatured: Boolean(data.isFeatured),
       },
     });
 
     this.invalidateCache();
-    return createdDoctor || {
+    return {
+      ...(createdDoctor || {}),
       id: doctorId,
       userId: userId,
       fullName: data.fullName,
       email: validEmail,
       phone: cleanPhone,
+      imageUrl: data.imageUrl || createdDoctor?.imageUrl || '',
       registrationNumber: data.registrationNumber || 'WBMC-REG',
       qualifications: data.qualifications || 'MBBS',
       experienceYears: data.experienceYears || 5,
@@ -737,6 +847,7 @@ export const adminApi = {
       consultationFeePaise: Number(data.consultationFeePaise) || 50000,
       user: { id: userId, email: validEmail, phone: cleanPhone, status: 'ACTIVE' },
       status: 'ACTIVE',
+      isFeatured: Boolean(data.isFeatured),
       createdAt: new Date().toISOString(),
     };
   },
@@ -776,7 +887,7 @@ export const adminApi = {
         const locRes = await apiClient.get('/locations');
         const locs = locRes.data?.data?.items || locRes.data?.data || locRes.data || [];
         if (Array.isArray(locs) && locs.length > 0) {
-          const match = locs.find((l) => data.city && l.city?.toLowerCase() === data.city.toLowerCase());
+          const match = locs.find((l) => (data.city && l.city?.toLowerCase() === data.city.toLowerCase()) || (data.pincode && l.pincode === data.pincode));
           locationId = match ? match.id : locs[0].id;
         }
       } catch (locErr) {
@@ -784,8 +895,27 @@ export const adminApi = {
       }
     }
 
+    // Auto-create location if still not found
+    if (!locationId) {
+      try {
+        const createLocRes = await apiClient.post('/locations', {
+          city: data.city || 'Durgapur',
+          area: data.line1 || data.address || 'City Centre',
+          state: data.state || 'WB',
+          pincode: data.pincode || '713216',
+        });
+        const locData = createLocRes.data?.data || createLocRes.data;
+        locationId = locData?.id;
+      } catch (clErr) {
+        console.warn('Create location notice:', clErr.message);
+      }
+    }
+
     // 2. Call backend POST /pharmacies/admin-create
     let createdPharmacy = null;
+    const hasClinicService = Boolean(data.hasClinicService);
+    const hasMedicineService = data.hasMedicineService !== false;
+
     try {
       const resp = await apiClient.post('/pharmacies/admin-create', {
         name: data.name,
@@ -797,6 +927,10 @@ export const adminApi = {
         line1: data.line1 || data.address || 'Main Road',
         line2: data.line2 || null,
         isPrimary: Boolean(data.isPrimary),
+        hasClinicService,
+        hasMedicineService,
+        logoUrl: data.imageUrl || null,
+        isFeatured: Boolean(data.isFeatured),
       });
       createdPharmacy = resp.data?.data || resp.data;
     } catch (phErr) {
@@ -814,7 +948,52 @@ export const adminApi = {
     const pharmacyId = createdPharmacy?.id || `pharm_${Date.now()}`;
     const ownerId = createdPharmacy?.ownerId || pharmacyId;
 
-    // 3. Register in accountRegistry
+    // 3. Ensure service flags and media are synced on backend
+    if (createdPharmacy?.id) {
+      try {
+        await apiClient.put(`/pharmacies/${createdPharmacy.id}/services`, {
+          hasClinicService,
+          hasMedicineService,
+        });
+      } catch (svcErr) {
+        console.warn('Sync pharmacy services notice:', svcErr.message);
+      }
+
+      if (data.imageUrl) {
+        try {
+          await apiClient.put(`/pharmacies/${createdPharmacy.id}/media`, {
+            logoUrl: data.imageUrl,
+          });
+        } catch (mErr) {
+          console.warn('Sync pharmacy media notice:', mErr.message);
+        }
+      }
+    }
+
+    // 4. Persist facility image and isFeatured in settings
+    if (data.imageUrl) {
+      try {
+        const curSettings = await this.getSettings();
+        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
+        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
+        updatedImages[pharmacyId] = data.imageUrl;
+        await this.setSetting('facility_images', updatedImages);
+        localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
+      } catch {}
+    }
+
+    if (data.isFeatured) {
+      try {
+        const curSettings = await this.getSettings();
+        const curFeatured = curSettings?.find?.((s) => s.key === 'featured_pharmacies')?.value || [];
+        const updatedList = Array.isArray(curFeatured) ? [...curFeatured] : [];
+        if (!updatedList.includes(pharmacyId)) updatedList.push(pharmacyId);
+        await this.setSetting('featured_pharmacies', updatedList);
+        localStorage.setItem('oshud_featured_pharmacies', JSON.stringify(updatedList));
+      } catch {}
+    }
+
+    // 5. Register in accountRegistry
     accountRegistry.registerAccount({
       id: pharmacyId,
       fullName: data.ownerName || data.name,
@@ -822,6 +1001,10 @@ export const adminApi = {
       phone: cleanPhone,
       password: data.password || 'Pharmacy123',
       role: 'PHARMACY',
+      imageUrl: data.imageUrl || '',
+      isFeatured: Boolean(data.isFeatured),
+      hasClinicService,
+      hasMedicineService,
       entityData: {
         name: data.name,
         licenseNumber: data.licenseNumber || 'WB-DL-REG',
@@ -830,22 +1013,31 @@ export const adminApi = {
         state: data.state || 'West Bengal',
         pincode: data.pincode || '700091',
         imageUrl: data.imageUrl || '',
+        isFeatured: Boolean(data.isFeatured),
+        hasClinicService,
+        hasMedicineService,
       },
     });
 
     this.invalidateCache();
-    return createdPharmacy || {
+    return {
+      ...(createdPharmacy || {}),
       id: pharmacyId,
       userId: ownerId,
       name: data.name,
       email: validEmail,
       phone: cleanPhone,
+      imageUrl: data.imageUrl || createdPharmacy?.logoUrl || '',
       licenseNumber: data.licenseNumber || 'WB-DL-REG',
       line1: data.line1 || data.address,
       city: data.city || 'Kolkata',
       state: data.state || 'West Bengal',
       pincode: data.pincode || '700091',
       status: 'ACTIVE',
+      isPrimary: Boolean(data.isPrimary),
+      isFeatured: Boolean(data.isFeatured),
+      hasClinicService,
+      hasMedicineService,
       owner: { id: ownerId, fullName: data.ownerName || data.name, email: validEmail, phone: cleanPhone },
       staff: [{ staffRole: 'OWNER', user: { fullName: data.ownerName || data.name, email: validEmail, phone: cleanPhone, status: 'ACTIVE' } }],
       createdAt: new Date().toISOString(),
@@ -895,7 +1087,7 @@ export const adminApi = {
         const locRes = await apiClient.get('/locations');
         const locs = locRes.data?.data?.items || locRes.data?.data || locRes.data || [];
         if (Array.isArray(locs) && locs.length > 0) {
-          const match = locs.find((l) => data.city && l.city?.toLowerCase() === data.city.toLowerCase());
+          const match = locs.find((l) => (data.city && l.city?.toLowerCase() === data.city.toLowerCase()) || (data.pincode && l.pincode === data.pincode));
           locationId = match ? match.id : locs[0].id;
         }
       } catch (locErr) {
@@ -903,8 +1095,27 @@ export const adminApi = {
       }
     }
 
+    // Auto-create location if still not found
+    if (!locationId) {
+      try {
+        const createLocRes = await apiClient.post('/locations', {
+          city: data.city || 'Durgapur',
+          area: data.line1 || data.address || 'City Centre',
+          state: data.state || 'WB',
+          pincode: data.pincode || '713216',
+        });
+        const locData = createLocRes.data?.data || createLocRes.data;
+        locationId = locData?.id;
+      } catch (clErr) {
+        console.warn('Create location notice:', clErr.message);
+      }
+    }
+
     // 2. Call backend POST /pharmacies/admin-create
     let createdClinic = null;
+    const hasClinicService = data.hasClinicService !== false;
+    const hasMedicineService = Boolean(data.hasMedicineService);
+
     try {
       const resp = await apiClient.post('/pharmacies/admin-create', {
         name: data.name,
@@ -916,6 +1127,10 @@ export const adminApi = {
         line1: data.line1 || data.address || 'Clinic Road',
         line2: data.line2 || null,
         isPrimary: false,
+        hasClinicService,
+        hasMedicineService,
+        logoUrl: data.imageUrl || null,
+        isFeatured: Boolean(data.isFeatured),
       });
       createdClinic = resp.data?.data || resp.data;
 
@@ -923,11 +1138,21 @@ export const adminApi = {
       if (createdClinic?.id) {
         try {
           await apiClient.put(`/pharmacies/${createdClinic.id}/services`, {
-            hasClinicService: true,
-            hasMedicineService: false,
+            hasClinicService,
+            hasMedicineService,
           });
         } catch (svcErr) {
           console.warn('Enable clinic service notice:', svcErr.message);
+        }
+
+        if (data.imageUrl) {
+          try {
+            await apiClient.put(`/pharmacies/${createdClinic.id}/media`, {
+              logoUrl: data.imageUrl,
+            });
+          } catch (mErr) {
+            console.warn('Sync clinic media notice:', mErr.message);
+          }
         }
 
         // 4. Create receptionist staff entry
@@ -957,6 +1182,29 @@ export const adminApi = {
     const clinicId = createdClinic?.id || `clinic_${Date.now()}`;
     const managerId = createdClinic?.ownerId || clinicId;
 
+    // Persist facility image and isFeatured in settings
+    if (data.imageUrl) {
+      try {
+        const curSettings = await this.getSettings();
+        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
+        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
+        updatedImages[clinicId] = data.imageUrl;
+        await this.setSetting('facility_images', updatedImages);
+        localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
+      } catch {}
+    }
+
+    if (data.isFeatured) {
+      try {
+        const curSettings = await this.getSettings();
+        const curFeatured = curSettings?.find?.((s) => s.key === 'featured_clinics')?.value || [];
+        const updatedList = Array.isArray(curFeatured) ? [...curFeatured] : [];
+        if (!updatedList.includes(clinicId)) updatedList.push(clinicId);
+        await this.setSetting('featured_clinics', updatedList);
+        localStorage.setItem('oshud_featured_clinics', JSON.stringify(updatedList));
+      } catch {}
+    }
+
     // 5. Register in accountRegistry
     accountRegistry.registerAccount({
       id: clinicId,
@@ -965,6 +1213,10 @@ export const adminApi = {
       phone: cleanPhone,
       password: data.password || 'Clinic123',
       role: 'RECEPTIONIST',
+      imageUrl: data.imageUrl || '',
+      isFeatured: Boolean(data.isFeatured),
+      hasClinicService,
+      hasMedicineService,
       entityData: {
         name: data.name,
         chamberCount: data.chamberCount || '6 Chambers',
@@ -973,22 +1225,31 @@ export const adminApi = {
         state: data.state || 'West Bengal',
         pincode: data.pincode || '700064',
         imageUrl: data.imageUrl || '',
+        isFeatured: Boolean(data.isFeatured),
+        hasClinicService,
+        hasMedicineService,
       },
     });
 
     this.invalidateCache();
-    return createdClinic || {
+    return {
+      ...(createdClinic || {}),
       id: clinicId,
       userId: managerId,
       name: data.name,
       email: validEmail,
       phone: cleanPhone,
+      imageUrl: data.imageUrl || createdClinic?.logoUrl || '',
       chamberCount: data.chamberCount || '6 Chambers',
       line1: data.line1 || data.address,
       city: data.city || 'Kolkata',
       state: data.state || 'West Bengal',
       pincode: data.pincode || '700064',
       status: 'ACTIVE',
+      isPrimary: false,
+      isFeatured: Boolean(data.isFeatured),
+      hasClinicService,
+      hasMedicineService,
       manager: { id: managerId, fullName: data.managerName || data.name, email: validEmail, phone: cleanPhone },
       staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: data.managerName || data.name, email: validEmail, phone: cleanPhone, status: 'ACTIVE' } }],
       settings: { chamberCount: data.chamberCount || '6 Chambers' },
@@ -1306,13 +1567,82 @@ export const adminApi = {
   },
 
   // ================= ENTITY EDIT / UPDATE =================
+  async toggleFeatured(row, type, newFeatured) {
+    this.invalidateCache();
+    const id = row.id;
+    const settingKey = type === 'doctors' ? 'featured_doctors' : type === 'pharmacies' ? 'featured_pharmacies' : 'featured_clinics';
+
+    // 1. Sync platform settings list
+    try {
+      const curSettings = await this.getSettings();
+      const existingList = curSettings?.find?.((s) => s.key === settingKey)?.value || [];
+      let updatedList = Array.isArray(existingList) ? [...existingList] : [];
+      if (newFeatured) {
+        if (!updatedList.includes(id)) updatedList.push(id);
+      } else {
+        updatedList = updatedList.filter((item) => item !== id);
+      }
+      await this.setSetting(settingKey, updatedList);
+      localStorage.setItem(`oshud_${settingKey}`, JSON.stringify(updatedList));
+    } catch (setErr) {
+      console.warn('Set setting toggle featured notice:', setErr.message);
+    }
+
+    // 2. Direct database update if entity is in PostgreSQL
+    if (type === 'doctors' && id && id.includes('-')) {
+      try {
+        await apiClient.put(`/doctors/${id}`, { isFeatured: newFeatured });
+      } catch (docErr) {
+        console.warn('Doctor isFeatured update notice:', docErr.message);
+      }
+    } else if ((type === 'clinics' || type === 'pharmacies') && id && id.includes('-')) {
+      try {
+        await apiClient.put(`/pharmacies/admin-update/${id}`, { isFeatured: newFeatured });
+      } catch (phErr) {
+        console.warn('Pharmacy isFeatured update notice:', phErr.message);
+      }
+    }
+
+    // 3. Update account registry
+    accountRegistry.updateAccount(id, {
+      isFeatured: newFeatured,
+      entityData: { isFeatured: newFeatured },
+    });
+
+    return { id, isFeatured: newFeatured };
+  },
+
   async updateDoctor(id, data) {
     this.invalidateCache();
     try {
-      await apiClient.put(`/doctors/${id}`, data);
+      if (id && id.includes('-')) {
+        await apiClient.put(`/doctors/${id}`, {
+          fullName: data.fullName,
+          phone: data.phone,
+          registrationNumber: data.registrationNumber,
+          qualifications: data.qualifications,
+          experienceYears: Number(data.experienceYears) || 0,
+          bio: data.bio || '',
+          isFeatured: Boolean(data.isFeatured),
+        });
+      }
     } catch (err) {
       console.warn('Backend update doctor notice:', err.message);
     }
+
+    // Persist doctor image if present
+    if (data.imageUrl && id) {
+      try {
+        const curSettings = await this.getSettings();
+        const curImages = curSettings?.find?.((s) => s.key === 'doctor_images')?.value || {};
+        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
+        updatedImages[id] = data.imageUrl;
+        if (data.userId) updatedImages[data.userId] = data.imageUrl;
+        await this.setSetting('doctor_images', updatedImages);
+        localStorage.setItem('oshud_doctor_images', JSON.stringify(updatedImages));
+      } catch {}
+    }
+
     accountRegistry.updateAccount(id, {
       fullName: data.fullName,
       email: data.email,
@@ -1334,17 +1664,50 @@ export const adminApi = {
 
   async updatePharmacy(id, data) {
     this.invalidateCache();
+    const hasClinicService = Boolean(data.hasClinicService);
+    const hasMedicineService = data.hasMedicineService !== false;
+
     try {
-      await apiClient.put(`/admin/pharmacies/${id}`, data);
+      if (id && id.includes('-')) {
+        await Promise.allSettled([
+          apiClient.put(`/pharmacies/${id}/services`, {
+            hasClinicService,
+            hasMedicineService,
+          }),
+          ...(data.imageUrl ? [apiClient.put(`/pharmacies/${id}/media`, { logoUrl: data.imageUrl })] : []),
+          apiClient.put(`/pharmacies/${id}`, {
+            name: data.name,
+            phone: data.phone,
+            line1: data.line1 || data.address,
+            city: data.city,
+            state: data.state,
+            pincode: data.pincode,
+          }),
+        ]);
+      }
     } catch (err) {
       console.warn('Backend update pharmacy notice:', err.message);
     }
+
+    if (data.imageUrl && id) {
+      try {
+        const curSettings = await this.getSettings();
+        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
+        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
+        updatedImages[id] = data.imageUrl;
+        await this.setSetting('facility_images', updatedImages);
+        localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
+      } catch {}
+    }
+
     accountRegistry.updateAccount(id, {
       fullName: data.name,
       name: data.name,
       email: data.email,
       phone: data.phone,
       imageUrl: data.imageUrl,
+      hasClinicService,
+      hasMedicineService,
       entityData: {
         name: data.name,
         licenseNumber: data.licenseNumber,
@@ -1353,6 +1716,8 @@ export const adminApi = {
         state: data.state,
         pincode: data.pincode,
         imageUrl: data.imageUrl,
+        hasClinicService,
+        hasMedicineService,
       },
     });
     return { id, ...data };
@@ -1360,11 +1725,42 @@ export const adminApi = {
 
   async updateClinic(id, data) {
     this.invalidateCache();
+    const hasClinicService = data.hasClinicService !== false;
+    const hasMedicineService = Boolean(data.hasMedicineService);
+
     try {
-      await apiClient.put(`/admin/clinics/${id}`, data);
+      if (id && id.includes('-')) {
+        await Promise.allSettled([
+          apiClient.put(`/pharmacies/${id}/services`, {
+            hasClinicService,
+            hasMedicineService,
+          }),
+          ...(data.imageUrl ? [apiClient.put(`/pharmacies/${id}/media`, { logoUrl: data.imageUrl })] : []),
+          apiClient.put(`/pharmacies/${id}`, {
+            name: data.name,
+            phone: data.phone,
+            line1: data.line1 || data.address,
+            city: data.city,
+            state: data.state,
+            pincode: data.pincode,
+          }),
+        ]);
+      }
     } catch (err) {
       console.warn('Backend update clinic notice:', err.message);
     }
+
+    if (data.imageUrl && id) {
+      try {
+        const curSettings = await this.getSettings();
+        const curImages = curSettings?.find?.((s) => s.key === 'facility_images')?.value || {};
+        const updatedImages = typeof curImages === 'object' && curImages !== null ? { ...curImages } : {};
+        updatedImages[id] = data.imageUrl;
+        await this.setSetting('facility_images', updatedImages);
+        localStorage.setItem('oshud_facility_images', JSON.stringify(updatedImages));
+      } catch {}
+    }
+
     accountRegistry.updateAccount(id, {
       fullName: data.name,
       name: data.name,
@@ -1372,6 +1768,8 @@ export const adminApi = {
       phone: data.phone,
       imageUrl: data.imageUrl,
       isFeatured: data.isFeatured,
+      hasClinicService,
+      hasMedicineService,
       entityData: {
         name: data.name,
         chamberCount: data.chamberCount,
@@ -1381,6 +1779,8 @@ export const adminApi = {
         pincode: data.pincode,
         imageUrl: data.imageUrl,
         isFeatured: data.isFeatured,
+        hasClinicService,
+        hasMedicineService,
       },
     });
     return { id, ...data };

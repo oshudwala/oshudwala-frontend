@@ -33,7 +33,8 @@ import {
   Check,
   Power,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Sliders
 } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
@@ -93,6 +94,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const [isLoading, setIsLoading] = useState(!hasCache);
   const [isSyncing, setIsSyncing] = useState(false);
   const [togglingStatusId, setTogglingStatusId] = useState(null);
+  const [togglingFeaturedId, setTogglingFeaturedId] = useState(null);
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -116,6 +118,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     state: 'West Bengal',
     pincode: '700064',
     imageUrl: '',
+    isFeatured: false,
+    hasClinicService: true,
+    hasMedicineService: false,
     // Doctor specific
     registrationNumber: '',
     qualifications: '',
@@ -179,20 +184,26 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       // Read featured lists from settings if available
       const featuredDocs = settingsRes?.find?.((s) => s.key === 'featured_doctors')?.value || [];
       const featuredClins = settingsRes?.find?.((s) => s.key === 'featured_clinics')?.value || [];
+      const featuredPharms = settingsRes?.find?.((s) => s.key === 'featured_pharmacies')?.value || [];
 
       setClinics(
         (res.clinics || []).map((c) => ({
           ...c,
-          isFeatured: featuredClins.includes(c.id) || Boolean(c.isFeatured),
+          isFeatured: (Array.isArray(featuredClins) && featuredClins.includes(c.id)) || Boolean(c.isFeatured),
         }))
       );
       setDoctors(
         (res.doctors || []).map((d) => ({
           ...d,
-          isFeatured: featuredDocs.includes(d.id) || Boolean(d.isFeatured),
+          isFeatured: (Array.isArray(featuredDocs) && featuredDocs.includes(d.id)) || Boolean(d.isFeatured),
         }))
       );
-      setPharmacies(res.pharmacies || []);
+      setPharmacies(
+        (res.pharmacies || []).map((p) => ({
+          ...p,
+          isFeatured: (Array.isArray(featuredPharms) && featuredPharms.includes(p.id)) || Boolean(p.isFeatured),
+        }))
+      );
       setRiders(res.riders || []);
       setReceptionists(res.receptionists || []);
       setUsers(res.users || []);
@@ -210,6 +221,12 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+    setFormData((prev) => ({
+      ...prev,
+      hasClinicService: tab === 'clinics',
+      hasMedicineService: tab === 'pharmacies',
+      isFeatured: false,
+    }));
     if (location.pathname.includes('/staff')) {
       navigate(`/admin/staff?tab=${tab}`);
     } else {
@@ -218,13 +235,13 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   };
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
   const handleEditInputChange = (e) => {
-    const { name, value } = e.target;
-    setEditFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setEditFormData((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   };
 
   // Calculate 30 days deadline countdown
@@ -302,31 +319,30 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     }
   };
 
-  // Toggle Featured on Home Page
+  // Toggle Featured on Home Page with Live Loader/Disabled State
   const handleToggleFeatured = async (row, type) => {
+    const targetKey = row.id || row.userId;
+    setTogglingFeaturedId(targetKey);
     const newFeatured = !row.isFeatured;
-    const settingKey = type === 'doctors' ? 'featured_doctors' : 'featured_clinics';
+
+    // Instant Optimistic UI Update
+    const updateList = (list) =>
+      list.map((item) => {
+        if (item.id === row.id || (row.userId && item.userId === row.userId)) {
+          return {
+            ...item,
+            isFeatured: newFeatured,
+          };
+        }
+        return item;
+      });
+
+    if (type === 'clinics') setClinics(updateList);
+    else if (type === 'doctors') setDoctors(updateList);
+    else if (type === 'pharmacies') setPharmacies(updateList);
 
     try {
-      if (type === 'doctors') {
-        await adminApi.updateDoctor(row.id, { ...row, isFeatured: newFeatured });
-      } else {
-        await adminApi.updateClinic(row.id, { ...row, isFeatured: newFeatured });
-      }
-
-      // Sync platform setting key
-      const currentSettings = await adminApi.getSettings();
-      const existingList = currentSettings.find?.((s) => s.key === settingKey)?.value || [];
-      let updatedList = Array.isArray(existingList) ? [...existingList] : [];
-      if (newFeatured) {
-        if (!updatedList.includes(row.id)) updatedList.push(row.id);
-      } else {
-        updatedList = updatedList.filter((id) => id !== row.id);
-      }
-      await adminApi.setSetting(settingKey, updatedList);
-
-      // Save locally for instant live reflection on homepage
-      localStorage.setItem(`oshud_${settingKey}`, JSON.stringify(updatedList));
+      await adminApi.toggleFeatured(row, type, newFeatured);
 
       addToast(
         newFeatured
@@ -334,9 +350,11 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           : `${row.fullName || row.name} removed from featured section.`,
         'success'
       );
-      await loadData();
     } catch (err) {
-      addToast('Failed to update featured status', 'error');
+      addToast(err.message || 'Failed to update featured status', 'error');
+      await loadData(true);
+    } finally {
+      setTogglingFeaturedId(null);
     }
   };
 
@@ -355,6 +373,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       city: row.city || 'Kolkata',
       state: row.state || 'West Bengal',
       pincode: row.pincode || '700064',
+      isFeatured: Boolean(row.isFeatured),
+      hasClinicService: row.hasClinicService ?? (type === 'clinics'),
+      hasMedicineService: row.hasMedicineService ?? (type === 'pharmacies'),
       // Doctor
       specialization: row.specializations?.[0]?.specialization?.name || row.specialization || 'General Physician',
       qualifications: row.qualifications || 'MBBS',
@@ -391,6 +412,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
           imageUrl: editFormData.imageUrl,
+          isFeatured: Boolean(editFormData.isFeatured),
           specialization: editFormData.specialization,
           qualifications: editFormData.qualifications,
           registrationNumber: editFormData.registrationNumber,
@@ -407,6 +429,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
           imageUrl: editFormData.imageUrl,
+          isFeatured: Boolean(editFormData.isFeatured),
+          hasClinicService: Boolean(editFormData.hasClinicService),
+          hasMedicineService: editFormData.hasMedicineService !== false,
           licenseNumber: editFormData.licenseNumber,
           line1: editFormData.address,
           city: editFormData.city,
@@ -420,6 +445,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
           imageUrl: editFormData.imageUrl,
+          isFeatured: Boolean(editFormData.isFeatured),
+          hasClinicService: editFormData.hasClinicService !== false,
+          hasMedicineService: Boolean(editFormData.hasMedicineService),
           chamberCount: editFormData.chamberCount,
           line1: editFormData.address,
           city: editFormData.city,
@@ -480,6 +508,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           phone: formData.phone.replace(/[^0-9]/g, ''),
           password: formData.password,
           imageUrl: formData.imageUrl,
+          isFeatured: Boolean(formData.isFeatured),
           registrationNumber: formData.registrationNumber,
           qualifications: formData.qualifications,
           experienceYears: Number(formData.experienceYears) || 0,
@@ -499,6 +528,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           phone: formData.phone.replace(/[^0-9]/g, ''),
           password: formData.password,
           imageUrl: formData.imageUrl,
+          isFeatured: Boolean(formData.isFeatured),
+          hasClinicService: Boolean(formData.hasClinicService),
+          hasMedicineService: formData.hasMedicineService !== false,
           ownerName: formData.ownerName || formData.fullName,
           licenseNumber: formData.licenseNumber,
           line1: formData.address,
@@ -516,6 +548,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           phone: formData.phone.replace(/[^0-9]/g, ''),
           password: formData.password,
           imageUrl: formData.imageUrl,
+          isFeatured: Boolean(formData.isFeatured),
+          hasClinicService: formData.hasClinicService !== false,
+          hasMedicineService: Boolean(formData.hasMedicineService),
           managerName: formData.managerName || formData.fullName,
           line1: formData.address,
           city: formData.city,
@@ -738,21 +773,31 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     {
       header: 'Featured on Home',
       key: 'featured',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => handleToggleFeatured(row, 'clinics')}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
-            row.isFeatured
-              ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
-              : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
-          }`}
-          title="Toggle visibility on patient home page"
-        >
-          <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
-          <span>{row.isFeatured ? 'Featured' : 'Standard'}</span>
-        </button>
-      ),
+      render: (row) => {
+        const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
+        return (
+          <button
+            type="button"
+            disabled={isTogglingFeatured}
+            onClick={() => handleToggleFeatured(row, 'clinics')}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+              isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
+            } ${
+              row.isFeatured
+                ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+                : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+            }`}
+            title="Toggle visibility on patient home page"
+          >
+            {isTogglingFeatured ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
+            ) : (
+              <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+            )}
+            <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
+          </button>
+        );
+      },
     },
     {
       header: 'Status & Deadline',
@@ -885,21 +930,31 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     {
       header: 'Featured on Home',
       key: 'featured',
-      render: (row) => (
-        <button
-          type="button"
-          onClick={() => handleToggleFeatured(row, 'doctors')}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
-            row.isFeatured
-              ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
-              : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
-          }`}
-          title="Toggle visibility in Featured Doctors on home page"
-        >
-          <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
-          <span>{row.isFeatured ? 'Featured' : 'Standard'}</span>
-        </button>
-      ),
+      render: (row) => {
+        const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
+        return (
+          <button
+            type="button"
+            disabled={isTogglingFeatured}
+            onClick={() => handleToggleFeatured(row, 'doctors')}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+              isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
+            } ${
+              row.isFeatured
+                ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+                : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+            }`}
+            title="Toggle visibility in Featured Doctors on home page"
+          >
+            {isTogglingFeatured ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
+            ) : (
+              <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+            )}
+            <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
+          </button>
+        );
+      },
     },
     {
       header: 'Status & Deadline',
@@ -1016,6 +1071,35 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       header: 'City & State',
       key: 'city',
       render: (row) => <span className="text-xs">{row.city}, {row.state || 'West Bengal'}</span>,
+    },
+    {
+      header: 'Featured on Home',
+      key: 'featured',
+      render: (row) => {
+        const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
+        return (
+          <button
+            type="button"
+            disabled={isTogglingFeatured}
+            onClick={() => handleToggleFeatured(row, 'pharmacies')}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+              isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
+            } ${
+              row.isFeatured
+                ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+                : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+            }`}
+            title="Toggle visibility in Featured Pharmacies on home page"
+          >
+            {isTogglingFeatured ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
+            ) : (
+              <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+            )}
+            <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
+          </button>
+        );
+      },
     },
     {
       header: 'Status & Deadline',
@@ -1981,6 +2065,70 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         />
                       </div>
                     </div>
+
+                    {/* Active Facility Services (hasClinicService & hasMedicineService) */}
+                    <div className="p-3.5 bg-forest-50/80 border border-forest-200/80 rounded-2xl space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-forest-800">
+                        <Sliders className="w-3.5 h-3.5 text-forest-600" />
+                        <span>Facility Services Configuration</span>
+                      </div>
+                      <p className="text-[11px] text-brandText-secondary">
+                        Configure enabled services for this facility. A facility can offer both clinic chambers and medicine delivery simultaneously.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          formData.hasClinicService ? 'bg-white border-forest-500 shadow-xs' : 'bg-surface-warm border-brandBorder-subtle'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            name="hasClinicService"
+                            checked={Boolean(formData.hasClinicService)}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, hasClinicService: e.target.checked }))}
+                            className="mt-0.5 rounded text-forest-700 focus:ring-forest-500"
+                          />
+                          <div>
+                            <span className="block text-xs font-bold text-forest-900">Clinic & Chambers</span>
+                            <span className="block text-[10px] text-brandText-muted">Doctor appointments & chamber queues</span>
+                          </div>
+                        </label>
+
+                        <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          formData.hasMedicineService ? 'bg-white border-forest-500 shadow-xs' : 'bg-surface-warm border-brandBorder-subtle'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            name="hasMedicineService"
+                            checked={Boolean(formData.hasMedicineService)}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, hasMedicineService: e.target.checked }))}
+                            className="mt-0.5 rounded text-forest-700 focus:ring-forest-500"
+                          />
+                          <div>
+                            <span className="block text-xs font-bold text-forest-900">Pharmacy & Medicine</span>
+                            <span className="block text-[10px] text-brandText-muted">Prescription upload & orders</span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Featured on Home Page Toggle */}
+                {(activeTab === 'pharmacies' || activeTab === 'clinics' || activeTab === 'doctors') && (
+                  <div className="flex items-center justify-between p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-600 fill-amber-500" />
+                      <div>
+                        <span className="block text-xs font-bold text-amber-950">Show in Featured Section on Home Page</span>
+                        <span className="block text-[10px] text-brandText-secondary">Show this profile in featured sections on the patient homepage</span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="isFeatured"
+                      checked={Boolean(formData.isFeatured)}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, isFeatured: e.target.checked }))}
+                      className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
+                    />
                   </div>
                 )}
 
@@ -2337,6 +2485,70 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         />
                       </div>
                     </div>
+
+                    {/* Active Facility Services (hasClinicService & hasMedicineService) */}
+                    <div className="p-3.5 bg-forest-50/80 border border-forest-200/80 rounded-2xl space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-forest-800">
+                        <Sliders className="w-3.5 h-3.5 text-forest-600" />
+                        <span>Facility Services Configuration</span>
+                      </div>
+                      <p className="text-[11px] text-brandText-secondary">
+                        Configure enabled services for this facility. A facility can offer both clinic chambers and medicine delivery simultaneously.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          editFormData.hasClinicService ? 'bg-white border-forest-500 shadow-xs' : 'bg-surface-warm border-brandBorder-subtle'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            name="hasClinicService"
+                            checked={Boolean(editFormData.hasClinicService)}
+                            onChange={(e) => setEditFormData((prev) => ({ ...prev, hasClinicService: e.target.checked }))}
+                            className="mt-0.5 rounded text-forest-700 focus:ring-forest-500"
+                          />
+                          <div>
+                            <span className="block text-xs font-bold text-forest-900">Clinic & Chambers</span>
+                            <span className="block text-[10px] text-brandText-muted">Doctor appointments & chamber queues</span>
+                          </div>
+                        </label>
+
+                        <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          editFormData.hasMedicineService ? 'bg-white border-forest-500 shadow-xs' : 'bg-surface-warm border-brandBorder-subtle'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            name="hasMedicineService"
+                            checked={Boolean(editFormData.hasMedicineService)}
+                            onChange={(e) => setEditFormData((prev) => ({ ...prev, hasMedicineService: e.target.checked }))}
+                            className="mt-0.5 rounded text-forest-700 focus:ring-forest-500"
+                          />
+                          <div>
+                            <span className="block text-xs font-bold text-forest-900">Pharmacy & Medicine</span>
+                            <span className="block text-[10px] text-brandText-muted">Prescription upload & orders</span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Featured on Home Page Toggle for Edit */}
+                {(itemToEdit.entityType === 'pharmacies' || itemToEdit.entityType === 'clinics' || itemToEdit.entityType === 'doctors') && (
+                  <div className="flex items-center justify-between p-3 bg-amber-50/60 border border-amber-200/60 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-600 fill-amber-500" />
+                      <div>
+                        <span className="block text-xs font-bold text-amber-950">Show in Featured Section on Home Page</span>
+                        <span className="block text-[10px] text-brandText-secondary">Show this profile in featured sections on the patient homepage</span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      name="isFeatured"
+                      checked={Boolean(editFormData.isFeatured)}
+                      onChange={(e) => setEditFormData((prev) => ({ ...prev, isFeatured: e.target.checked }))}
+                      className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
+                    />
                   </div>
                 )}
 
