@@ -20,7 +20,7 @@ import DoctorCard from '../components/doctors/DoctorCard';
 import BookingModal from '../components/doctors/BookingModal';
 import ClinicCard from '../components/clinics/ClinicCard';
 import ClinicDoctorsModal from '../components/clinics/ClinicDoctorsModal';
-import { clinicsData } from '../data/clinicsData';
+import { pharmacyService } from '../services/pharmacyService';
 import Button from '../components/common/Button';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -39,6 +39,7 @@ export const AppointmentsPage = () => {
   });
 
   const [doctors, setDoctors] = useState([]);
+  const [clinics, setClinics] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [clinicSearchQuery, setClinicSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('All');
@@ -73,9 +74,50 @@ export const AppointmentsPage = () => {
         specialization: selectedSpecialty === 'All' ? '' : selectedSpecialty,
         search: searchQuery
       });
-      setDoctors(res.doctors);
+      setDoctors(res?.doctors || []);
     };
     fetchDocs();
+
+    const fetchClinics = async () => {
+      try {
+        const res = await pharmacyService.getPharmacies();
+        const allPharmacies = Array.isArray(res?.pharmacies) ? res.pharmacies : [];
+        // Single Entity rule: Only pharmacies offering clinic doctor chamber services
+        const clinicEntities = allPharmacies.filter(
+          (p) => p.hasClinicService || (p.doctorsCount && p.doctorsCount > 0)
+        );
+        const formatted = clinicEntities.map((c) => ({
+          id: c.id,
+          name: c.name,
+          address: c.address || `${c.city || 'Durgapur'}, ${c.state || 'WB'}`,
+          city: c.city,
+          pincode: c.pincode,
+          isPrimary: Boolean(c.isPrimary),
+          chamberCount: `${c.doctorsCount > 0 ? c.doctorsCount : 2} Chambers`,
+          image: c.image || 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=350',
+          rating: c.rating || 4.8,
+          reviewCount: c.reviewsCount || 85,
+          distance: 'Express Hub',
+          timing: '09:00 AM - 09:00 PM',
+          receptionistName: c.receptionistName,
+          doctorNames: c.doctorNames || [],
+          doctors: c.raw?.doctors?.map((d) => ({
+            id: d.doctor?.id || d.id,
+            name: d.doctor?.fullName || 'Assigned Specialist',
+            fullName: d.doctor?.fullName || 'Assigned Specialist',
+            specialty: 'Chamber Specialist',
+            degree: d.doctor?.qualifications || 'MBBS',
+            fee: `₹${((d.consultationFeePaise || 50000) / 100).toFixed(0)}`,
+            image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
+            rating: 4.9,
+          })) || [],
+        }));
+        setClinics(formatted);
+      } catch (e) {
+        setClinics([]);
+      }
+    };
+    fetchClinics();
 
     setUserAppointments(doctorService.getUserAppointments());
   }, [selectedSpecialty, searchQuery]);
@@ -99,13 +141,15 @@ export const AppointmentsPage = () => {
     addToast('Appointment cancelled successfully.', 'info');
   };
 
-  const filteredClinics = clinicsData.filter((c) => {
+  const filteredClinics = clinics.filter((c) => {
     const q = clinicSearchQuery.trim().toLowerCase();
     if (!q) return true;
     return (
       c.name?.toLowerCase().includes(q) ||
-      c.area?.toLowerCase().includes(q) ||
-      c.address?.toLowerCase().includes(q)
+      c.city?.toLowerCase().includes(q) ||
+      c.address?.toLowerCase().includes(q) ||
+      c.receptionistName?.toLowerCase().includes(q) ||
+      c.doctorNames?.some((n) => n.toLowerCase().includes(q))
     );
   });
 
@@ -146,7 +190,7 @@ export const AppointmentsPage = () => {
                 : 'text-brandText-secondary hover:text-forest-700'
             }`}
           >
-            {isBengali ? 'ক্লিনিক ও চেম্বার' : 'Explore Clinics'} ({clinicsData.length})
+            {isBengali ? 'ক্লিনিক ও চেম্বার' : 'Explore Clinics'} ({clinics.length})
           </button>
           <button
             type="button"

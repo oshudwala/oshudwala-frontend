@@ -4,29 +4,46 @@ import {
   Search,
   Mic,
   X,
-  ShoppingBag,
   Stethoscope,
   Building2,
   Pill,
   ArrowRight,
   Sparkles,
 } from 'lucide-react';
-import { useCart } from '../../context/CartContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { productsData } from '../../data/productsData';
 import { doctorsData } from '../../data/doctorsData';
 import { clinicsData } from '../../data/clinicsData';
+import { pharmacyService } from '../../services/pharmacyService';
+import { doctorService } from '../../services/doctorService';
 import VoiceSearchOverlay from '../common/VoiceSearchOverlay';
 
 export const TopSearchBar = () => {
   const navigate = useNavigate();
-  const { itemCount, subtotal, setIsCartDrawerOpen } = useCart();
   const { t, language } = useLanguage();
 
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const searchContainerRef = useRef(null);
+
+  // Dynamic entities from backend
+  const [liveClinics, setLiveClinics] = useState([]);
+  const [liveDoctors, setLiveDoctors] = useState([]);
+
+  useEffect(() => {
+    pharmacyService.getPharmacies().then((res) => {
+      if (res?.pharmacies?.length > 0) {
+        setLiveClinics(res.pharmacies.filter((p) => p.hasClinicService || p.doctorsCount > 0));
+      }
+    }).catch(() => {});
+
+    doctorService.getDoctors().then((res) => {
+      if (res?.doctors?.length > 0) {
+        setLiveDoctors(res.doctors);
+      }
+    }).catch(() => {});
+  }, []);
 
   // Live matching results
   const [matchingProducts, setMatchingProducts] = useState([]);
@@ -52,8 +69,9 @@ export const TopSearchBar = () => {
       )
       .slice(0, 4);
 
-    // Match doctors
-    const docs = (doctorsData || [])
+    // Match doctors (live first, fallback to seed)
+    const sourceDocs = liveDoctors.length > 0 ? liveDoctors : doctorsData;
+    const docs = (sourceDocs || [])
       .filter(
         (d) =>
           d.name?.toLowerCase().includes(clean) ||
@@ -62,20 +80,22 @@ export const TopSearchBar = () => {
       )
       .slice(0, 3);
 
-    // Match clinics
-    const clins = (clinicsData || [])
+    // Match clinics (live first, fallback to seed)
+    const sourceClins = liveClinics.length > 0 ? liveClinics : clinicsData;
+    const clins = (sourceClins || [])
       .filter(
         (c) =>
           c.name?.toLowerCase().includes(clean) ||
           c.area?.toLowerCase().includes(clean) ||
-          c.address?.toLowerCase().includes(clean)
+          c.address?.toLowerCase().includes(clean) ||
+          c.city?.toLowerCase().includes(clean)
       )
       .slice(0, 2);
 
     setMatchingProducts(prods);
     setMatchingDoctors(docs);
     setMatchingClinics(clins);
-  }, [query]);
+  }, [query, liveClinics, liveDoctors]);
 
   // Click outside listener for suggestions
   useEffect(() => {
@@ -328,33 +348,6 @@ export const TopSearchBar = () => {
               </div>
             )}
           </div>
-
-          {/* Cart Button placed directly beside searchbar & voice search (as requested) */}
-          <button
-            type="button"
-            onClick={() => setIsCartDrawerOpen(true)}
-            className="flex-shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl sm:rounded-full bg-forest-800 hover:bg-forest-900 text-white shadow-sm hover:shadow-md transition-all active:scale-95 group border border-forest-700"
-            aria-label="Open Cart"
-          >
-            <div className="relative">
-              <ShoppingBag className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-300 group-hover:scale-110 transition-transform" />
-              {itemCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center ring-2 ring-forest-900 animate-pulse">
-                  {itemCount}
-                </span>
-              )}
-            </div>
-            <div className="hidden xs:flex flex-col items-start leading-none text-left">
-              <span className="text-[11px] sm:text-xs font-bold tracking-tight text-white">
-                {t('cart')}
-              </span>
-              {itemCount > 0 && (
-                <span className="text-[9px] font-mono text-emerald-300 font-semibold mt-0.5">
-                  ₹{subtotal.toFixed(0)}
-                </span>
-              )}
-            </div>
-          </button>
         </div>
       </div>
 

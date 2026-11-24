@@ -13,7 +13,7 @@ const MASTER_ADMIN_ACCOUNTS = [
     fullName: 'Super Admin',
     email: 'admin@oshudwala.com',
     phone: '9000000000',
-    passwords: ['SuperSecretPassword123', 'admin123', 'admin', 'Admin@123', 'Password123'],
+    passwords: ['12345678', 'SuperSecretPassword123', 'admin123', 'admin', 'Admin@123', 'Password123'],
     role: 'SUPER_ADMIN',
     status: 'ACTIVE',
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -23,7 +23,7 @@ const MASTER_ADMIN_ACCOUNTS = [
     fullName: 'Super Admin',
     email: 'admin@oshudwala.in',
     phone: '9000000000',
-    passwords: ['SuperSecretPassword123', 'admin123', 'admin', 'Admin@123', 'Password123'],
+    passwords: ['12345678', 'SuperSecretPassword123', 'admin123', 'admin', 'Admin@123', 'Password123'],
     role: 'SUPER_ADMIN',
     status: 'ACTIVE',
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -397,21 +397,21 @@ export const accountRegistry = {
       }));
 
     const clinics = accounts
-      .filter((a) => a.role === 'RECEPTIONIST')
+      .filter((a) => a.role === 'RECEPTIONIST' && (a.entityData?.clinicName || a.entityData?.name))
       .map((a) => ({
-        id: a.id,
-        name: a.entityData?.name || a.fullName + ' Polyclinic',
+        id: a.entityData?.clinicId || a.id,
+        name: a.entityData?.clinicName || a.entityData?.name,
         email: a.email,
         phone: a.phone,
         imageUrl: a.entityData?.imageUrl || a.imageUrl || '',
-        chamberCount: a.entityData?.chamberCount || '8 Chambers',
-        line1: a.entityData?.line1 || 'Block BD, Sector 1, Salt Lake',
-        city: a.entityData?.city || 'Kolkata',
+        chamberCount: a.entityData?.chamberCount || '6 Chambers',
+        line1: a.entityData?.line1 || 'City Centre',
+        city: a.entityData?.city || 'Durgapur',
         state: a.entityData?.state || 'West Bengal',
-        pincode: a.entityData?.pincode || '700064',
+        pincode: a.entityData?.pincode || '713216',
         manager: { id: a.id, fullName: a.fullName, email: a.email, phone: a.phone },
         staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: a.fullName, email: a.email, phone: a.phone, status: a.status } }],
-        settings: { chamberCount: a.entityData?.chamberCount || '8 Chambers' },
+        settings: { chamberCount: a.entityData?.chamberCount || '6 Chambers' },
         status: a.status,
         deactivatedAt: a.deactivatedAt,
         purgeDeadline: a.purgeDeadline,

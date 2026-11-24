@@ -1,49 +1,75 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowRight, Building2 } from 'lucide-react';
-import { clinicsData } from '../../data/clinicsData';
+import { ChevronLeft, ChevronRight, ArrowRight, Building2, User, Stethoscope } from 'lucide-react';
 import ClinicCard from '../clinics/ClinicCard';
 import ClinicDoctorsModal from '../clinics/ClinicDoctorsModal';
+import { pharmacyService } from '../../services/pharmacyService';
 import { useLanguage } from '../../context/LanguageContext';
 
 export const FeaturedClinics = ({ onBookDoctor }) => {
   const scrollContainerRef = useRef(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
   const { t } = useLanguage();
-  const [featuredClinicsList, setFeaturedClinicsList] = useState(clinicsData);
+  const [featuredClinicsList, setFeaturedClinicsList] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('oshud_featured_clinics');
-      if (raw) {
-        const ids = JSON.parse(raw);
-        if (Array.isArray(ids) && ids.length > 0) {
-          const regAccounts = JSON.parse(localStorage.getItem('oshud_registered_accounts') || '[]');
-          const allClins = [
-            ...clinicsData,
-            ...regAccounts
-              .filter((a) => a.role === 'RECEPTIONIST')
-              .map((a) => ({
-                id: a.id,
-                name: a.entityData?.name || `${a.fullName} Clinic`,
-                address: a.entityData?.line1 || 'Salt Lake Sector 1',
-                city: a.entityData?.city || 'Kolkata',
-                pincode: a.entityData?.pincode || '700064',
-                chambers: a.entityData?.chamberCount || '6 Chambers',
-                image: a.entityData?.imageUrl || a.imageUrl || 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=350',
-                rating: 4.8,
-                doctorsCount: 8,
-              })),
-          ];
-          const matched = allClins.filter((c) => ids.includes(c.id));
-          if (matched.length > 0) {
-            setFeaturedClinicsList(matched);
-          }
+    let isMounted = true;
+    const fetchClinics = async () => {
+      setIsLoading(true);
+      try {
+        const res = await pharmacyService.getPharmacies();
+        if (isMounted) {
+          const allPharmacies = Array.isArray(res?.pharmacies) ? res.pharmacies : [];
+          // Filter entities that offer clinic chambers or have assigned doctors
+          const clinicEntities = allPharmacies.filter(
+            (p) => p.hasClinicService || (p.doctorsCount && p.doctorsCount > 0)
+          );
+
+          const formatted = clinicEntities.map((c) => ({
+            id: c.id,
+            name: c.name,
+            address: c.address || `${c.city || 'Durgapur'}, ${c.state || 'WB'}`,
+            city: c.city || 'Durgapur',
+            pincode: c.pincode || '713216',
+            isPrimary: Boolean(c.isPrimary),
+            chamberCount: `${c.doctorsCount > 0 ? c.doctorsCount : 2} Chambers`,
+            image: c.image || 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=350',
+            rating: c.rating || 4.8,
+            reviewCount: c.reviewsCount || 85,
+            distance: 'Express Hub',
+            timing: '09:00 AM - 09:00 PM',
+            receptionistName: c.receptionistName,
+            doctorNames: c.doctorNames || [],
+            doctors: c.raw?.doctors?.map((d) => ({
+              id: d.doctor?.id || d.id,
+              name: d.doctor?.fullName || 'Assigned Specialist',
+              fullName: d.doctor?.fullName || 'Assigned Specialist',
+              specialty: 'Chamber Specialist',
+              specialization: 'Chamber Specialist',
+              degree: d.doctor?.qualifications || 'MBBS',
+              fee: `₹${((d.consultationFeePaise || 50000) / 100).toFixed(0)}`,
+              image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
+              rating: 4.9,
+              reviews: '100+ patients',
+              nextAvailable: 'Today',
+            })) || [],
+          }));
+
+          setFeaturedClinicsList(formatted);
         }
+      } catch (err) {
+        console.warn('FeaturedClinics fetch error:', err);
+        if (isMounted) setFeaturedClinicsList([]);
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-    } catch (e) {
-      console.warn('Error reading featured clinics list:', e);
-    }
+    };
+
+    fetchClinics();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const scroll = (direction) => {
@@ -52,10 +78,43 @@ export const FeaturedClinics = ({ onBookDoctor }) => {
       const scrollAmount = clientWidth * 0.75;
       scrollContainerRef.current.scrollTo({
         left: direction === 'left' ? scrollLeft - scrollAmount : scrollLeft + scrollAmount,
-        behavior: 'smooth'
+        behavior: 'smooth',
       });
     }
   };
+
+  // While loading: Show skeleton loader (never blank during load)
+  if (isLoading) {
+    return (
+      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
+        <div className="flex items-end justify-between mb-4 sm:mb-6">
+          <div className="space-y-2">
+            <div className="h-4 w-36 bg-forest-100 rounded animate-pulse" />
+            <div className="h-6 w-48 bg-forest-100 rounded-lg animate-pulse" />
+            <div className="h-4 w-72 bg-forest-50 rounded animate-pulse" />
+          </div>
+        </div>
+        <div className="flex gap-3 sm:gap-5 overflow-hidden">
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="w-[260px] sm:w-[320px] lg:w-[340px] flex-shrink-0 bg-surface-pure rounded-3xl p-4 border border-brandBorder-subtle animate-pulse space-y-3"
+            >
+              <div className="w-full aspect-[16/10] bg-forest-50/80 rounded-2xl" />
+              <div className="h-4 w-3/4 bg-forest-100 rounded" />
+              <div className="h-3 w-1/2 bg-forest-50 rounded" />
+              <div className="h-8 w-full bg-forest-50 rounded-xl" />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  // If no clinics exist, remove section completely (no demo data)
+  if (featuredClinicsList.length === 0) {
+    return null;
+  }
 
   return (
     <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 relative">

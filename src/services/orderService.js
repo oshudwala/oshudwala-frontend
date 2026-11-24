@@ -64,10 +64,15 @@ export const orderService = {
    */
   async getUserOrders() {
     try {
-      const response = await apiClient.get('/orders');
-      return response.data?.data || response.data || [];
+      let response;
+      try {
+        response = await apiClient.get('/orders/my');
+      } catch {
+        response = await apiClient.get('/orders');
+      }
+      const data = response?.data?.data || response?.data || [];
+      return Array.isArray(data) ? data : [];
     } catch (err) {
-      // Return empty list until backend orders API is deployed
       return [];
     }
   },

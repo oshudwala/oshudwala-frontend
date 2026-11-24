@@ -45,11 +45,27 @@ export const PharmacyCard = ({ pharmacy, onSelect }) => {
           {pharmacy.name}
         </h3>
 
+        {/* Pharmacy Address & Location */}
+        {pharmacy.address && (
+          <p className="text-[11px] text-brandText-secondary flex items-center gap-1 mt-1 truncate">
+            <MapPin className="w-3 h-3 text-forest-500 flex-shrink-0" />
+            <span className="truncate">{pharmacy.address}</span>
+          </p>
+        )}
+
+        {/* Staff / Reception Desk Indicator */}
+        {pharmacy.receptionistName && (
+          <div className="mt-1 flex items-center gap-1 text-[10px] text-forest-800 font-semibold truncate bg-forest-50/70 px-1.5 py-0.5 rounded-md border border-forest-100">
+            <span className="text-brandText-muted">Staff / Reception:</span>
+            <span className="truncate font-bold">{pharmacy.receptionistName}</span>
+          </div>
+        )}
+
         {/* Rating */}
-        <div className="flex items-center gap-1 sm:gap-1.5 pt-0.5 sm:pt-1 text-[10px] sm:text-xs">
+        <div className="flex items-center gap-1 sm:gap-1.5 pt-1 text-[10px] sm:text-xs">
           <Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500 fill-amber-500" />
           <span className="font-bold text-brandText-main">{pharmacy.rating}</span>
-          <span className="text-brandText-secondary">({pharmacy.reviewCount})</span>
+          <span className="text-brandText-secondary">({pharmacy.reviewCount || 120})</span>
         </div>
 
         {/* Delivery Availability Status - Live Connected */}

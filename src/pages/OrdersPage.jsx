@@ -134,9 +134,9 @@ export const OrdersPage = () => {
           {displayedOrders.map((order) => {
             const isHighlighted = highlightedOrderId === order.id;
             const riderInfo = order.rider || order.assignedRider;
-            const pharmacyName = order.pharmacy?.name || order.pharmacyName || 'MedPlus Pharmacy';
-            const pharmacyAddress = order.pharmacy?.address || order.pharmacyAddress || 'Sector V, Salt Lake, Kolkata';
-            const pharmacyPhone = order.pharmacy?.phone || order.pharmacyPhone || '+91 33 2357 8900';
+            const pharmacyName = order.pharmacy?.name || order.pharmacyName || (order.pharmacyId ? 'Assigned Pharmacy Partner' : 'Licensed Partner Pharmacy');
+            const pharmacyAddress = order.pharmacy?.address || order.pharmacyAddress || '';
+            const pharmacyPhone = order.pharmacy?.phone || order.pharmacyPhone || '';
 
             return (
               <div
@@ -227,7 +227,9 @@ export const OrdersPage = () => {
                         <h5 className="font-heading font-bold text-xs">Fulfilling Pharmacy</h5>
                       </div>
                       <p className="text-xs font-bold text-forest-900">{pharmacyName}</p>
-                      <p className="text-xs text-brandText-secondary">{pharmacyAddress}</p>
+                      {pharmacyAddress ? (
+                        <p className="text-xs text-brandText-secondary">{pharmacyAddress}</p>
+                      ) : null}
                       {pharmacyPhone && (
                         <p className="text-xs text-forest-600 font-semibold">{pharmacyPhone}</p>
                       )}

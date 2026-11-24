@@ -14,7 +14,7 @@ import Button from '../common/Button';
 export const Header = () => {
   const routerLocation = useRouterLocation();
   const navigate = useNavigate();
-  const { selectedLocation, setIsLocationModalOpen } = useLocation();
+  const { selectedLocation, setIsLocationModalOpen, refreshLocations } = useLocation();
   const { itemCount, setIsCartDrawerOpen } = useCart();
   const { user, isAuthenticated, isPatient, getRoleDefaultPath, logout } = useAuth();
   const { language, setLanguage, t, isBengali } = useLanguage();
@@ -49,12 +49,15 @@ export const Header = () => {
               {/* Location Selector Pill: Below logo on mobile, side-by-side on desktop */}
               <button
                 type="button"
-                onClick={() => setIsLocationModalOpen(true)}
+                onClick={() => {
+                  if (typeof refreshLocations === 'function') refreshLocations();
+                  setIsLocationModalOpen(true);
+                }}
                 className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1.5 rounded-full bg-forest-50/90 hover:bg-forest-100 text-forest-800 text-[10px] xs:text-[11px] sm:text-xs font-semibold transition-all border border-forest-100/90 max-w-[125px] xs:max-w-[155px] sm:max-w-[180px] shadow-2xs"
                 title="Change delivery location"
               >
                 <MapPin className="w-2.5 h-2.5 xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5 text-forest-600 flex-shrink-0" />
-                <span className="truncate">{selectedLocation.label}</span>
+                <span className="truncate">{selectedLocation?.label || 'Select Location'}</span>
                 <ChevronDown className="w-2.5 h-2.5 xs:w-3 xs:h-3 sm:w-3.5 sm:h-3.5 text-forest-600 flex-shrink-0" />
               </button>
             </div>
@@ -109,19 +112,24 @@ export const Header = () => {
                 </div>
               )}
 
-              {/* Language Switcher Pill (Replaces Cart button in Header as requested) */}
+              {/* Cart Button (Always visible on all pages in Header) */}
               <button
                 type="button"
-                onClick={() => setLanguage(isBengali ? 'en' : 'bn')}
-                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-forest-50/90 hover:bg-forest-100 text-forest-800 text-[11px] sm:text-xs font-bold transition-all border border-forest-200/90 shadow-2xs hover:scale-105 active:scale-95 group"
-                title={isBengali ? 'Switch to English' : 'বাংলায় পরিবর্তন করুন'}
+                onClick={() => setIsCartDrawerOpen(true)}
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-2 py-1.5 sm:py-2 rounded-full bg-forest-800 hover:bg-forest-900 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 group border border-forest-700"
+                aria-label="Open Cart"
+                title="View your medicine cart"
               >
-                <Globe className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-forest-600 group-hover:rotate-12 transition-transform flex-shrink-0" />
-                <span className="font-heading font-extrabold text-forest-900 tracking-tight">
-                  {isBengali ? 'বাংলা' : 'English'}
-                </span>
-                <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-forest-200/60 text-forest-800 font-bold hidden xs:inline">
-                  {isBengali ? 'BN' : 'EN'}
+                <div className="relative">
+                  <ShoppingBag className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-emerald-300 group-hover:rotate-6 transition-transform" />
+                  {itemCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-rose-500 text-white text-[9px] font-extrabold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center ring-1 ring-white">
+                      {itemCount}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden xs:inline text-white font-heading font-extrabold tracking-tight">
+                  {t('cart', 'Cart')}
                 </span>
               </button>
 
@@ -207,13 +215,14 @@ export const Header = () => {
                 type="button"
                 onClick={() => {
                   setIsMobileMenuOpen(false);
+                  if (typeof refreshLocations === 'function') refreshLocations();
                   setIsLocationModalOpen(true);
                 }}
                 className="w-full flex items-center justify-between p-2.5 rounded-xl bg-forest-50 text-xs font-semibold text-forest-800"
               >
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-forest-600" />
-                  <span>{selectedLocation.label} ({selectedLocation.area})</span>
+                  <span>{selectedLocation?.label || 'Select Location'} ({selectedLocation?.area || selectedLocation?.city || 'Delivery'})</span>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-forest-600" />
               </button>

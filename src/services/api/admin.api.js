@@ -193,25 +193,32 @@ export const adminApi = {
           (cleanPhone && ld.phone && String(ld.phone).replace(/[^0-9]/g, '') === cleanPhone)
       );
 
+      const feePaise = bd.pharmacies?.[0]?.consultationFeePaise || bd.consultationFeePaise || localMatch?.consultationFeePaise || 50000;
+      const specName = bd.specializations?.[0]?.specialization?.name || bd.specialization || 'General Physician';
+      const userStatus = bd.user?.status || (bd.isVerified ? 'ACTIVE' : 'ACTIVE');
+
       doctors.push({
         id: bd.id,
-        userId: bd.userId || bd.id,
+        userId: bd.userId || bd.user?.id || bd.id,
         fullName: bd.fullName || bd.name,
-        email: bd.email,
-        phone: bd.phone,
+        email: bd.email || bd.user?.email || '',
+        phone: bd.phone || bd.user?.phone || '',
         imageUrl: bd.imageUrl || bd.photoUrl || localMatch?.imageUrl || '',
         registrationNumber: bd.registrationNumber || 'WBMC-REG',
         qualifications: bd.qualifications || 'MBBS',
         experienceYears: bd.experienceYears || 5,
-        specialization: bd.specialization || bd.specializations?.[0]?.specialization?.name || 'General Physician',
-        consultationFeePaise: bd.consultationFeePaise || localMatch?.consultationFeePaise || 50000,
-        status: bd.status || 'ACTIVE',
-        user: { id: bd.userId || bd.id, email: bd.email, phone: bd.phone, status: bd.status || 'ACTIVE' },
+        specialization: specName,
+        specializations: bd.specializations || [{ specialization: { name: specName } }],
+        pharmacies: bd.pharmacies || [],
+        consultationFeePaise: feePaise,
+        status: userStatus,
+        user: { id: bd.userId || bd.user?.id || bd.id, email: bd.email || bd.user?.email, phone: bd.phone || bd.user?.phone, status: userStatus },
         isFeatured: bd.isFeatured ?? localMatch?.isFeatured ?? false,
       });
 
       seenDocIds.add(bd.id);
       if (bd.userId) seenDocIds.add(bd.userId);
+      if (bd.user?.id) seenDocIds.add(bd.user.id);
       if (cleanEmail) seenDocEmails.add(cleanEmail);
       if (cleanPhone) seenDocPhones.add(cleanPhone);
     });
@@ -252,42 +259,47 @@ export const adminApi = {
       if (cleanPhone) seenDocPhones.add(cleanPhone);
     });
 
-    local.doctors.forEach((ld) => {
-      if (isRemoved(ld.id, ld.userId)) return;
-      const cleanEmail = ld.email ? ld.email.trim().toLowerCase() : '';
-      const cleanPhone = ld.phone ? String(ld.phone).replace(/[^0-9]/g, '') : '';
-      if (seenDocIds.has(ld.id) || (ld.userId && seenDocIds.has(ld.userId)) || (cleanEmail && seenDocEmails.has(cleanEmail))) return;
-      doctors.push(ld);
-      seenDocIds.add(ld.id);
-    });
-
-    // 2. PHARMACIES (Backend first as source of truth)
+    // 2. PHARMACIES (Backend first as source of truth - entities with medicine service)
     const pharmacies = [];
     const seenPharmIds = new Set();
     const seenPharmEmails = new Set();
 
     backendPharmacies.forEach((bp) => {
       if (isRemoved(bp.id, bp.ownerId)) return;
+      // Single Entity rule: hasMedicineService !== false
+      if (bp.hasMedicineService === false) return;
+
       const cleanEmail = bp.email ? bp.email.trim().toLowerCase() : '';
       const localMatch = local.pharmacies.find(
         (lp) => lp.id === bp.id || (cleanEmail && lp.email?.toLowerCase() === cleanEmail)
       );
 
-      pharmacies.push({
+      const ownerUser = bp.staff?.find((s) => s.staffRole === 'OWNER')?.user || {
         id: bp.id,
-        userId: bp.ownerId || bp.id,
-        name: bp.name,
+        fullName: bp.ownerName || bp.name,
         email: bp.email,
         phone: bp.phone,
-        imageUrl: bp.imageUrl || localMatch?.imageUrl || '',
+        status: bp.status || 'ACTIVE',
+      };
+
+      pharmacies.push({
+        id: bp.id,
+        userId: bp.ownerId || ownerUser.id || bp.id,
+        name: bp.name,
+        email: bp.email || ownerUser.email || '',
+        phone: bp.phone || ownerUser.phone || '',
+        imageUrl: bp.logoUrl || bp.coverUrl || bp.imageUrl || localMatch?.imageUrl || '',
         licenseNumber: bp.licenseNumber || 'WB-DL-REG',
-        line1: bp.line1 || 'Sector V',
+        line1: bp.line1 || 'Main Road',
         city: bp.city || 'Kolkata',
         state: bp.state || 'West Bengal',
         pincode: bp.pincode || '700091',
         status: bp.status || 'ACTIVE',
-        owner: { id: bp.id, fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone },
-        staff: [{ staffRole: 'OWNER', user: { fullName: bp.ownerName || bp.name, email: bp.email, phone: bp.phone, status: bp.status || 'ACTIVE' } }],
+        isPrimary: Boolean(bp.isPrimary),
+        owner: ownerUser,
+        staff: bp.staff || [{ staffRole: 'OWNER', user: ownerUser }],
+        hasClinicService: Boolean(bp.hasClinicService),
+        hasMedicineService: true,
       });
 
       seenPharmIds.add(bp.id);
@@ -316,93 +328,70 @@ export const adminApi = {
         state: 'West Bengal',
         pincode: '700091',
         status: u.status || 'ACTIVE',
+        isPrimary: false,
         owner: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
         staff: [{ staffRole: 'OWNER', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
+        hasClinicService: false,
+        hasMedicineService: true,
       });
 
       seenPharmIds.add(u.id);
       if (cleanEmail) seenPharmEmails.add(cleanEmail);
     });
 
-    local.pharmacies.forEach((lp) => {
-      if (isRemoved(lp.id, lp.userId)) return;
-      const cleanEmail = lp.email ? lp.email.trim().toLowerCase() : '';
-      if (seenPharmIds.has(lp.id) || (cleanEmail && seenPharmEmails.has(cleanEmail))) return;
-      pharmacies.push(lp);
-      seenPharmIds.add(lp.id);
-    });
-
-    // 3. CLINICS (Backend Locations & Receptionists first)
+    // 3. CLINICS (Registered clinics from backendPharmacies with clinic service or doctor chambers)
+    // CRITICAL: There is NO separate Clinic entity in PostgreSQL. All clinics are Pharmacy rows with hasClinicService = true.
+    // Delivery Locations (/locations) are geographic zones, NEVER clinics!
     const clinics = [];
     const seenClinicIds = new Set();
     const seenClinicEmails = new Set();
 
-    backendLocations.forEach((loc) => {
-      if (isRemoved(loc.id)) return;
+    backendPharmacies.forEach((bp) => {
+      if (isRemoved(bp.id, bp.ownerId)) return;
+      // Single Entity rule: hasClinicService = true OR has doctors assigned OR pure clinic facility
+      const isClinicService = bp.hasClinicService || !bp.hasMedicineService || (bp.doctors && bp.doctors.length > 0);
+      if (!isClinicService) return;
+      
+      const cleanEmail = bp.email ? bp.email.trim().toLowerCase() : '';
       const localMatch = local.clinics.find(
-        (lc) => lc.id === loc.id || (lc.name && lc.name.toLowerCase().includes(loc.city?.toLowerCase()))
+        (lc) => lc.id === bp.id || (cleanEmail && lc.email?.toLowerCase() === cleanEmail)
       );
 
+      const receptionistStaff = bp.staff?.find((s) => s.staffRole === 'RECEPTIONIST')?.user;
+      const managerUser = receptionistStaff || bp.staff?.find((s) => s.staffRole === 'OWNER')?.user || {
+        id: bp.id,
+        fullName: bp.ownerName || 'Front Desk',
+        email: bp.email,
+        phone: bp.phone,
+        status: bp.status || 'ACTIVE',
+      };
+
       clinics.push({
-        id: loc.id,
-        userId: loc.id,
-        name: loc.area ? `${loc.area} Clinic (${loc.city})` : `${loc.city} Health Hub`,
-        email: localMatch?.email || `clinic.${String(loc.city || 'hub').toLowerCase().replace(/\s+/g, '')}@oshudwala.com`,
-        phone: localMatch?.phone || '9876543210',
-        imageUrl: loc.imageUrl || localMatch?.imageUrl || '',
-        chamberCount: loc.chamberCount || localMatch?.chamberCount || '6 Chambers',
-        line1: loc.area ? `${loc.area}, ${loc.city}` : loc.city,
-        city: loc.city,
-        state: loc.state,
-        pincode: loc.pincode,
-        status: loc.isActive === false ? 'DEACTIVATED' : 'ACTIVE',
-        manager: { id: loc.id, fullName: localMatch?.manager?.fullName || `${loc.city} Manager`, email: localMatch?.email, phone: localMatch?.phone },
-        staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: localMatch?.manager?.fullName || `${loc.city} Manager`, status: loc.isActive === false ? 'DEACTIVATED' : 'ACTIVE' } }],
-        settings: { chamberCount: loc.chamberCount || localMatch?.chamberCount || '6 Chambers' },
+        id: bp.id,
+        userId: managerUser.id || bp.ownerId || bp.id,
+        name: bp.name,
+        email: bp.email || managerUser.email || '',
+        phone: bp.phone || managerUser.phone || '',
+        imageUrl: bp.logoUrl || bp.coverUrl || bp.imageUrl || localMatch?.imageUrl || '',
+        chamberCount: bp.settings?.chamberCount || localMatch?.chamberCount || '6 Chambers',
+        line1: bp.line1 || 'Clinic Road',
+        city: bp.city || 'Kolkata',
+        state: bp.state || 'West Bengal',
+        pincode: bp.pincode || '700064',
+        status: bp.status || 'ACTIVE',
+        isPrimary: Boolean(bp.isPrimary),
+        manager: managerUser,
+        receptionistName: receptionistStaff?.fullName || managerUser.fullName || 'Reception Desk',
+        staff: bp.staff || [{ staffRole: 'RECEPTIONIST', user: managerUser }],
+        doctors: bp.doctors || [],
+        settings: { chamberCount: bp.settings?.chamberCount || '6 Chambers' },
+        hasClinicService: true,
+        hasMedicineService: Boolean(bp.hasMedicineService),
         isFeatured: localMatch?.isFeatured || false,
       });
 
-      seenClinicIds.add(loc.id);
-    });
-
-    backendUsers.filter((u) => u.role?.name === 'RECEPTIONIST' || u.role === 'RECEPTIONIST').forEach((u) => {
-      if (isRemoved(u.id)) return;
-      const cleanEmail = u.email ? u.email.trim().toLowerCase() : '';
-      if (seenClinicIds.has(u.id) || (cleanEmail && seenClinicEmails.has(cleanEmail))) return;
-
-      const localMatch = local.clinics.find(
-        (lc) => lc.id === u.id || (cleanEmail && lc.email?.toLowerCase() === cleanEmail)
-      );
-
-      clinics.push({
-        id: u.id,
-        userId: u.id,
-        name: `${u.fullName} Polyclinic`,
-        email: u.email,
-        phone: u.phone,
-        imageUrl: localMatch?.imageUrl || '',
-        chamberCount: localMatch?.chamberCount || '6 Chambers',
-        line1: 'Salt Lake Sector 1',
-        city: 'Kolkata',
-        state: 'West Bengal',
-        pincode: '700064',
-        status: u.status || 'ACTIVE',
-        manager: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone },
-        staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' } }],
-        settings: { chamberCount: '6 Chambers' },
-        isFeatured: localMatch?.isFeatured || false,
-      });
-
-      seenClinicIds.add(u.id);
+      seenClinicIds.add(bp.id);
       if (cleanEmail) seenClinicEmails.add(cleanEmail);
-    });
-
-    local.clinics.forEach((lc) => {
-      if (isRemoved(lc.id, lc.userId)) return;
-      const cleanEmail = lc.email ? lc.email.trim().toLowerCase() : '';
-      if (seenClinicIds.has(lc.id) || (cleanEmail && seenClinicEmails.has(cleanEmail))) return;
-      clinics.push(lc);
-      seenClinicIds.add(lc.id);
     });
 
     // 4. RIDERS (Backend first as source of truth)
@@ -419,20 +408,21 @@ export const adminApi = {
 
       riders.push({
         id: br.id,
-        userId: br.userId || br.id,
+        userId: br.userId || br.user?.id || br.id,
         fullName: br.user?.fullName || br.fullName || localMatch?.fullName || 'Rider',
-        email: br.user?.email || br.email || localMatch?.email,
-        phone: br.user?.phone || br.phone || localMatch?.phone,
+        email: br.user?.email || br.email || localMatch?.email || '',
+        phone: br.user?.phone || br.phone || localMatch?.phone || '',
         imageUrl: br.imageUrl || localMatch?.imageUrl || '',
         vehicleType: br.vehicleType || localMatch?.vehicleType || 'Motorcycle',
         vehicleNumber: br.vehicleNumber || localMatch?.vehicleNumber || 'WB-01-AB-1234',
         licenseNumber: br.licenseNumber || localMatch?.licenseNumber || 'DL-WB-Verified',
-        user: { id: br.userId || br.id, fullName: br.fullName, email: br.email, phone: br.phone, status: br.status || 'ACTIVE' },
+        user: { id: br.userId || br.user?.id || br.id, fullName: br.user?.fullName || br.fullName, email: br.user?.email || br.email, phone: br.user?.phone || br.phone, status: br.status || 'AVAILABLE' },
         status: br.status || 'AVAILABLE',
       });
 
       seenRiderIds.add(br.id);
       if (br.userId) seenRiderIds.add(br.userId);
+      if (br.user?.id) seenRiderIds.add(br.user.id);
       if (cleanPhone) seenRiderPhones.add(cleanPhone);
     });
 
@@ -451,7 +441,7 @@ export const adminApi = {
         fullName: u.fullName,
         email: u.email,
         phone: u.phone,
-        imageUrl: localMatch?.imageUrl || '',
+        imageUrl: u.imageUrl || localMatch?.imageUrl || '',
         vehicleType: localMatch?.vehicleType || 'Motorcycle',
         vehicleNumber: localMatch?.vehicleNumber || 'WB-01-AB-1234',
         licenseNumber: localMatch?.licenseNumber || 'DL-WB-Verified',
@@ -463,12 +453,50 @@ export const adminApi = {
       if (cleanPhone) seenRiderPhones.add(cleanPhone);
     });
 
-    local.riders.forEach((lr) => {
-      if (isRemoved(lr.id, lr.userId)) return;
-      const cleanPhone = lr.phone ? String(lr.phone).replace(/[^0-9]/g, '') : '';
-      if (seenRiderIds.has(lr.id) || (lr.userId && seenRiderIds.has(lr.userId)) || (cleanPhone && seenRiderPhones.has(cleanPhone))) return;
-      riders.push(lr);
-      seenRiderIds.add(lr.id);
+    // 5. RECEPTIONISTS (Backend users & clinic staff)
+    const receptionists = [];
+    const seenRecIds = new Set();
+
+    backendUsers.filter((u) => u.role?.name === 'RECEPTIONIST' || u.role === 'RECEPTIONIST').forEach((u) => {
+      if (isRemoved(u.id)) return;
+      const cleanPhone = u.phone ? String(u.phone).replace(/[^0-9]/g, '') : '';
+      if (seenRecIds.has(u.id)) return;
+
+      // Find which clinic they might belong to
+      const linkedClinic = clinics.find((c) => c.manager?.id === u.id || (u.email && c.email === u.email));
+
+      receptionists.push({
+        id: u.id,
+        userId: u.id,
+        fullName: u.fullName,
+        email: u.email,
+        phone: u.phone,
+        clinicName: linkedClinic?.name || 'Central Front Desk',
+        clinicId: linkedClinic?.id || null,
+        status: u.status || 'ACTIVE',
+        user: { id: u.id, fullName: u.fullName, email: u.email, phone: u.phone, status: u.status || 'ACTIVE' },
+      });
+
+      seenRecIds.add(u.id);
+    });
+
+    // Also extract receptionists from pharmacy/clinic staff
+    backendPharmacies.forEach((bp) => {
+      (bp.staff || []).filter((s) => s.staffRole === 'RECEPTIONIST' && s.user).forEach((s) => {
+        if (isRemoved(s.user.id) || seenRecIds.has(s.user.id)) return;
+        receptionists.push({
+          id: s.id || s.user.id,
+          userId: s.user.id,
+          fullName: s.user.fullName,
+          email: s.user.email,
+          phone: s.user.phone,
+          clinicName: bp.name,
+          clinicId: bp.id,
+          status: s.isActive === false ? 'DEACTIVATED' : (s.user.status || 'ACTIVE'),
+          user: s.user,
+        });
+        seenRecIds.add(s.user.id);
+      });
     });
 
     // 5. PATIENTS / USERS
@@ -529,6 +557,7 @@ export const adminApi = {
       doctors: doctors.filter((d) => !accountRegistry.isEntityRemoved(d.id)).map(applyStatus),
       pharmacies: pharmacies.filter((p) => !accountRegistry.isEntityRemoved(p.id)).map(applyStatus),
       riders: riders.filter((r) => !accountRegistry.isEntityRemoved(r.id)).map(applyStatus),
+      receptionists: receptionists.filter((rec) => !accountRegistry.isEntityRemoved(rec.id)).map(applyStatus),
       users: users.filter((u) => !accountRegistry.isEntityRemoved(u.id)).map(applyStatus),
       settings: backendSettings,
     };
@@ -599,67 +628,86 @@ export const adminApi = {
   // ================= DOCTORS =================
   async createDoctor(data) {
     this.invalidateCache();
-    let dbDoctor = null;
-    let userId = null;
-
     const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
     const validEmail = (data.email && data.email.includes('@'))
       ? data.email.trim().toLowerCase()
       : `dr.${cleanPhone || Date.now()}@oshudwala.local`;
 
-    // 1. Try dedicated doctor endpoint first (which directly sets roleId: DOCTOR in PostgreSQL)
+    // 1. First register user credentials in database with role DOCTOR
+    let registeredUser = null;
     try {
-      const resp = await apiClient.post('/admin/doctors', {
+      registeredUser = await registerUserInDatabase({
         fullName: data.fullName,
-        email: validEmail,
         phone: cleanPhone,
+        email: validEmail,
         password: data.password || 'Doctor123',
-        registrationNumber: data.registrationNumber || 'WBMC-REG',
-        qualifications: data.qualifications || 'MBBS',
-        experienceYears: Number(data.experienceYears) || 5,
-        specialization: data.specialization || 'General Physician',
-        consultationFeePaise: Number(data.consultationFeePaise) || 50000,
-        clinicId: data.clinicId,
-      });
-      dbDoctor = resp.data?.data || resp.data;
-      userId = dbDoctor?.userId || dbDoctor?.user?.id || dbDoctor?.id;
-    } catch (err) {
-      console.warn('POST /admin/doctors attempt notice:', err.message);
-    }
-
-    // 2. If not created via /admin/doctors, register user in database
-    if (!userId) {
-      const registered = await registerUserInDatabase({
-        fullName: data.fullName,
-        phone: cleanPhone,
-        email: validEmail,
-        password: data.password,
         roleName: 'DOCTOR',
       });
-      userId = registered?.userId;
+    } catch (e) {
+      console.warn('Doctor user registration notice:', e.message);
     }
 
-    // 3. Try onboard endpoint to link/promote doctor in PostgreSQL
+    // 2. Fetch or create Specialization in PostgreSQL
+    let specializationId = null;
     try {
-      const pharmRes = await apiClient.get('/pharmacies');
-      const pharms = pharmRes.data?.data || pharmRes.data;
-      if (Array.isArray(pharms) && pharms.length > 0) {
-        await apiClient.post('/doctors/onboard', {
-          pharmacyId: pharms[0].id,
-          fullName: data.fullName,
-          phone: cleanPhone,
-          email: validEmail,
-          registrationNumber: data.registrationNumber || 'WBMC-REG',
-          specializationId: data.specializationId || pharms[0].id,
-        });
+      const specRes = await apiClient.get('/specializations');
+      const specs = specRes.data?.data || specRes.data || [];
+      const specName = (data.specialization || 'General Physician').toLowerCase();
+      const match = Array.isArray(specs) ? specs.find((s) => s.name?.toLowerCase() === specName) : null;
+      if (match?.id) {
+        specializationId = match.id;
+      } else if (Array.isArray(specs) && specs.length > 0) {
+        specializationId = specs[0].id;
+      } else {
+        const createSpecRes = await apiClient.post('/specializations', { name: data.specialization || 'General Physician' });
+        specializationId = createSpecRes.data?.data?.id || createSpecRes.data?.id;
       }
-    } catch {}
+    } catch (specErr) {
+      console.warn('Specialization lookup notice:', specErr.message);
+    }
 
-    const generatedId = userId || `doc_${Date.now()}`;
+    // 3. Create Doctor directory record in database via POST /doctors
+    let createdDoctor = null;
+    try {
+      const doctorPayload = {
+        fullName: data.fullName,
+        phone: cleanPhone || undefined,
+        email: validEmail || undefined,
+        registrationNumber: data.registrationNumber || `WBMC-${Date.now().toString().slice(-6)}`,
+        qualifications: data.qualifications || 'MBBS',
+        experienceYears: Number(data.experienceYears) || 5,
+        bio: data.bio || '',
+        languages: data.languages || ['English', 'Bengali', 'Hindi'],
+        specializationIds: specializationId ? [specializationId] : [],
+        isVerified: true,
+        ...(registeredUser?.userId ? { userId: registeredUser.userId } : {}),
+      };
 
-    // 4. Always register in accountRegistry with DOCTOR role
+      const docRes = await apiClient.post('/doctors', doctorPayload);
+      createdDoctor = docRes.data?.data || docRes.data;
+    } catch (docErr) {
+      console.warn('POST /doctors notice:', docErr.response?.data || docErr.message);
+    }
+
+    // 4. If clinicId specified, assign doctor to clinic
+    if (data.clinicId && createdDoctor?.id) {
+      try {
+        await apiClient.post('/doctors/assign', {
+          pharmacyId: data.clinicId,
+          doctorId: createdDoctor.id,
+          consultationFeePaise: Number(data.consultationFeePaise) || 50000,
+        });
+      } catch (assignErr) {
+        console.warn('Auto-assign to clinic notice:', assignErr.message);
+      }
+    }
+
+    const doctorId = createdDoctor?.id || registeredUser?.userId || `doc_${Date.now()}`;
+    const userId = registeredUser?.userId || createdDoctor?.userId || doctorId;
+
+    // 5. Register in accountRegistry for immediate offline access
     accountRegistry.registerAccount({
-      id: generatedId,
+      id: doctorId,
       fullName: data.fullName,
       email: validEmail,
       phone: cleanPhone,
@@ -668,16 +716,17 @@ export const adminApi = {
       entityData: {
         registrationNumber: data.registrationNumber || 'WBMC-REG',
         qualifications: data.qualifications || 'MBBS',
-        experienceYears: Number(data.experienceYears) || 0,
+        experienceYears: Number(data.experienceYears) || 5,
         specialization: data.specialization || 'General Physician',
         consultationFeePaise: Number(data.consultationFeePaise) || 50000,
-        clinicName: data.clinicName || 'Apollo Clinic',
+        imageUrl: data.imageUrl || '',
       },
     });
 
-    return {
-      id: generatedId,
-      userId: generatedId,
+    this.invalidateCache();
+    return createdDoctor || {
+      id: doctorId,
+      userId: userId,
       fullName: data.fullName,
       email: validEmail,
       phone: cleanPhone,
@@ -685,14 +734,15 @@ export const adminApi = {
       qualifications: data.qualifications || 'MBBS',
       experienceYears: data.experienceYears || 5,
       specialization: data.specialization || 'General Physician',
-      clinicName: data.clinicName || 'Apollo Clinic',
-      user: { id: generatedId, email: validEmail, phone: cleanPhone, status: 'ACTIVE' },
+      consultationFeePaise: Number(data.consultationFeePaise) || 50000,
+      user: { id: userId, email: validEmail, phone: cleanPhone, status: 'ACTIVE' },
       status: 'ACTIVE',
       createdAt: new Date().toISOString(),
     };
   },
 
   async deleteDoctor(id, userId) {
+    this.invalidateCache();
     const targetUserId = userId || id;
     try {
       await apiClient.put(`/admin/users/${targetUserId}/access`, {
@@ -702,12 +752,6 @@ export const adminApi = {
     } catch (e) {
       console.warn('Deactivate doctor access notice:', e.message);
     }
-    try {
-      await apiClient.delete(`/admin/users/${targetUserId}`);
-    } catch {}
-    try {
-      await apiClient.delete(`/admin/doctors/${id}`);
-    } catch {}
 
     accountRegistry.removeAccount(id);
     accountRegistry.removeAccount(targetUserId);
@@ -717,75 +761,108 @@ export const adminApi = {
     return { success: true, id };
   },
 
-  // ================= PHARMACIES / PHARMACISTS =================
+  // ================= PHARMACIES =================
   async createPharmacy(data) {
     this.invalidateCache();
-    // 1. Register User in PostgreSQL and assign PHARMACY role
-    const registered = await registerUserInDatabase({
-      fullName: data.ownerName || data.name,
-      phone: data.phone,
-      email: data.email,
-      password: data.password,
-      roleName: 'PHARMACY',
-    });
+    const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    const validEmail = (data.email && data.email.includes('@'))
+      ? data.email.trim().toLowerCase()
+      : `pharmacy.${cleanPhone || Date.now()}@oshudwala.local`;
 
-    // 2. Also register in local registry
+    // 1. Get or find active Location ID from PostgreSQL
+    let locationId = data.locationId;
+    if (!locationId) {
+      try {
+        const locRes = await apiClient.get('/locations');
+        const locs = locRes.data?.data?.items || locRes.data?.data || locRes.data || [];
+        if (Array.isArray(locs) && locs.length > 0) {
+          const match = locs.find((l) => data.city && l.city?.toLowerCase() === data.city.toLowerCase());
+          locationId = match ? match.id : locs[0].id;
+        }
+      } catch (locErr) {
+        console.warn('Locations lookup notice:', locErr.message);
+      }
+    }
+
+    // 2. Call backend POST /pharmacies/admin-create
+    let createdPharmacy = null;
+    try {
+      const resp = await apiClient.post('/pharmacies/admin-create', {
+        name: data.name,
+        ownerName: data.ownerName || data.fullName || 'Pharmacy Owner',
+        ownerEmail: validEmail,
+        ownerPassword: data.password || 'Pharmacy123',
+        phone: cleanPhone,
+        locationId: locationId,
+        line1: data.line1 || data.address || 'Main Road',
+        line2: data.line2 || null,
+        isPrimary: Boolean(data.isPrimary),
+      });
+      createdPharmacy = resp.data?.data || resp.data;
+    } catch (phErr) {
+      console.warn('POST /pharmacies/admin-create notice:', phErr.response?.data || phErr.message);
+      // Fallback: register user directly
+      await registerUserInDatabase({
+        fullName: data.ownerName || data.name,
+        phone: cleanPhone,
+        email: validEmail,
+        password: data.password || 'Pharmacy123',
+        roleName: 'PHARMACY',
+      });
+    }
+
+    const pharmacyId = createdPharmacy?.id || `pharm_${Date.now()}`;
+    const ownerId = createdPharmacy?.ownerId || pharmacyId;
+
+    // 3. Register in accountRegistry
     accountRegistry.registerAccount({
-      id: registered.userId,
-      fullName: registered.fullName,
-      email: registered.email,
-      phone: registered.phone,
-      password: data.password,
+      id: pharmacyId,
+      fullName: data.ownerName || data.name,
+      email: validEmail,
+      phone: cleanPhone,
+      password: data.password || 'Pharmacy123',
       role: 'PHARMACY',
       entityData: {
         name: data.name,
-        licenseNumber: data.licenseNumber,
-        line1: data.line1,
-        city: data.city,
+        licenseNumber: data.licenseNumber || 'WB-DL-REG',
+        line1: data.line1 || data.address,
+        city: data.city || 'Kolkata',
         state: data.state || 'West Bengal',
-        pincode: data.pincode,
+        pincode: data.pincode || '700091',
+        imageUrl: data.imageUrl || '',
       },
     });
 
-    // 3. Try backend creation endpoints
-    try {
-      await apiClient.post('/admin/pharmacies', data);
-    } catch {
-      try {
-        await apiClient.post('/pharmacies/admin-create', {
-          name: data.name,
-          ownerName: registered.fullName,
-          ownerEmail: registered.email,
-          ownerPassword: data.password,
-          phone: registered.phone,
-          line1: data.line1,
-          city: data.city,
-          state: data.state || 'West Bengal',
-          pincode: data.pincode,
-        });
-      } catch {}
-    }
-
-    return {
-      id: registered.userId,
-      userId: registered.userId,
+    this.invalidateCache();
+    return createdPharmacy || {
+      id: pharmacyId,
+      userId: ownerId,
       name: data.name,
-      email: registered.email,
-      phone: registered.phone,
+      email: validEmail,
+      phone: cleanPhone,
       licenseNumber: data.licenseNumber || 'WB-DL-REG',
-      line1: data.line1,
-      city: data.city,
+      line1: data.line1 || data.address,
+      city: data.city || 'Kolkata',
       state: data.state || 'West Bengal',
-      pincode: data.pincode,
+      pincode: data.pincode || '700091',
       status: 'ACTIVE',
-      owner: { id: registered.userId, fullName: registered.fullName, email: registered.email, phone: registered.phone },
-      staff: [{ staffRole: 'OWNER', user: { fullName: registered.fullName, email: registered.email, phone: registered.phone, status: 'ACTIVE' } }],
+      owner: { id: ownerId, fullName: data.ownerName || data.name, email: validEmail, phone: cleanPhone },
+      staff: [{ staffRole: 'OWNER', user: { fullName: data.ownerName || data.name, email: validEmail, phone: cleanPhone, status: 'ACTIVE' } }],
       createdAt: new Date().toISOString(),
     };
   },
 
   async deletePharmacy(id, userId) {
+    this.invalidateCache();
     const targetUserId = userId || id;
+    try {
+      await apiClient.put(`/pharmacies/admin-update/${id}`, {
+        status: 'CLOSED',
+      });
+    } catch (phErr) {
+      console.warn('Deactivate pharmacy in DB notice:', phErr.message);
+    }
+
     try {
       await apiClient.put(`/admin/users/${targetUserId}/access`, {
         roleName: 'PHARMACY',
@@ -794,12 +871,6 @@ export const adminApi = {
     } catch (e) {
       console.warn('Deactivate pharmacy access notice:', e.message);
     }
-    try {
-      await apiClient.delete(`/admin/users/${targetUserId}`);
-    } catch {}
-    try {
-      await apiClient.delete(`/admin/pharmacies/${id}`);
-    } catch {}
 
     accountRegistry.removeAccount(id);
     accountRegistry.removeAccount(targetUserId);
@@ -812,52 +883,114 @@ export const adminApi = {
   // ================= CLINICS =================
   async createClinic(data) {
     this.invalidateCache();
-    // 1. Register User in PostgreSQL and assign RECEPTIONIST role
-    const registered = await registerUserInDatabase({
-      fullName: data.managerName || data.name,
-      phone: data.phone,
-      email: data.email,
-      password: data.password,
-      roleName: 'RECEPTIONIST',
-    });
+    const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    const validEmail = (data.email && data.email.includes('@'))
+      ? data.email.trim().toLowerCase()
+      : `clinic.${cleanPhone || Date.now()}@oshudwala.local`;
 
-    // 2. Also register in local registry
+    // 1. Get or find active Location ID from PostgreSQL
+    let locationId = data.locationId;
+    if (!locationId) {
+      try {
+        const locRes = await apiClient.get('/locations');
+        const locs = locRes.data?.data?.items || locRes.data?.data || locRes.data || [];
+        if (Array.isArray(locs) && locs.length > 0) {
+          const match = locs.find((l) => data.city && l.city?.toLowerCase() === data.city.toLowerCase());
+          locationId = match ? match.id : locs[0].id;
+        }
+      } catch (locErr) {
+        console.warn('Locations lookup notice:', locErr.message);
+      }
+    }
+
+    // 2. Call backend POST /pharmacies/admin-create
+    let createdClinic = null;
+    try {
+      const resp = await apiClient.post('/pharmacies/admin-create', {
+        name: data.name,
+        ownerName: data.managerName || data.fullName || 'Clinic Receptionist',
+        ownerEmail: validEmail,
+        ownerPassword: data.password || 'Clinic123',
+        phone: cleanPhone,
+        locationId: locationId,
+        line1: data.line1 || data.address || 'Clinic Road',
+        line2: data.line2 || null,
+        isPrimary: false,
+      });
+      createdClinic = resp.data?.data || resp.data;
+
+      // 3. Enable clinic service on this entity
+      if (createdClinic?.id) {
+        try {
+          await apiClient.put(`/pharmacies/${createdClinic.id}/services`, {
+            hasClinicService: true,
+            hasMedicineService: false,
+          });
+        } catch (svcErr) {
+          console.warn('Enable clinic service notice:', svcErr.message);
+        }
+
+        // 4. Create receptionist staff entry
+        try {
+          await apiClient.post(`/pharmacies/${createdClinic.id}/receptionists`, {
+            fullName: data.managerName || data.name,
+            phone: cleanPhone,
+            email: validEmail,
+            password: data.password || 'Reception123',
+          });
+        } catch (recErr) {
+          console.warn('Create receptionist notice:', recErr.message);
+        }
+      }
+    } catch (err) {
+      console.warn('POST /pharmacies/admin-create for clinic notice:', err.response?.data || err.message);
+      // Fallback: register user with RECEPTIONIST role
+      await registerUserInDatabase({
+        fullName: data.managerName || data.name,
+        phone: cleanPhone,
+        email: validEmail,
+        password: data.password || 'Clinic123',
+        roleName: 'RECEPTIONIST',
+      });
+    }
+
+    const clinicId = createdClinic?.id || `clinic_${Date.now()}`;
+    const managerId = createdClinic?.ownerId || clinicId;
+
+    // 5. Register in accountRegistry
     accountRegistry.registerAccount({
-      id: registered.userId,
-      fullName: registered.fullName,
-      email: registered.email,
-      phone: registered.phone,
-      password: data.password,
+      id: clinicId,
+      fullName: data.managerName || data.name,
+      email: validEmail,
+      phone: cleanPhone,
+      password: data.password || 'Clinic123',
       role: 'RECEPTIONIST',
       entityData: {
         name: data.name,
         chamberCount: data.chamberCount || '6 Chambers',
-        line1: data.line1,
-        city: data.city,
+        line1: data.line1 || data.address,
+        city: data.city || 'Kolkata',
         state: data.state || 'West Bengal',
-        pincode: data.pincode,
+        pincode: data.pincode || '700064',
+        imageUrl: data.imageUrl || '',
       },
     });
 
-    // 3. Try dedicated backend endpoint
-    try {
-      await apiClient.post('/admin/clinics', data);
-    } catch {}
-
-    return {
-      id: registered.userId,
-      userId: registered.userId,
+    this.invalidateCache();
+    return createdClinic || {
+      id: clinicId,
+      userId: managerId,
       name: data.name,
-      email: registered.email,
-      phone: registered.phone,
+      email: validEmail,
+      phone: cleanPhone,
       chamberCount: data.chamberCount || '6 Chambers',
-      line1: data.line1,
-      city: data.city,
+      line1: data.line1 || data.address,
+      city: data.city || 'Kolkata',
       state: data.state || 'West Bengal',
-      pincode: data.pincode,
+      pincode: data.pincode || '700064',
       status: 'ACTIVE',
-      manager: { id: registered.userId, fullName: registered.fullName, email: registered.email, phone: registered.phone },
-      staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: registered.fullName, email: registered.email, phone: registered.phone, status: 'ACTIVE' } }],
+      manager: { id: managerId, fullName: data.managerName || data.name, email: validEmail, phone: cleanPhone },
+      staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: data.managerName || data.name, email: validEmail, phone: cleanPhone, status: 'ACTIVE' } }],
       settings: { chamberCount: data.chamberCount || '6 Chambers' },
       createdAt: new Date().toISOString(),
     };
@@ -867,6 +1000,14 @@ export const adminApi = {
     this.invalidateCache();
     const targetUserId = userId || id;
     try {
+      await apiClient.put(`/pharmacies/admin-update/${id}`, {
+        status: 'CLOSED',
+      });
+    } catch (e) {
+      console.warn('Deactivate clinic in DB notice:', e.message);
+    }
+
+    try {
       await apiClient.put(`/admin/users/${targetUserId}/access`, {
         roleName: 'RECEPTIONIST',
         status: 'DEACTIVATED',
@@ -874,12 +1015,6 @@ export const adminApi = {
     } catch (e) {
       console.warn('Deactivate clinic access notice:', e.message);
     }
-    try {
-      await apiClient.delete(`/admin/users/${targetUserId}`);
-    } catch {}
-    try {
-      await apiClient.delete(`/admin/clinics/${id}`);
-    } catch {}
 
     accountRegistry.removeAccount(id);
     accountRegistry.removeAccount(targetUserId);
@@ -897,46 +1032,67 @@ export const adminApi = {
 
   async createRider(data) {
     this.invalidateCache();
-    // 1. Register User in PostgreSQL and assign RIDER role
-    const registered = await registerUserInDatabase({
-      fullName: data.fullName,
-      phone: data.phone,
-      email: data.email,
-      password: data.password,
-      roleName: 'RIDER',
-    });
+    const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    const validEmail = (data.email && data.email.includes('@'))
+      ? data.email.trim().toLowerCase()
+      : `rider.${cleanPhone || Date.now()}@oshudwala.local`;
 
-    // 2. Also register in local registry
+    let createdRider = null;
+    try {
+      const resp = await apiClient.post('/riders/admin-create', {
+        fullName: data.fullName,
+        phone: cleanPhone,
+        email: validEmail,
+        password: data.password || 'Rider123',
+        vehicleType: data.vehicleType || 'Motorcycle',
+        vehicleNumber: data.vehicleNumber || `WB-${Math.floor(10 + Math.random() * 89)}-${Date.now().toString().slice(-4)}`,
+        licenseNumber: data.licenseNo || data.licenseNumber || 'DL-WB-Verified',
+      });
+      createdRider = resp.data?.data || resp.data;
+    } catch (err) {
+      console.warn('POST /riders/admin-create notice:', err.response?.data || err.message);
+      // Fallback: register user with RIDER role
+      const reg = await registerUserInDatabase({
+        fullName: data.fullName,
+        phone: cleanPhone,
+        email: validEmail,
+        password: data.password || 'Rider123',
+        roleName: 'RIDER',
+      });
+      createdRider = { id: reg.userId, userId: reg.userId, fullName: data.fullName, email: validEmail, phone: cleanPhone };
+    }
+
+    const riderId = createdRider?.id || createdRider?.userId || `rider_${Date.now()}`;
+    const userId = createdRider?.userId || createdRider?.user?.id || riderId;
+
+    // Register in accountRegistry
     accountRegistry.registerAccount({
-      id: registered.userId,
-      fullName: registered.fullName,
-      email: registered.email,
-      phone: registered.phone,
-      password: data.password,
+      id: riderId,
+      fullName: data.fullName,
+      email: validEmail,
+      phone: cleanPhone,
+      password: data.password || 'Rider123',
       role: 'RIDER',
       entityData: {
         vehicleType: data.vehicleType || 'Motorcycle',
         vehicleNumber: data.vehicleNumber || 'WB-01-AB-1234',
-        licenseNumber: data.licenseNumber || 'DL-WB-2023-8890',
+        licenseNumber: data.licenseNo || data.licenseNumber || 'DL-WB-Verified',
         city: data.city || 'Kolkata',
+        imageUrl: data.imageUrl || '',
       },
     });
 
-    // 3. Try dedicated backend endpoint
-    try {
-      await apiClient.post('/admin/riders', data);
-    } catch {}
-
-    return {
-      id: registered.userId,
-      userId: registered.userId,
-      fullName: registered.fullName,
-      email: registered.email,
-      phone: registered.phone,
+    this.invalidateCache();
+    return createdRider || {
+      id: riderId,
+      userId: userId,
+      fullName: data.fullName,
+      email: validEmail,
+      phone: cleanPhone,
       vehicleType: data.vehicleType || 'Motorcycle',
       vehicleNumber: data.vehicleNumber || 'WB-01-AB-1234',
-      licenseNumber: data.licenseNumber || 'DL-WB-2023-8890',
-      user: { id: registered.userId, fullName: registered.fullName, email: registered.email, phone: registered.phone, status: 'ACTIVE' },
+      licenseNumber: data.licenseNo || data.licenseNumber || 'DL-WB-Verified',
+      user: { id: userId, fullName: data.fullName, email: validEmail, phone: cleanPhone, status: 'ACTIVE' },
       status: 'AVAILABLE',
       createdAt: new Date().toISOString(),
     };
@@ -946,6 +1102,13 @@ export const adminApi = {
     this.invalidateCache();
     const targetUserId = userId || id;
     try {
+      await apiClient.patch(`/riders/${targetUserId}/status`, {
+        status: 'SUSPENDED',
+      });
+    } catch (e) {
+      console.warn('Deactivate rider status notice:', e.message);
+    }
+    try {
       await apiClient.put(`/admin/users/${targetUserId}/access`, {
         roleName: 'RIDER',
         status: 'DEACTIVATED',
@@ -953,12 +1116,96 @@ export const adminApi = {
     } catch (e) {
       console.warn('Deactivate rider access notice:', e.message);
     }
+
+    accountRegistry.removeAccount(id);
+    accountRegistry.removeAccount(targetUserId);
+    accountRegistry.markEntityRemoved(id);
+    accountRegistry.markEntityRemoved(targetUserId);
+
+    return { success: true, id };
+  },
+
+  // ================= RECEPTIONISTS =================
+  async getReceptionists() {
+    const res = await this.fetchAllEntities();
+    return { receptionists: res.receptionists || [], total: (res.receptionists || []).length };
+  },
+
+  async createReceptionist(data) {
+    this.invalidateCache();
+    const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    const validEmail = (data.email && data.email.includes('@'))
+      ? data.email.trim().toLowerCase()
+      : `receptionist.${cleanPhone || Date.now()}@oshudwala.local`;
+
+    let created = null;
+    const targetPharmacyId = data.clinicId || data.pharmacyId;
+
+    if (targetPharmacyId && targetPharmacyId.includes('-')) {
+      try {
+        const resp = await apiClient.post(`/pharmacies/${targetPharmacyId}/receptionists`, {
+          fullName: data.fullName,
+          phone: cleanPhone,
+          email: validEmail,
+          password: data.password || 'Reception123',
+        });
+        created = resp.data?.data || resp.data;
+      } catch (err) {
+        console.warn('Pharmacy receptionist create notice:', err.message);
+      }
+    }
+
+    if (!created) {
+      const reg = await registerUserInDatabase({
+        fullName: data.fullName,
+        phone: cleanPhone,
+        email: validEmail,
+        password: data.password || 'Reception123',
+        roleName: 'RECEPTIONIST',
+      });
+      created = { id: reg.userId, userId: reg.userId, fullName: data.fullName, email: validEmail, phone: cleanPhone };
+    }
+
+    const recId = created?.id || created?.userId || `rec_${Date.now()}`;
+    const userId = created?.userId || recId;
+
+    accountRegistry.registerAccount({
+      id: recId,
+      fullName: data.fullName,
+      email: validEmail,
+      phone: cleanPhone,
+      password: data.password || 'Reception123',
+      role: 'RECEPTIONIST',
+      entityData: {
+        clinicName: data.clinicName || 'Central Front Desk',
+      },
+    });
+
+    this.invalidateCache();
+    return {
+      id: recId,
+      userId: userId,
+      fullName: data.fullName,
+      email: validEmail,
+      phone: cleanPhone,
+      clinicName: data.clinicName || 'Central Front Desk',
+      status: 'ACTIVE',
+      user: { id: userId, fullName: data.fullName, email: validEmail, phone: cleanPhone, status: 'ACTIVE' },
+      createdAt: new Date().toISOString(),
+    };
+  },
+
+  async deleteReceptionist(id, userId) {
+    this.invalidateCache();
+    const targetUserId = userId || id;
     try {
-      await apiClient.delete(`/admin/users/${targetUserId}`);
-    } catch {}
-    try {
-      await apiClient.delete(`/admin/riders/${id}`);
-    } catch {}
+      await apiClient.put(`/admin/users/${targetUserId}/access`, {
+        roleName: 'RECEPTIONIST',
+        status: 'DEACTIVATED',
+      });
+    } catch (e) {
+      console.warn('Deactivate receptionist access notice:', e.message);
+    }
 
     accountRegistry.removeAccount(id);
     accountRegistry.removeAccount(targetUserId);
@@ -1017,20 +1264,43 @@ export const adminApi = {
       role: roleName,
     });
 
-    // 2. Try backend sync with short timeout so network latency never blocks the UI
-    try {
-      const targetUserId = entityInfo.userId || entityInfo.id || id;
-      const apiPromise = apiClient.put(`/admin/users/${targetUserId}/access`, {
-        roleName: roleName || 'PATIENT',
-        status,
-      });
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Network timeout')), 2500)
+    const targetUserId = entityInfo.userId || entityInfo.user?.id || entityInfo.id || id;
+    const targetEntityId = entityInfo.id || id;
+
+    // 2. Synchronize with backend in parallel
+    const promises = [];
+
+    // User access
+    if (targetUserId) {
+      promises.push(
+        apiClient.put(`/admin/users/${targetUserId}/access`, {
+          roleName: roleName || 'PATIENT',
+          status,
+        }).catch((e) => console.warn('User status sync notice:', e.message))
       );
-      await Promise.race([apiPromise, timeoutPromise]);
-    } catch (err) {
-      console.warn('Backend update status notice:', err.message);
     }
+
+    // Pharmacy/Clinic status
+    if ((roleName === 'PHARMACY' || roleName === 'RECEPTIONIST' || entityInfo.hasClinicService) && targetEntityId && targetEntityId.includes('-')) {
+      promises.push(
+        apiClient.put(`/pharmacies/admin-update/${targetEntityId}`, {
+          status: status === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED',
+        }).catch((e) => console.warn('Pharmacy status sync notice:', e.message))
+      );
+    }
+
+    // Rider status
+    if (roleName === 'RIDER' && targetUserId) {
+      promises.push(
+        apiClient.patch(`/riders/${targetUserId}/status`, {
+          status: status === 'ACTIVE' ? 'AVAILABLE' : 'SUSPENDED',
+        }).catch((e) => console.warn('Rider status sync notice:', e.message))
+      );
+    }
+
+    try {
+      await Promise.allSettled(promises);
+    } catch {}
 
     return { id, status, purgeDeadline };
   },

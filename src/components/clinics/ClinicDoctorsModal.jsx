@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Building2, MapPin, Clock, Phone, Star, Calendar, ArrowRight, ShieldCheck } from 'lucide-react';
+import { X, Building2, MapPin, Clock, Phone, Star, Calendar, ArrowRight, ShieldCheck, User } from 'lucide-react';
 import Button from '../common/Button';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -56,6 +56,13 @@ export const ClinicDoctorsModal = ({ clinic, isOpen, onClose, onBookDoctor }) =>
                 <MapPin className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
                 <span>{clinic.address}</span>
               </p>
+
+              {clinic.receptionistName && (
+                <div className="flex items-center gap-1.5 mt-2 text-xs font-semibold text-forest-800 bg-forest-50 px-2.5 py-1 rounded-xl border border-forest-200/70 w-fit">
+                  <User className="w-3.5 h-3.5 text-forest-600" />
+                  <span>Reception Desk: <strong>{clinic.receptionistName}</strong></span>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-3 sm:gap-4 mt-2 text-xs text-brandText-secondary">
                 <span className="flex items-center gap-1">

@@ -1,49 +1,42 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
-import { doctorsData } from '../../data/doctorsData';
+import { ChevronLeft, ChevronRight, ArrowRight, Loader2 } from 'lucide-react';
 import DoctorCard from '../doctors/DoctorCard';
+import { doctorService } from '../../services/doctorService';
 import { useLanguage } from '../../context/LanguageContext';
 
 export const FeaturedDoctors = ({ onBookDoctor }) => {
   const navigate = useNavigate();
   const scrollContainerRef = useRef(null);
   const { t } = useLanguage();
-  const [featuredDoctorsList, setFeaturedDoctorsList] = useState(doctorsData.slice(0, 6));
+  const [featuredDoctorsList, setFeaturedDoctorsList] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('oshud_featured_doctors');
-      if (raw) {
-        const ids = JSON.parse(raw);
-        if (Array.isArray(ids) && ids.length > 0) {
-          const regAccounts = JSON.parse(localStorage.getItem('oshud_registered_accounts') || '[]');
-          const allDocs = [
-            ...doctorsData,
-            ...regAccounts
-              .filter((a) => a.role === 'DOCTOR')
-              .map((a) => ({
-                id: a.id,
-                name: a.fullName,
-                specialty: a.entityData?.specialization || 'General Physician',
-                degree: a.entityData?.qualifications || 'MBBS',
-                experience: `${a.entityData?.experienceYears || 5}+ years exp`,
-                fee: `₹${((a.entityData?.consultationFeePaise || 50000) / 100).toFixed(0)}`,
-                image: a.entityData?.imageUrl || a.imageUrl || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=200',
-                rating: 4.9,
-                reviews: '120+ patients',
-                nextAvailable: 'Today',
-              })),
-          ];
-          const matched = allDocs.filter((d) => ids.includes(d.id));
-          if (matched.length > 0) {
-            setFeaturedDoctorsList(matched);
+    let isMounted = true;
+    const fetchDoctors = async () => {
+      setIsLoading(true);
+      try {
+        const res = await doctorService.getDoctors();
+        if (isMounted) {
+          if (Array.isArray(res?.doctors) && res.doctors.length > 0) {
+            setFeaturedDoctorsList(res.doctors.slice(0, 8));
+          } else {
+            setFeaturedDoctorsList([]);
           }
         }
+      } catch (err) {
+        console.warn('FeaturedDoctors fetch error:', err);
+        if (isMounted) setFeaturedDoctorsList([]);
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
-    } catch (e) {
-      console.warn('Error reading featured doctors list:', e);
-    }
+    };
+
+    fetchDoctors();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const scroll = (direction) => {
@@ -52,10 +45,47 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
       const scrollAmount = clientWidth * 0.8;
       scrollContainerRef.current.scrollTo({
         left: direction === 'left' ? scrollLeft - scrollAmount : scrollLeft + scrollAmount,
-        behavior: 'smooth'
+        behavior: 'smooth',
       });
     }
   };
+
+  // While loading: Show clean skeleton loader (never blank during load)
+  if (isLoading) {
+    return (
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
+        <div className="flex items-end justify-between mb-6">
+          <div className="space-y-2">
+            <div className="h-6 w-48 bg-forest-100 rounded-lg animate-pulse" />
+            <div className="h-4 w-72 bg-forest-50 rounded-lg animate-pulse" />
+          </div>
+          <div className="h-4 w-20 bg-forest-50 rounded-lg animate-pulse" />
+        </div>
+        <div className="flex gap-4 sm:gap-6 overflow-hidden">
+          {[1, 2, 3, 4].map((n) => (
+            <div
+              key={n}
+              className="w-[235px] sm:w-[285px] lg:w-[300px] flex-shrink-0 bg-surface-pure rounded-3xl p-4 border border-brandBorder-subtle animate-pulse space-y-3"
+            >
+              <div className="w-full aspect-square bg-forest-50/80 rounded-2xl" />
+              <div className="h-4 w-3/4 bg-forest-100 rounded" />
+              <div className="h-3 w-1/2 bg-forest-50 rounded" />
+              <div className="h-3 w-2/3 bg-forest-50 rounded" />
+              <div className="pt-2 border-t border-brandBorder-subtle flex justify-between">
+                <div className="h-4 w-12 bg-forest-100 rounded" />
+                <div className="h-7 w-20 bg-forest-100 rounded-xl" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  // If no doctors exist in database, remove section completely (no demo data)
+  if (featuredDoctorsList.length === 0) {
+    return null;
+  }
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">

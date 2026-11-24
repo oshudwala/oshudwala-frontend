@@ -45,18 +45,38 @@ export const LocationProvider = ({ children }) => {
     isActive: loc.isActive,
   });
 
-  // Fetch initial active locations from backend
+  // Fetch active locations from backend GET /api/v1/locations
   const fetchActiveLocations = useCallback(async (query = '') => {
     setIsLoadingLocations(true);
     try {
       const params = { page: 1, limit: 50 };
-      if (query.trim()) params.q = query.trim();
+      if (query && query.trim()) params.q = query.trim();
       const response = await locationApi.getLocations(params);
-      const items = response?.items || (Array.isArray(response) ? response : []);
+      const items = Array.isArray(response?.items)
+        ? response.items
+        : Array.isArray(response?.data?.items)
+        ? response.data.items
+        : Array.isArray(response?.data)
+        ? response.data
+        : Array.isArray(response)
+        ? response
+        : [];
 
       if (items.length > 0) {
         const formatted = items.map(formatLocation);
         setLocations(formatted);
+
+        // If currently selected location is mock or missing, link to active DB location
+        setSelectedLocation((prev) => {
+          if (!prev || String(prev.id).startsWith('loc-')) {
+            const match = formatted.find(
+              (f) => f.pincode === prev?.pincode || (f.city === prev?.city && f.area === prev?.area)
+            ) || formatted[0];
+            return match;
+          }
+          const stillActive = formatted.find((f) => f.id === prev.id);
+          return stillActive || formatted[0];
+        });
         return formatted;
       }
       return defaultLocations;
@@ -73,7 +93,9 @@ export const LocationProvider = ({ children }) => {
   }, [fetchActiveLocations]);
 
   useEffect(() => {
-    localStorage.setItem('oshud_selected_location', JSON.stringify(selectedLocation));
+    if (selectedLocation) {
+      localStorage.setItem('oshud_selected_location', JSON.stringify(selectedLocation));
+    }
   }, [selectedLocation]);
 
   // Debounced search for locations
@@ -81,12 +103,24 @@ export const LocationProvider = ({ children }) => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
       fetchActiveLocations(query);
-    }, 350);
+    }, 300);
   };
 
   const changeLocation = (loc) => {
     setSelectedLocation(loc);
     setIsLocationModalOpen(false);
+  };
+
+  // Super Admin: Create new location and select it
+  const addLocation = async (locationData) => {
+    const res = await locationApi.createLocation(locationData);
+    const newLoc = res?.data || res;
+    await fetchActiveLocations();
+    if (newLoc?.id) {
+      const formatted = formatLocation(newLoc);
+      setSelectedLocation(formatted);
+    }
+    return newLoc;
   };
 
   return (
@@ -100,6 +134,7 @@ export const LocationProvider = ({ children }) => {
         isLoadingLocations,
         searchLocations,
         refreshLocations: fetchActiveLocations,
+        addLocation,
       }}
     >
       {children}

@@ -28,9 +28,9 @@ export const ReceptionistOverview = () => {
   const { addToast } = useToast();
 
   const [clinic, setClinic] = useState({
-    name: 'Apollo Clinic & Polyclinic',
-    address: 'Sector 1, Salt Lake City, Kolkata',
-    city: 'Kolkata',
+    name: 'Oshud Wala Primary Clinic',
+    address: 'City Centre, Durgapur',
+    city: 'Durgapur',
     coordinatorName: 'Reception Lead',
   });
   const [doctors, setDoctors] = useState([]);

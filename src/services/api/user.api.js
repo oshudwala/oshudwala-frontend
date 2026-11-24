@@ -1,32 +1,53 @@
 import apiClient, { tokenStorage } from './client';
 
 export const userApi = {
+  _syncProfileToSession(profile) {
+    if (!profile) return;
+    const currentUser = tokenStorage.getUser() || {};
+    tokenStorage.setSession({
+      user: {
+        ...currentUser,
+        id: profile.id,
+        fullName: profile.fullName,
+        phone: profile.phone,
+        email: profile.email,
+        role: profile.role?.name || profile.role || currentUser.role,
+        bloodGroup: profile.patientProfile?.bloodGroup,
+        allergies: profile.patientProfile?.allergies,
+        medicalNotes: profile.patientProfile?.medicalNotes,
+        patientProfile: profile.patientProfile,
+      },
+    });
+  },
+
+  /**
+   * Get current user's profile
+   * GET /api/v1/users/me (with fallback to /api/v1/users/profile)
+   */
+  async getMe() {
+    try {
+      const response = await apiClient.get('/users/me');
+      const profile = response.data?.data || response.data;
+      if (profile) {
+        this._syncProfileToSession(profile);
+      }
+      return profile;
+    } catch {
+      const response = await apiClient.get('/users/profile');
+      const profile = response.data?.data || response.data;
+      if (profile) {
+        this._syncProfileToSession(profile);
+      }
+      return profile;
+    }
+  },
+
   /**
    * Get current user's profile
    * GET /api/v1/users/profile
    */
   async getProfile() {
-    const response = await apiClient.get('/users/profile');
-    const profile = response.data?.data || response.data;
-    // Keep local session user in sync
-    if (profile) {
-      const currentUser = tokenStorage.getUser() || {};
-      tokenStorage.setSession({
-        user: {
-          ...currentUser,
-          id: profile.id,
-          fullName: profile.fullName,
-          phone: profile.phone,
-          email: profile.email,
-          role: profile.role?.name || profile.role || currentUser.role,
-          bloodGroup: profile.patientProfile?.bloodGroup,
-          allergies: profile.patientProfile?.allergies,
-          medicalNotes: profile.patientProfile?.medicalNotes,
-          patientProfile: profile.patientProfile,
-        },
-      });
-    }
-    return profile;
+    return this.getMe();
   },
 
   /**

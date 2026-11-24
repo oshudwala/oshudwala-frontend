@@ -53,7 +53,7 @@ export const CheckoutPage = () => {
   const { addToast } = useToast();
 
   const [useWalletBalance, setUseWalletBalance] = useState(false);
-  const [walletBalance, setWalletBalance] = useState(250); // Default user wallet coins/balance
+  const walletBalance = Number(user?.walletBalance ?? user?.coins ?? user?.wallet ?? 0);
 
   // Rule i: Wallet balance can be used in bills but NOT on prescription medicines
   const nonPrescriptionTotal = cartItems
@@ -85,20 +85,38 @@ export const CheckoutPage = () => {
     saveAddress: true,
   });
 
-  // Sync user profile data to address form when auth loads
-  useEffect(() => {
-    if (user) {
-      setNewAddressForm((prev) => ({
-        ...prev,
-        fullName: prev.fullName || user.fullName || user.name || '',
-        phone: prev.phone || user.phone || '',
-      }));
-    }
-  }, [user]);
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
+  const [deletingAddressId, setDeletingAddressId] = useState(null);
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
 
-  // Load saved addresses from userApi and localStorage
+  // Sync fresh profile via /users/me and load saved addresses via /users/addresses
   useEffect(() => {
-    const fetchAddresses = async () => {
+    let isMounted = true;
+
+    const loadProfileAndAddresses = async () => {
+      setIsLoadingAddresses(true);
+
+      // 1. Fetch current user profile via GET /users/me (or /users/profile)
+      try {
+        const me = await userApi.getMe();
+        if (me && isMounted) {
+          setNewAddressForm((prev) => ({
+            ...prev,
+            fullName: prev.fullName || me.fullName || me.name || user?.fullName || user?.name || '',
+            phone: prev.phone || me.phone || user?.phone || '',
+          }));
+        }
+      } catch (err) {
+        if (user && isMounted) {
+          setNewAddressForm((prev) => ({
+            ...prev,
+            fullName: prev.fullName || user.fullName || user.name || '',
+            phone: prev.phone || user.phone || '',
+          }));
+        }
+      }
+
+      // 2. Fetch saved addresses via GET /users/addresses
       let list = [];
       try {
         const data = await userApi.getAddresses();
@@ -108,24 +126,21 @@ export const CheckoutPage = () => {
             tag: addr.label || 'Home',
             recipient: addr.fullName,
             phone: addr.phone,
+            line1: addr.line1,
+            line2: addr.line2,
+            landmark: addr.landmark,
+            city: addr.city,
+            state: addr.state,
+            pincode: addr.pincode,
             address: `${addr.line1}${addr.line2 ? `, ${addr.line2}` : ''}${addr.landmark ? ` (Landmark: ${addr.landmark})` : ''}, ${addr.city}, ${addr.state} - ${addr.pincode}`,
             isDefault: Boolean(addr.isDefault),
           }));
         }
       } catch (err) {
-        console.warn('Could not load addresses from server:', err);
+        console.warn('Could not load addresses from /users/addresses:', err);
       }
 
-      // Merge with any locally saved addresses
-      try {
-        const localSaved = JSON.parse(localStorage.getItem('oshud_user_addresses') || '[]');
-        if (Array.isArray(localSaved) && localSaved.length > 0) {
-          const ids = new Set(list.map((a) => a.id));
-          localSaved.forEach((la) => {
-            if (!ids.has(la.id)) list.push(la);
-          });
-        }
-      } catch {}
+      if (!isMounted) return;
 
       if (list.length > 0) {
         setSavedAddresses(list);
@@ -136,9 +151,14 @@ export const CheckoutPage = () => {
         setSavedAddresses([]);
         setAddressMode('new');
       }
+      setIsLoadingAddresses(false);
     };
 
-    fetchAddresses();
+    loadProfileAndAddresses();
+
+    return () => {
+      isMounted = false;
+    };
   }, [user]);
 
   // GPS Location System with Reverse-Geocoding
@@ -217,7 +237,7 @@ export const CheckoutPage = () => {
     );
   };
 
-  // Save manual address to user's saved addresses
+  // Save manual address to user's saved addresses via POST /users/addresses
   const handleSaveManualAddress = async () => {
     if (!newAddressForm.fullName || !newAddressForm.phone || !newAddressForm.line1 || !newAddressForm.city || !newAddressForm.pincode) {
       addToast('Please fill all required address fields (Full Name, Phone, Address Line 1, City, Pincode).', 'error');
@@ -230,37 +250,50 @@ export const CheckoutPage = () => {
       return null;
     }
 
+    setIsSavingAddress(true);
     const fullAddrString = `${newAddressForm.line1}${newAddressForm.line2 ? `, ${newAddressForm.line2}` : ''}${newAddressForm.landmark ? ` (Landmark: ${newAddressForm.landmark})` : ''}, ${newAddressForm.city}, ${newAddressForm.state} - ${newAddressForm.pincode}`;
+
+    // Payload formatted to match POST /users/addresses requirement:
+    // {"fullName": "...", "phone": "...", "line1": "...", "city": "Durgapur", "state": "WB", "pincode": "713216", "isDefault": true}
+    const addressPayload = {
+      fullName: newAddressForm.fullName.trim(),
+      phone: cleanPhone,
+      line1: newAddressForm.line1.trim(),
+      line2: newAddressForm.line2?.trim() || undefined,
+      landmark: newAddressForm.landmark?.trim() || undefined,
+      city: newAddressForm.city.trim() || 'Durgapur',
+      state: newAddressForm.state.trim() || 'WB',
+      pincode: newAddressForm.pincode.trim() || '713216',
+      label: newAddressForm.label || 'Home',
+      isDefault: Boolean(savedAddresses.length === 0),
+      latitude: newAddressForm.latitude ? Number(newAddressForm.latitude) : undefined,
+      longitude: newAddressForm.longitude ? Number(newAddressForm.longitude) : undefined,
+    };
 
     let savedItem = null;
     try {
-      const res = await userApi.addAddress({
-        label: newAddressForm.label || 'Home',
-        fullName: newAddressForm.fullName,
-        phone: cleanPhone,
-        line1: newAddressForm.line1,
-        line2: newAddressForm.line2 || undefined,
-        landmark: newAddressForm.landmark || undefined,
-        city: newAddressForm.city,
-        state: newAddressForm.state,
-        pincode: newAddressForm.pincode,
-        latitude: newAddressForm.latitude || undefined,
-        longitude: newAddressForm.longitude || undefined,
-        isDefault: savedAddresses.length === 0,
-      });
-
+      const res = await userApi.addAddress(addressPayload);
       if (res?.id) {
         savedItem = {
           id: res.id,
-          tag: res.label || newAddressForm.label || 'Home',
-          recipient: res.fullName || newAddressForm.fullName,
+          tag: res.label || addressPayload.label || 'Home',
+          recipient: res.fullName || addressPayload.fullName,
           phone: res.phone || cleanPhone,
+          line1: res.line1 || addressPayload.line1,
+          line2: res.line2 || addressPayload.line2,
+          landmark: res.landmark || addressPayload.landmark,
+          city: res.city || addressPayload.city,
+          state: res.state || addressPayload.state,
+          pincode: res.pincode || addressPayload.pincode,
           address: fullAddrString,
-          isDefault: Boolean(res.isDefault),
+          isDefault: Boolean(res.isDefault ?? addressPayload.isDefault),
         };
       }
     } catch (apiErr) {
-      console.warn('userApi.addAddress failed, saving locally:', apiErr);
+      console.warn('userApi.addAddress failed:', apiErr);
+      addToast(apiErr.response?.data?.message || apiErr.message || 'Failed to save address to server', 'error');
+    } finally {
+      setIsSavingAddress(false);
     }
 
     if (!savedItem) {
@@ -274,18 +307,38 @@ export const CheckoutPage = () => {
       };
     }
 
-    // Persist in local storage
-    try {
-      const stored = JSON.parse(localStorage.getItem('oshud_user_addresses') || '[]');
-      const updated = [savedItem, ...stored.filter((a) => a.id !== savedItem.id)];
-      localStorage.setItem('oshud_user_addresses', JSON.stringify(updated));
-    } catch {}
-
     setSavedAddresses((prev) => [savedItem, ...prev.filter((a) => a.id !== savedItem.id)]);
     setSelectedAddressId(savedItem.id);
     setAddressMode('saved');
     addToast('Delivery address saved to your profile!', 'success');
     return savedItem;
+  };
+
+  // Delete address via DELETE /users/addresses/:id
+  const handleDeleteAddress = async (addressId, e) => {
+    e.stopPropagation();
+    if (deletingAddressId) return;
+
+    try {
+      setDeletingAddressId(addressId);
+      await userApi.deleteAddress(addressId);
+      const remaining = savedAddresses.filter((a) => a.id !== addressId);
+      setSavedAddresses(remaining);
+      if (selectedAddressId === addressId) {
+        if (remaining.length > 0) {
+          setSelectedAddressId(remaining[0].id);
+        } else {
+          setSelectedAddressId('');
+          setAddressMode('new');
+        }
+      }
+      addToast('Address removed successfully.', 'info');
+    } catch (err) {
+      console.error('Failed to remove address:', err);
+      addToast(err.response?.data?.message || err.message || 'Failed to remove address', 'error');
+    } finally {
+      setDeletingAddressId(null);
+    }
   };
 
   // ================= PRESCRIPTION ATTACHMENT STATE =================
@@ -668,31 +721,62 @@ export const CheckoutPage = () => {
                 )}
               </div>
 
-              {/* Mode A: Select From Saved Addresses */}
-              {addressMode === 'saved' && savedAddresses.length > 0 ? (
+              {/* Loading Addresses Indicator */}
+              {isLoadingAddresses ? (
+                <div className="flex items-center justify-center p-8 bg-surface-pure rounded-2xl border border-brandBorder-subtle">
+                  <div className="flex items-center gap-2.5 text-xs text-brandText-secondary">
+                    <Loader2 className="w-4 h-4 animate-spin text-forest-700" />
+                    <span>Loading saved addresses...</span>
+                  </div>
+                </div>
+              ) : addressMode === 'saved' && savedAddresses.length > 0 ? (
+                /* Mode A: Select From Saved Addresses */
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {savedAddresses.map((addr) => {
                       const isSelected = selectedAddressId === addr.id;
+                      const isDeleting = deletingAddressId === addr.id;
                       return (
                         <div
                           key={addr.id}
                           onClick={() => setSelectedAddressId(addr.id)}
-                          className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+                          className={`p-4 rounded-2xl border cursor-pointer transition-all relative group ${
                             isSelected
                               ? 'border-forest-600 bg-forest-50/70 shadow-sm ring-1 ring-forest-600/30'
                               : 'border-brandBorder-subtle hover:border-forest-300 bg-surface-pure'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-[10px] font-bold text-forest-800 uppercase px-2 py-0.5 rounded-full bg-forest-100 tracking-wide">
-                              {addr.tag}
-                            </span>
-                            {isSelected ? (
-                              <CheckCircle2 className="w-4 h-4 text-forest-700" />
-                            ) : (
-                              <div className="w-4 h-4 rounded-full border border-brandBorder-subtle" />
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-bold text-forest-800 uppercase px-2 py-0.5 rounded-full bg-forest-100 tracking-wide">
+                                {addr.tag}
+                              </span>
+                              {addr.isDefault && (
+                                <span className="text-[9px] font-semibold text-forest-700 bg-forest-100/80 border border-forest-200 px-1.5 py-0.5 rounded-full">
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteAddress(addr.id, e)}
+                                disabled={isDeleting}
+                                className="p-1 rounded-lg text-brandText-muted hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                title="Remove address"
+                              >
+                                {isDeleting ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                                ) : (
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              {isSelected ? (
+                                <CheckCircle2 className="w-4 h-4 text-forest-700" />
+                              ) : (
+                                <div className="w-4 h-4 rounded-full border border-brandBorder-subtle" />
+                              )}
+                            </div>
                           </div>
                           <p className="text-xs font-bold text-forest-900">{addr.recipient}</p>
                           <p className="text-xs text-brandText-secondary mt-1 leading-relaxed">
@@ -926,9 +1010,17 @@ export const CheckoutPage = () => {
                       variant="primary"
                       size="sm"
                       onClick={handleSaveManualAddress}
+                      disabled={isSavingAddress}
                       className="text-xs font-bold shadow-sm"
                     >
-                      Save & Use This Address
+                      {isSavingAddress ? (
+                        <div className="flex items-center gap-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Saving Address...</span>
+                        </div>
+                      ) : (
+                        <span>Save & Use This Address</span>
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -1232,32 +1324,34 @@ export const CheckoutPage = () => {
               </div>
 
               {/* Wallet Usage Option (Rule i: Not on Rx drugs) */}
-              <div className="p-3 bg-forest-50/80 rounded-2xl border border-forest-200/80 space-y-1.5 mt-2">
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-forest-900">
-                    <input
-                      type="checkbox"
-                      checked={useWalletBalance}
-                      disabled={maxWalletDeduction <= 0}
-                      onChange={(e) => setUseWalletBalance(e.target.checked)}
-                      className="rounded border-forest-300 text-forest-700 focus:ring-forest-500 w-4 h-4"
-                    />
-                    <span>Pay with Wallet Balance</span>
-                  </label>
-                  <span className="font-mono font-bold text-xs text-forest-800">
-                    ₹{walletBalance.toFixed(2)}
-                  </span>
+              {walletBalance > 0 && (
+                <div className="p-3 bg-forest-50/80 rounded-2xl border border-forest-200/80 space-y-1.5 mt-2">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-forest-900">
+                      <input
+                        type="checkbox"
+                        checked={useWalletBalance}
+                        disabled={maxWalletDeduction <= 0}
+                        onChange={(e) => setUseWalletBalance(e.target.checked)}
+                        className="rounded border-forest-300 text-forest-700 focus:ring-forest-500 w-4 h-4"
+                      />
+                      <span>Pay with Wallet Balance</span>
+                    </label>
+                    <span className="font-mono font-bold text-xs text-forest-800">
+                      ₹{walletBalance.toFixed(2)}
+                    </span>
+                  </div>
+                  {maxWalletDeduction > 0 ? (
+                    <p className="text-[10px] text-emerald-700 pl-6">
+                      ₹{maxWalletDeduction.toFixed(2)} eligible against non-prescription essentials.
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-amber-700 pl-6 leading-tight">
+                      Wallet balance cannot be applied to Schedule H prescription medicines under CDSCO regulations.
+                    </p>
+                  )}
                 </div>
-                {maxWalletDeduction > 0 ? (
-                  <p className="text-[10px] text-emerald-700 pl-6">
-                    ₹{maxWalletDeduction.toFixed(2)} eligible against non-prescription essentials.
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-amber-700 pl-6 leading-tight">
-                    Wallet balance cannot be applied to Schedule H prescription medicines under CDSCO regulations.
-                  </p>
-                )}
-              </div>
+              )}
 
               {/* Bill Breakdown */}
               <div className="pt-3 border-t border-brandBorder-subtle space-y-1.5 text-xs text-brandText-secondary font-mono">

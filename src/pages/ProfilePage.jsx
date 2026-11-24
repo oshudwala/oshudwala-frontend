@@ -14,9 +14,11 @@ import {
   Star,
   RefreshCw,
   Bell,
-  Shield
+  Shield,
+  Globe
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../context/ToastContext';
 import { userApi } from '../services/api/user.api';
 import { notificationApi } from '../services/api/notification.api';
@@ -30,6 +32,7 @@ export const ProfilePage = () => {
   const navigate = useNavigate();
   const { user, updateUserProfile, logout } = useAuth();
   const { addToast } = useToast();
+  const { isBengali, setLanguage } = useLanguage();
 
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditing, setIsEditing] = useState(false);
@@ -598,12 +601,59 @@ export const ProfilePage = () => {
           {activeTab === 'settings' && (
             <div className="space-y-6">
               <div className="border-b border-brandBorder-subtle pb-4">
-                <h3 className="font-heading font-bold text-lg text-forest-800">Notification Preferences</h3>
+                <h3 className="font-heading font-bold text-lg text-forest-800">Account Preferences</h3>
                 <p className="text-xs text-brandText-secondary">
-                  Synced directly with backend `/api/v1/notifications/preferences`
+                  Manage platform language and notification preferences
                 </p>
               </div>
 
+              {/* Language Switcher Card */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-forest-100 text-forest-700 flex items-center justify-center shrink-0">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-forest-800 text-xs sm:text-sm">Platform Language / ভাষা</p>
+                    <p className="text-brandText-secondary text-[11px] mt-0.5">
+                      Switch between English and বাংলা across the web interface
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-surface-pure p-1 rounded-xl border border-brandBorder-subtle self-start sm:self-auto shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLanguage('en');
+                      addToast('Language set to English', 'success');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      !isBengali
+                        ? 'bg-forest-800 text-white shadow-xs'
+                        : 'text-brandText-secondary hover:text-forest-900'
+                    }`}
+                  >
+                    English (EN)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLanguage('bn');
+                      addToast('ভাষা পরিবর্তন করা হয়েছে বাংলায়', 'success');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      isBengali
+                        ? 'bg-forest-800 text-white shadow-xs'
+                        : 'text-brandText-secondary hover:text-forest-900'
+                    }`}
+                  >
+                    বাংলা (BN)
+                  </button>
+                </div>
+              </div>
+
+              {/* Push Notifications Card */}
               <div className="space-y-4 text-xs">
                 <div className="flex items-center justify-between p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle">
                   <div>

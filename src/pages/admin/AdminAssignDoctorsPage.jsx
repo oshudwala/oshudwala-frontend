@@ -118,9 +118,9 @@ export const AdminAssignDoctorsPage = () => {
   const [currentStep, setCurrentStep] = useState(1);
 
   // Entities state
-  const initialEntities = accountRegistry.getEntities();
-  const [clinics, setClinics] = useState(initialEntities.clinics || []);
-  const [doctors, setDoctors] = useState(initialEntities.doctors || []);
+  const cached = adminApi.getCachedEntities();
+  const [clinics, setClinics] = useState(cached?.clinics || []);
+  const [doctors, setDoctors] = useState(cached?.doctors || []);
   const [assignments, setAssignments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -165,8 +165,8 @@ export const AdminAssignDoctorsPage = () => {
         adminApi.getDoctorClinicAssignments(),
       ]);
 
-      if (entitiesRes.clinics?.length) setClinics(entitiesRes.clinics);
-      if (entitiesRes.doctors?.length) setDoctors(entitiesRes.doctors);
+      if (entitiesRes.clinics) setClinics(entitiesRes.clinics);
+      if (entitiesRes.doctors) setDoctors(entitiesRes.doctors);
       if (assignmentsRes) setAssignments(assignmentsRes);
     } catch (err) {
       console.warn('Error loading assignment entities:', err);

@@ -24,7 +24,12 @@ export const RiderDeliveriesPage = () => {
   const { addToast } = useToast();
 
   const [riderProfile, setRiderProfile] = useState(() => riderApi.getRiderProfile(user?.id, user));
-  const currentRider = riders.find((r) => r.id === user?.id) || riders[0];
+  const currentRider = riders.find((r) => r.id === user?.id) || {
+    id: user?.id || 'usr-rider-current',
+    name: user?.fullName || user?.name || riderProfile?.name || 'Rider',
+    phone: user?.phone || riderProfile?.phone || '',
+    isOnline: true,
+  };
   const isOnline = currentRider?.isOnline ?? true;
 
   // Modal triggers

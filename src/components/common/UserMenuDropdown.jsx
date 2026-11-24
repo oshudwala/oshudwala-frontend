@@ -1,12 +1,12 @@
 import React, { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, LogOut, LayoutDashboard } from 'lucide-react';
+import { User, LogOut, LayoutDashboard, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 
 export const UserMenuDropdown = ({ isOpen, onClose }) => {
   const { user, logout, isPatient, getRoleDefaultPath } = useAuth();
-  const { t, isBengali } = useLanguage();
+  const { t, isBengali, setLanguage } = useLanguage();
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
@@ -78,6 +78,40 @@ export const UserMenuDropdown = ({ isOpen, onClose }) => {
           <User className="w-4 h-4 text-forest-600" />
           <span>{isBengali ? 'আমার প্রোফাইল' : 'My Profile'}</span>
         </button>
+
+        {/* Language Converter inside My Profile Drawer */}
+        <div className="p-2.5 rounded-xl bg-forest-50/70 border border-forest-100 flex items-center justify-between gap-2 my-1">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-forest-600 shrink-0" />
+            <span className="text-xs font-bold text-forest-900">
+              {isBengali ? 'ভাষা' : 'Language'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-forest-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setLanguage('en')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-extrabold transition-all ${
+                !isBengali
+                  ? 'bg-forest-800 text-white shadow-xs'
+                  : 'text-brandText-secondary hover:text-forest-900'
+              }`}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => setLanguage('bn')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-extrabold transition-all ${
+                isBengali
+                  ? 'bg-forest-800 text-white shadow-xs'
+                  : 'text-brandText-secondary hover:text-forest-900'
+              }`}
+            >
+              বাং
+            </button>
+          </div>
+        </div>
 
         {/* Logout */}
         <button

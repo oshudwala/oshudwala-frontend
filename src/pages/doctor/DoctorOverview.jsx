@@ -68,10 +68,10 @@ export const DoctorOverview = () => {
 
   // Primary chamber
   const primaryClinic = associatedClinics.find((c) => c.status === 'PRIMARY_CHAMBER') || associatedClinics[0] || {
-    name: 'Apollo Clinic, Salt Lake Kolkata',
-    chamber: 'Room 204 (2nd Floor)',
-    phoneExt: 'Ext 204',
-    deskStaff: 'Ananya Roy (Reception Desk)',
+    name: 'Oshud Wala Primary Clinic',
+    chamber: 'Chamber 1 (Ground Floor)',
+    phoneExt: 'Ext 101',
+    deskStaff: 'Front Desk Reception',
   };
 
   // Filter tokens relevant to this doctor

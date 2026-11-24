@@ -459,6 +459,35 @@ export const doctorApi = {
     }
   },
 
+  /**
+   * Get global doctor directory
+   * GET /api/v1/doctors
+   */
+  async getDoctors(params = {}) {
+    const response = await apiClient.get('/doctors', { params });
+    return response.data?.data || response.data || [];
+  },
+
+  /**
+   * Super Admin: Create global doctor profile
+   * POST /api/v1/doctors
+   * Body: {"fullName": "...", "phone": "...", "registrationNumber": "...", "specializationIds": ["uuid"]}
+   */
+  async createDoctor(doctorData) {
+    const response = await apiClient.post('/doctors', doctorData);
+    return response.data?.data || response.data;
+  },
+
+  /**
+   * Assign doctor to pharmacy chamber
+   * POST /api/v1/doctors/assign
+   * Body: {"pharmacyId": "uuid", "doctorId": "uuid", "consultationFeePaise": 50000}
+   */
+  async assignDoctor(assignmentData) {
+    const response = await apiClient.post('/doctors/assign', assignmentData);
+    return response.data?.data || response.data;
+  },
+
   async onboardDoctor(doctorData) {
     const response = await apiClient.post('/doctors/onboard', doctorData);
     return response.data?.data || response.data;

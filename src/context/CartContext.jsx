@@ -8,36 +8,17 @@ export const CartProvider = ({ children }) => {
     const saved = localStorage.getItem('oshud_cart');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Filter out legacy preview demo items if present
+          return parsed.filter((i) => i.id !== 'prod-1' && i.id !== 'prod-2');
+        }
+        return [];
       } catch {
         return [];
       }
     }
-    // Default initial cart items for preview
-    return [
-      {
-        id: "prod-1",
-        name: "Napa Extra",
-        genericName: "Paracetamol + Caffeine",
-        packaging: "Strip of 10 Tablets",
-        price: 30,
-        mrp: 35,
-        prescriptionRequired: false,
-        image: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=400",
-        quantity: 2
-      },
-      {
-        id: "prod-2",
-        name: "Sergel 20",
-        genericName: "Esomeprazole 20mg",
-        packaging: "Strip of 14 Capsules",
-        price: 98,
-        mrp: 112,
-        prescriptionRequired: true,
-        image: "https://images.unsplash.com/photo-1471864190281-a93a3070b6de?auto=format&fit=crop&q=80&w=400",
-        quantity: 1
-      }
-    ];
+    return [];
   });
 
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
