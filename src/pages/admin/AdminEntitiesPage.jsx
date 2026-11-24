@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Stethoscope,
@@ -44,35 +44,7 @@ import adminApi from '../../services/api/admin.api';
 import accountRegistry from '../../services/api/accountRegistry';
 import ImageDropzone from '../../components/common/ImageDropzone';
 
-const STANDARD_TIME_SLOTS = [
-  '08:00 AM',
-  '08:30 AM',
-  '09:00 AM',
-  '09:30 AM',
-  '10:00 AM',
-  '10:30 AM',
-  '11:00 AM',
-  '11:30 AM',
-  '12:00 PM',
-  '12:30 PM',
-  '01:00 PM',
-  '01:30 PM',
-  '02:00 PM',
-  '02:30 PM',
-  '03:00 PM',
-  '03:30 PM',
-  '04:00 PM',
-  '04:30 PM',
-  '05:00 PM',
-  '05:30 PM',
-  '06:00 PM',
-  '06:30 PM',
-  '07:00 PM',
-  '07:30 PM',
-  '08:00 PM',
-  '08:30 PM',
-  '09:00 PM',
-];
+
 
 export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const navigate = useNavigate();
@@ -127,8 +99,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     experienceYears: '5',
     specialization: 'General Physician',
     consultationFee: '500',
-    startTime: '10:00 AM',
-    endTime: '01:00 PM',
     clinicName: '',
     // Pharmacy specific
     ownerName: '',
@@ -168,6 +138,146 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       setActiveTab(initialTab);
     }
   }, [location.pathname, location.search, initialTab]);
+
+  // Flattened profiles for fast duplicate credentials checking
+  const allExistingProfiles = useMemo(() => [
+    ...doctors.map((d) => ({
+      id: d.id,
+      userId: d.userId,
+      phone: d.phone || d.user?.phone,
+      email: d.email || d.user?.email,
+      name: d.fullName,
+      role: 'Doctor',
+    })),
+    ...pharmacies.map((p) => ({
+      id: p.id,
+      userId: p.userId,
+      phone: p.phone || p.owner?.phone,
+      email: p.email || p.owner?.email,
+      name: p.name,
+      role: 'Pharmacy',
+    })),
+    ...clinics.map((c) => ({
+      id: c.id,
+      userId: c.userId,
+      phone: c.phone || c.manager?.phone,
+      email: c.email || c.manager?.email,
+      name: c.name,
+      role: 'Clinic',
+    })),
+    ...riders.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      phone: r.phone || r.user?.phone,
+      email: r.email || r.user?.email,
+      name: r.fullName,
+      role: 'Rider',
+    })),
+    ...receptionists.map((rc) => ({
+      id: rc.id,
+      userId: rc.userId,
+      phone: rc.phone || rc.user?.phone,
+      email: rc.email || rc.user?.email,
+      name: rc.fullName,
+      role: 'Receptionist',
+    })),
+    ...users.map((u) => ({
+      id: u.id,
+      userId: u.id,
+      phone: u.phone,
+      email: u.email,
+      name: u.fullName,
+      role: 'User',
+    })),
+  ], [doctors, pharmacies, clinics, riders, receptionists, users]);
+
+  const normalizePhoneNumber = (p) => {
+    if (!p) return '';
+    const digits = String(p).replace(/[^0-9]/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+  };
+
+  const checkCredentialConflict = (phone, email, excludeId = null, excludeUserId = null) => {
+    const normPhone = normalizePhoneNumber(phone);
+    const normEmail = email && typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : '';
+
+    const isExcluded = (p) =>
+      Boolean(
+        (excludeId && (p.id === excludeId || p.userId === excludeId)) ||
+        (excludeUserId && (p.id === excludeUserId || p.userId === excludeUserId))
+      );
+
+    if (normPhone && normPhone.length === 10) {
+      const match = allExistingProfiles.find(
+        (p) => !isExcluded(p) && p.phone && normalizePhoneNumber(p.phone) === normPhone
+      );
+      if (match) {
+        return {
+          type: 'phone',
+          message: `Already used credentials. Mobile number is already assigned to ${match.role} "${match.name}".`,
+          role: match.role,
+          name: match.name,
+        };
+      }
+    }
+
+    if (normEmail) {
+      const match = allExistingProfiles.find(
+        (p) => !isExcluded(p) && p.email && p.email.trim().toLowerCase() === normEmail
+      );
+      if (match) {
+        return {
+          type: 'email',
+          message: `Already used credentials. Email address is already assigned to ${match.role} "${match.name}".`,
+          role: match.role,
+          name: match.name,
+        };
+      }
+    }
+
+    return null;
+  };
+
+  // Real-time conflict detection for Add Modal
+  const addEmailConflict = useMemo(() => {
+    if (!formData.email || !formData.email.includes('@')) return null;
+    const cleanEmail = formData.email.trim().toLowerCase();
+    const match = allExistingProfiles.find((p) => p.email && p.email.trim().toLowerCase() === cleanEmail);
+    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+  }, [formData.email, allExistingProfiles]);
+
+  const addPhoneConflict = useMemo(() => {
+    const cleanPhone = normalizePhoneNumber(formData.phone);
+    if (cleanPhone.length < 10) return null;
+    const match = allExistingProfiles.find((p) => p.phone && normalizePhoneNumber(p.phone) === cleanPhone);
+    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+  }, [formData.phone, allExistingProfiles]);
+
+  // Real-time conflict detection for Edit Modal
+  const editEmailConflict = useMemo(() => {
+    if (!editFormData.email || !editFormData.email.includes('@') || !itemToEdit) return null;
+    const cleanEmail = editFormData.email.trim().toLowerCase();
+    const isCurrent = (p) =>
+      Boolean(
+        (itemToEdit.id && (p.id === itemToEdit.id || p.userId === itemToEdit.id)) ||
+        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId))
+      );
+    const match = allExistingProfiles.find((p) => !isCurrent(p) && p.email && p.email.trim().toLowerCase() === cleanEmail);
+    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+  }, [editFormData.email, itemToEdit, allExistingProfiles]);
+
+  const editPhoneConflict = useMemo(() => {
+    if (!itemToEdit) return null;
+    const cleanPhone = normalizePhoneNumber(editFormData.phone);
+    if (cleanPhone.length < 10) return null;
+    const isCurrent = (p) =>
+      Boolean(
+        (itemToEdit.id && (p.id === itemToEdit.id || p.userId === itemToEdit.id)) ||
+        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId))
+      );
+    const match = allExistingProfiles.find((p) => !isCurrent(p) && p.phone && normalizePhoneNumber(p.phone) === cleanPhone);
+    return match ? `Already used credentials (${match.role}: ${match.name})` : null;
+  }, [editFormData.phone, itemToEdit, allExistingProfiles]);
 
   // Load real data from backend
   const loadData = async (forceRefresh = false) => {
@@ -382,8 +492,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       registrationNumber: row.registrationNumber || '',
       experienceYears: String(row.experienceYears || '5'),
       consultationFee: String(((row.consultationFeePaise || 50000) / 100).toFixed(0)),
-      startTime: row.startTime || (row.shift ? row.shift.split('–')[0]?.trim().split('-')[0]?.trim() : '10:00 AM') || '10:00 AM',
-      endTime: row.endTime || (row.shift ? (row.shift.split('–')[1] || row.shift.split('-')[1])?.trim() : '01:00 PM') || '01:00 PM',
       // Clinic
       chamberCount: row.settings?.chamberCount || row.chamberCount || '6 Chambers',
       // Pharmacy
@@ -400,6 +508,19 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     if (!itemToEdit) return;
+
+    // Strict duplicate credential check
+    const conflict = checkCredentialConflict(
+      editFormData.phone,
+      editFormData.email,
+      itemToEdit?.id,
+      itemToEdit?.userId
+    );
+    if (conflict) {
+      addToast(conflict.message, 'error');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -418,9 +539,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           registrationNumber: editFormData.registrationNumber,
           experienceYears: Number(editFormData.experienceYears) || 0,
           consultationFeePaise: (Number(editFormData.consultationFee) || 500) * 100,
-          startTime: editFormData.startTime || '10:00 AM',
-          endTime: editFormData.endTime || '01:00 PM',
-          shift: `${editFormData.startTime || '10:00 AM'} – ${editFormData.endTime || '01:00 PM'}`,
         });
         addToast(`Doctor ${editFormData.fullName} details updated successfully!`, 'success');
       } else if (type === 'pharmacies') {
@@ -498,6 +616,14 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   // Submit Add Entity
   const handleAddSubmit = async (e) => {
     e.preventDefault();
+
+    // Strict duplicate credential check
+    const conflict = checkCredentialConflict(formData.phone, formData.email);
+    if (conflict) {
+      addToast(conflict.message, 'error');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -514,9 +640,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           experienceYears: Number(formData.experienceYears) || 0,
           specialization: formData.specialization,
           consultationFeePaise: (Number(formData.consultationFee) || 500) * 100,
-          startTime: formData.startTime || '10:00 AM',
-          endTime: formData.endTime || '01:00 PM',
-          shift: `${formData.startTime || '10:00 AM'} – ${formData.endTime || '01:00 PM'}`,
         };
         const created = await adminApi.createDoctor(payload);
         setDoctors((prev) => [created, ...prev]);
@@ -608,8 +731,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         experienceYears: '5',
         specialization: 'General Physician',
         consultationFee: '500',
-        startTime: '10:00 AM',
-        endTime: '01:00 PM',
         clinicName: '',
         ownerName: '',
         licenseNumber: '',
@@ -1835,9 +1956,19 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           value={formData.email}
                           onChange={handleInputChange}
                           placeholder="e.g. staff@oshudwala.in"
-                          className="w-full pl-9 pr-3 py-2 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          className={`w-full pl-9 pr-3 py-2 text-xs bg-surface-pure border rounded-xl focus:outline-none transition-colors ${
+                            addEmailConflict
+                              ? 'border-rose-400 focus:border-rose-500 bg-rose-50/30'
+                              : 'border-brandBorder-subtle focus:border-forest-500'
+                          }`}
                         />
                       </div>
+                      {addEmailConflict && (
+                        <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                          {addEmailConflict}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -1883,9 +2014,19 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         value={formData.phone}
                         onChange={handleInputChange}
                         placeholder="9876543210"
-                        className="w-full pl-12 pr-3 py-2 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                        className={`w-full pl-12 pr-3 py-2 text-xs bg-surface-pure border rounded-xl focus:outline-none font-mono transition-colors ${
+                          addPhoneConflict
+                            ? 'border-rose-400 focus:border-rose-500 bg-rose-50/30'
+                            : 'border-brandBorder-subtle focus:border-forest-500'
+                        }`}
                       />
                     </div>
+                    {addPhoneConflict && (
+                      <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                        {addPhoneConflict}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1969,44 +2110,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           onChange={handleInputChange}
                           className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-bold"
                         />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          Shift Start Time *
-                        </label>
-                        <select
-                          name="startTime"
-                          value={formData.startTime || '10:00 AM'}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                        >
-                          {STANDARD_TIME_SLOTS.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          Shift End Time *
-                        </label>
-                        <select
-                          name="endTime"
-                          value={formData.endTime || '01:00 PM'}
-                          onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                        >
-                          {STANDARD_TIME_SLOTS.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
                       </div>
                     </div>
                   </div>
@@ -2312,8 +2415,18 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                       name="email"
                       value={editFormData.email || ''}
                       onChange={handleEditInputChange}
-                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                      className={`w-full px-3.5 py-2 text-xs bg-surface-warm border rounded-xl focus:outline-none transition-colors ${
+                        editEmailConflict
+                          ? 'border-rose-400 focus:border-rose-500 bg-rose-50/30'
+                          : 'border-brandBorder-subtle focus:border-forest-500'
+                      }`}
                     />
+                    {editEmailConflict && (
+                      <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                        {editEmailConflict}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -2324,11 +2437,22 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                   <input
                     type="tel"
                     required
+                    maxLength={10}
                     name="phone"
                     value={editFormData.phone || ''}
                     onChange={handleEditInputChange}
-                    className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                    className={`w-full px-3.5 py-2 text-xs bg-surface-warm border rounded-xl focus:outline-none font-mono transition-colors ${
+                      editPhoneConflict
+                        ? 'border-rose-400 focus:border-rose-500 bg-rose-50/30'
+                        : 'border-brandBorder-subtle focus:border-forest-500'
+                    }`}
                   />
+                  {editPhoneConflict && (
+                    <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                      {editPhoneConflict}
+                    </p>
+                  )}
                 </div>
 
                 {/* Entity Specific Edit Fields */}
@@ -2396,44 +2520,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           onChange={handleEditInputChange}
                           className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-bold"
                         />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          Shift Start Time
-                        </label>
-                        <select
-                          name="startTime"
-                          value={editFormData.startTime || '10:00 AM'}
-                          onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                        >
-                          {STANDARD_TIME_SLOTS.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          Shift End Time
-                        </label>
-                        <select
-                          name="endTime"
-                          value={editFormData.endTime || '01:00 PM'}
-                          onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                        >
-                          {STANDARD_TIME_SLOTS.map((t) => (
-                            <option key={t} value={t}>
-                              {t}
-                            </option>
-                          ))}
-                        </select>
                       </div>
                     </div>
                   </div>

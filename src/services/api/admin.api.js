@@ -11,82 +11,78 @@ import accountRegistry from './accountRegistry';
  * Super Admin's session token is NEVER overwritten.
  */
 async function registerUserInDatabase({ fullName, phone, email, password, roleName }) {
-  const cleanPhone = String(phone).replace(/[^0-9]/g, '');
+  const cleanPhone = String(phone || '').replace(/[^0-9]/g, '');
   const cleanEmail = email && email.includes('@') ? email.trim().toLowerCase() : `${roleName.toLowerCase()}.${cleanPhone}@oshudwala.local`;
   const cleanPassword = password || 'Password123';
   const cleanName = fullName ? fullName.trim() : 'User';
 
-  let userId = null;
-
   // 1. First, check if a user with this phone or email already exists in PostgreSQL
   try {
-    const listRes = await apiClient.get('/admin/users', { params: { limit: 100 } });
+    const listRes = await apiClient.get('/admin/users', { params: { limit: 500 } });
     const users = listRes.data?.data?.users || listRes.data?.data || listRes.data?.users || listRes.data || [];
     if (Array.isArray(users)) {
       const existing = users.find(
         (u) =>
-          (u.phone && String(u.phone).replace(/[^0-9]/g, '') === cleanPhone) ||
+          (cleanPhone && u.phone && String(u.phone).replace(/[^0-9]/g, '') === cleanPhone) ||
           (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail)
       );
       if (existing) {
-        userId = existing.id;
+        throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
       }
     }
   } catch (err) {
+    if (err.message?.includes('Already used credentials')) {
+      throw err;
+    }
     console.warn('Backend list users pre-check notice:', err.message);
   }
 
-  // 2. If user doesn't already exist, register them via POST /api/v1/auth/register
-  if (!userId) {
-    try {
-      const regResponse = await axios.post(
-        `${API_BASE_URL}/auth/register`,
-        {
-          fullName: cleanName,
-          phone: cleanPhone,
-          ...(cleanEmail ? { email: cleanEmail } : {}),
-          password: cleanPassword,
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
-        }
-      );
-      const regData = regResponse.data?.data || regResponse.data;
-      userId = regData?.user?.id;
-    } catch (regError) {
-      console.warn('Register endpoint notice:', regError.response?.data || regError.message);
-      // If 400 or 409 (e.g. user with this phone or email already exists), locate their ID
-      if (regError.response?.status === 400 || regError.response?.status === 409) {
-        try {
-          const listRes = await apiClient.get('/admin/users', { params: { limit: 100 } });
-          const users = listRes.data?.data?.users || listRes.data?.data || listRes.data?.users || listRes.data || [];
-          if (Array.isArray(users)) {
-            const existing = users.find(
-              (u) =>
-                (u.phone && String(u.phone).replace(/[^0-9]/g, '') === cleanPhone) ||
-                (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail)
-            );
-            if (existing) {
-              userId = existing.id;
-            }
-          }
-        } catch {}
-      } else {
-        const errorMsg =
-          regError.response?.data?.message ||
-          (Array.isArray(regError.response?.data?.errors) && regError.response.data.errors[0]?.message) ||
-          regError.message ||
-          'Failed to register account in database.';
-        throw new Error(errorMsg);
+  // 2. Check local account registry as well
+  const regMatch = (cleanPhone && accountRegistry.findAccountByPhone(cleanPhone)) || (cleanEmail && accountRegistry.findAccountByEmail(cleanEmail));
+  if (regMatch) {
+    throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+  }
+
+  // 3. Register brand new user via POST /api/v1/auth/register
+  let userId = null;
+  try {
+    const regResponse = await axios.post(
+      `${API_BASE_URL}/auth/register`,
+      {
+        fullName: cleanName,
+        phone: cleanPhone,
+        ...(cleanEmail ? { email: cleanEmail } : {}),
+        password: cleanPassword,
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
       }
+    );
+    const regData = regResponse.data?.data || regResponse.data;
+    userId = regData?.user?.id;
+  } catch (regError) {
+    console.warn('Register endpoint notice:', regError.response?.data || regError.message);
+    if (
+      regError.response?.status === 400 ||
+      regError.response?.status === 409 ||
+      regError.response?.data?.message?.toLowerCase().includes('already exists') ||
+      regError.response?.data?.message?.toLowerCase().includes('already registered')
+    ) {
+      throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
     }
+    const errorMsg =
+      regError.response?.data?.message ||
+      (Array.isArray(regError.response?.data?.errors) && regError.response.data.errors[0]?.message) ||
+      regError.message ||
+      'Failed to register account in database.';
+    throw new Error(errorMsg);
   }
 
   if (!userId) {
-    throw new Error('Could not create or locate user profile in database.');
+    throw new Error('Could not create user profile in database.');
   }
 
-  // 3. Promote role to roleName (DOCTOR, RIDER, PHARMACY, RECEPTIONIST) using Super Admin's token
+  // 4. Promote role to roleName (DOCTOR, RIDER, PHARMACY, RECEPTIONIST) using Super Admin's token
   try {
     await apiClient.put(`/admin/users/${userId}/access`, {
       roleName: roleName,
@@ -119,6 +115,155 @@ export const adminApi = {
   invalidateCache() {
     cachedEntities = null;
     lastEntitiesFetch = 0;
+  },
+
+  // Validate whether phone or email is already assigned to ANY profile
+  async validateCredentialsAvailable({ phone, email, excludeId = null, excludeUserId = null }) {
+    const normalizePhone = (p) => {
+      if (!p) return '';
+      const digits = String(p).replace(/[^0-9]/g, '');
+      return digits.length >= 10 ? digits.slice(-10) : digits;
+    };
+
+    const cleanPhone = normalizePhone(phone);
+    const cleanEmail = email && typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : '';
+
+    if (!cleanPhone && !cleanEmail) return true;
+
+    // 1. Check in all loaded entities (doctors, pharmacies, clinics, riders, receptionists, users)
+    const entities = await this.fetchAllEntities();
+    const allProfiles = [
+      ...(entities.doctors || []).map((d) => ({
+        id: d.id,
+        userId: d.userId,
+        phone: d.phone || d.user?.phone,
+        email: d.email || d.user?.email,
+        name: d.fullName,
+        role: 'Doctor',
+      })),
+      ...(entities.pharmacies || []).map((p) => ({
+        id: p.id,
+        userId: p.userId,
+        phone: p.phone || p.owner?.phone,
+        email: p.email || p.owner?.email,
+        name: p.name,
+        role: 'Pharmacy',
+      })),
+      ...(entities.clinics || []).map((c) => ({
+        id: c.id,
+        userId: c.userId,
+        phone: c.phone || c.manager?.phone,
+        email: c.email || c.manager?.email,
+        name: c.name,
+        role: 'Clinic',
+      })),
+      ...(entities.riders || []).map((r) => ({
+        id: r.id,
+        userId: r.userId,
+        phone: r.phone || r.user?.phone,
+        email: r.email || r.user?.email,
+        name: r.fullName,
+        role: 'Rider',
+      })),
+      ...(entities.receptionists || []).map((rc) => ({
+        id: rc.id,
+        userId: rc.userId,
+        phone: rc.phone || rc.user?.phone,
+        email: rc.email || rc.user?.email,
+        name: rc.fullName,
+        role: 'Receptionist',
+      })),
+      ...(entities.users || []).map((u) => ({
+        id: u.id,
+        userId: u.id,
+        phone: u.phone,
+        email: u.email,
+        name: u.fullName,
+        role: 'User',
+      })),
+    ];
+
+    const isExcluded = (p) =>
+      Boolean(
+        (excludeId && (p.id === excludeId || p.userId === excludeId)) ||
+        (excludeUserId && (p.id === excludeUserId || p.userId === excludeUserId))
+      );
+
+    const phoneMatch = cleanPhone
+      ? allProfiles.find(
+          (p) =>
+            !isExcluded(p) &&
+            p.phone &&
+            normalizePhone(p.phone) === cleanPhone
+        )
+      : null;
+
+    if (phoneMatch) {
+      throw new Error(`Already used credentials. Mobile number is already assigned to ${phoneMatch.role} "${phoneMatch.name}".`);
+    }
+
+    const emailMatch = cleanEmail
+      ? allProfiles.find(
+          (p) =>
+            !isExcluded(p) &&
+            p.email &&
+            p.email.trim().toLowerCase() === cleanEmail
+        )
+      : null;
+
+    if (emailMatch) {
+      throw new Error(`Already used credentials. Email address is already assigned to ${emailMatch.role} "${emailMatch.name}".`);
+    }
+
+    // 2. Double check directly with backend users list
+    try {
+      const usersRes = await apiClient.get('/admin/users', { params: { limit: 500 } });
+      const backendUsers = usersRes.data?.data?.users || usersRes.data?.data || usersRes.data?.users || usersRes.data || [];
+      if (Array.isArray(backendUsers)) {
+        const uPhoneMatch = cleanPhone
+          ? backendUsers.find(
+              (u) =>
+                u.id !== excludeId &&
+                u.id !== excludeUserId &&
+                u.phone &&
+                normalizePhone(u.phone) === cleanPhone
+            )
+          : null;
+        if (uPhoneMatch) {
+          throw new Error(`Already used credentials. Mobile number is already assigned to registered user "${uPhoneMatch.fullName}".`);
+        }
+
+        const uEmailMatch = cleanEmail
+          ? backendUsers.find(
+              (u) =>
+                u.id !== excludeId &&
+                u.id !== excludeUserId &&
+                u.email &&
+                u.email.trim().toLowerCase() === cleanEmail
+            )
+          : null;
+        if (uEmailMatch) {
+          throw new Error(`Already used credentials. Email address is already assigned to registered user "${uEmailMatch.fullName}".`);
+        }
+      }
+    } catch (err) {
+      if (err.message?.includes('Already used credentials')) {
+        throw err;
+      }
+    }
+
+    // 3. Double check with local accounts registry
+    const localPhoneMatch = cleanPhone ? accountRegistry.findAccountByPhone(cleanPhone) : null;
+    if (localPhoneMatch && localPhoneMatch.id !== excludeId && localPhoneMatch.userId !== excludeUserId) {
+      throw new Error(`Already used credentials. Mobile number is already assigned to account "${localPhoneMatch.fullName}".`);
+    }
+
+    const localEmailMatch = cleanEmail ? accountRegistry.findAccountByEmail(cleanEmail) : null;
+    if (localEmailMatch && localEmailMatch.id !== excludeId && localEmailMatch.userId !== excludeUserId) {
+      throw new Error(`Already used credentials. Email address is already assigned to account "${localEmailMatch.fullName}".`);
+    }
+
+    return true;
   },
 
   // Consolidated fast parallel fetcher for ALL network entities
@@ -711,6 +856,9 @@ export const adminApi = {
       ? data.email.trim().toLowerCase()
       : `dr.${cleanPhone || Date.now()}@oshudwala.local`;
 
+    // 0. Strict check across all profiles and backend database
+    await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
+
     // 1. First register user credentials in database with role DOCTOR
     let registeredUser = null;
     try {
@@ -722,6 +870,9 @@ export const adminApi = {
         roleName: 'DOCTOR',
       });
     } catch (e) {
+      if (e.message && e.message.includes('Already used credentials')) {
+        throw e;
+      }
       console.warn('Doctor user registration notice:', e.message);
     }
 
@@ -880,6 +1031,9 @@ export const adminApi = {
       ? data.email.trim().toLowerCase()
       : `pharmacy.${cleanPhone || Date.now()}@oshudwala.local`;
 
+    // 0. Strict check across all profiles and backend database
+    await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
+
     // 1. Get or find active Location ID from PostgreSQL
     let locationId = data.locationId;
     if (!locationId) {
@@ -934,6 +1088,14 @@ export const adminApi = {
       });
       createdPharmacy = resp.data?.data || resp.data;
     } catch (phErr) {
+      if (
+        phErr.response?.status === 400 ||
+        phErr.response?.status === 409 ||
+        phErr.response?.data?.message?.toLowerCase().includes('already') ||
+        phErr.message?.includes('Already used credentials')
+      ) {
+        throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+      }
       console.warn('POST /pharmacies/admin-create notice:', phErr.response?.data || phErr.message);
       // Fallback: register user directly
       await registerUserInDatabase({
@@ -1080,6 +1242,9 @@ export const adminApi = {
       ? data.email.trim().toLowerCase()
       : `clinic.${cleanPhone || Date.now()}@oshudwala.local`;
 
+    // 0. Strict check across all profiles and backend database
+    await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
+
     // 1. Get or find active Location ID from PostgreSQL
     let locationId = data.locationId;
     if (!locationId) {
@@ -1168,6 +1333,14 @@ export const adminApi = {
         }
       }
     } catch (err) {
+      if (
+        err.response?.status === 400 ||
+        err.response?.status === 409 ||
+        err.response?.data?.message?.toLowerCase().includes('already') ||
+        err.message?.includes('Already used credentials')
+      ) {
+        throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+      }
       console.warn('POST /pharmacies/admin-create for clinic notice:', err.response?.data || err.message);
       // Fallback: register user with RECEPTIONIST role
       await registerUserInDatabase({
@@ -1298,6 +1471,9 @@ export const adminApi = {
       ? data.email.trim().toLowerCase()
       : `rider.${cleanPhone || Date.now()}@oshudwala.local`;
 
+    // 0. Strict check across all profiles and backend database
+    await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
+
     let createdRider = null;
     try {
       const resp = await apiClient.post('/riders/admin-create', {
@@ -1311,6 +1487,14 @@ export const adminApi = {
       });
       createdRider = resp.data?.data || resp.data;
     } catch (err) {
+      if (
+        err.response?.status === 400 ||
+        err.response?.status === 409 ||
+        err.response?.data?.message?.toLowerCase().includes('already') ||
+        err.message?.includes('Already used credentials')
+      ) {
+        throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+      }
       console.warn('POST /riders/admin-create notice:', err.response?.data || err.message);
       // Fallback: register user with RIDER role
       const reg = await registerUserInDatabase({
@@ -1399,6 +1583,9 @@ export const adminApi = {
       ? data.email.trim().toLowerCase()
       : `receptionist.${cleanPhone || Date.now()}@oshudwala.local`;
 
+    // 0. Strict check across all profiles and backend database
+    await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
+
     let created = null;
     const targetPharmacyId = data.clinicId || data.pharmacyId;
 
@@ -1412,6 +1599,14 @@ export const adminApi = {
         });
         created = resp.data?.data || resp.data;
       } catch (err) {
+        if (
+          err.response?.status === 400 ||
+          err.response?.status === 409 ||
+          err.response?.data?.message?.toLowerCase().includes('already') ||
+          err.message?.includes('Already used credentials')
+        ) {
+          throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
+        }
         console.warn('Pharmacy receptionist create notice:', err.message);
       }
     }
@@ -1614,6 +1809,14 @@ export const adminApi = {
 
   async updateDoctor(id, data) {
     this.invalidateCache();
+    if (data.phone || data.email) {
+      await this.validateCredentialsAvailable({
+        phone: data.phone,
+        email: data.email,
+        excludeId: id,
+        excludeUserId: data.userId,
+      });
+    }
     try {
       if (id && id.includes('-')) {
         await apiClient.put(`/doctors/${id}`, {
@@ -1664,6 +1867,14 @@ export const adminApi = {
 
   async updatePharmacy(id, data) {
     this.invalidateCache();
+    if (data.phone || data.email) {
+      await this.validateCredentialsAvailable({
+        phone: data.phone,
+        email: data.email,
+        excludeId: id,
+        excludeUserId: data.userId,
+      });
+    }
     const hasClinicService = Boolean(data.hasClinicService);
     const hasMedicineService = data.hasMedicineService !== false;
 
@@ -1725,6 +1936,14 @@ export const adminApi = {
 
   async updateClinic(id, data) {
     this.invalidateCache();
+    if (data.phone || data.email) {
+      await this.validateCredentialsAvailable({
+        phone: data.phone,
+        email: data.email,
+        excludeId: id,
+        excludeUserId: data.userId,
+      });
+    }
     const hasClinicService = data.hasClinicService !== false;
     const hasMedicineService = Boolean(data.hasMedicineService);
 
@@ -1788,6 +2007,14 @@ export const adminApi = {
 
   async updateRider(id, data) {
     this.invalidateCache();
+    if (data.phone || data.email) {
+      await this.validateCredentialsAvailable({
+        phone: data.phone,
+        email: data.email,
+        excludeId: id,
+        excludeUserId: data.userId,
+      });
+    }
     try {
       await apiClient.put(`/admin/riders/${id}`, data);
     } catch (err) {
@@ -1811,6 +2038,14 @@ export const adminApi = {
 
   async updateUser(id, data) {
     this.invalidateCache();
+    if (data.phone || data.email) {
+      await this.validateCredentialsAvailable({
+        phone: data.phone,
+        email: data.email,
+        excludeId: id,
+        excludeUserId: id,
+      });
+    }
     try {
       await apiClient.put(`/admin/users/${id}/access`, {
         roleName: 'PATIENT',

@@ -136,6 +136,24 @@ export const accountRegistry = {
     });
   },
 
+  findAccountByPhone(phone) {
+    if (!phone) return null;
+    const cleanPhone = String(phone).replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) return null;
+    const last10 = cleanPhone.slice(-10);
+    return this.getAccounts().find((a) => {
+      if (!a.phone) return false;
+      const aClean = String(a.phone).replace(/[^0-9]/g, '');
+      return aClean.length >= 10 && aClean.slice(-10) === last10;
+    });
+  },
+
+  findAccountByEmail(email) {
+    if (!email) return null;
+    const cleanEmail = String(email).trim().toLowerCase();
+    return this.getAccounts().find((a) => a.email && a.email.trim().toLowerCase() === cleanEmail);
+  },
+
   // Register a new staff or user account created from Management tab or Register page
   registerAccount({ id, fullName, email, phone, password, role, entityData }) {
     const accounts = this.getAccounts();
