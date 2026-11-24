@@ -27,7 +27,8 @@ import {
   UserPlus,
   Sliders,
   ShieldCheck,
-  DollarSign
+  DollarSign,
+  CalendarPlus,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -172,6 +173,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             items: [
               { label: 'Doctor Availability', path: '/receptionist/doctors', icon: Stethoscope },
               { label: 'Add / Remove Doctors', path: '/receptionist/manage-doctors', icon: UserPlus },
+              { label: 'Assign Doctors', path: '/receptionist/assign-doctors', icon: CalendarPlus },
             ],
           },
         ];
@@ -239,6 +241,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
                       item.path !== '/receptionist' &&
                       item.path !== '/receptionist/doctors' &&
                       item.path !== '/receptionist/manage-doctors' &&
+                      item.path !== '/receptionist/assign-doctors' &&
                       location.pathname.startsWith(item.path));
                 }
 

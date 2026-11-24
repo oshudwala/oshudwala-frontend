@@ -457,6 +457,76 @@ export const clinicApi = {
   },
 
   /**
+   * Update an existing doctor's details in clinic roster and synchronize globally
+   */
+  async updateClinicDoctor(clinicId = 'default', doctorId, updates) {
+    const storageKey = `${CLINIC_DOCTORS_KEY_PREFIX}${clinicId}`;
+    const currentDoctors = await this.getClinicDoctors(clinicId);
+
+    const index = currentDoctors.findIndex((d) => d.id === doctorId || d.doctorId === doctorId);
+    if (index >= 0) {
+      currentDoctors[index] = {
+        ...currentDoctors[index],
+        ...updates,
+        name: updates.fullName || updates.name || currentDoctors[index].name,
+        fullName: updates.fullName || updates.name || currentDoctors[index].fullName,
+        specialty: updates.specialization || updates.specialty || currentDoctors[index].specialty,
+        specialization: updates.specialization || updates.specialty || currentDoctors[index].specialization,
+        room: updates.room || currentDoctors[index].room,
+        chamber: updates.room || currentDoctors[index].chamber,
+        shift: updates.shift || currentDoctors[index].shift,
+        fee: updates.fee !== undefined ? Number(updates.fee) : currentDoctors[index].fee,
+        imageUrl: updates.imageUrl !== undefined ? updates.imageUrl : currentDoctors[index].imageUrl,
+      };
+
+      memoryDoctorsCache.set(storageKey, currentDoctors);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(currentDoctors));
+        window.dispatchEvent(new CustomEvent('oshud_clinic_doctors_updated', { detail: currentDoctors }));
+      } catch (e) {
+        console.warn('Failed to save updated clinic doctor:', e);
+      }
+
+      // Also sync to global accountRegistry
+      try {
+        accountRegistry.updateAccount(doctorId, {
+          fullName: currentDoctors[index].fullName,
+          phone: updates.phone,
+          email: updates.email,
+          imageUrl: updates.imageUrl,
+          entityData: {
+            specialization: currentDoctors[index].specialization,
+            qualifications: updates.qualifications,
+            registrationNumber: updates.registrationNumber,
+            experienceYears: updates.experienceYears,
+            consultationFeePaise: (Number(updates.fee) || 500) * 100,
+            room: currentDoctors[index].room,
+            shift: currentDoctors[index].shift,
+          },
+        });
+      } catch {}
+
+      // Attempt backend doctor update
+      try {
+        await adminApi.updateDoctor(doctorId, {
+          fullName: currentDoctors[index].fullName,
+          email: updates.email,
+          phone: updates.phone ? String(updates.phone).replace(/[^0-9]/g, '') : undefined,
+          imageUrl: updates.imageUrl,
+          specialization: currentDoctors[index].specialization,
+          qualifications: updates.qualifications,
+          registrationNumber: updates.registrationNumber,
+          experienceYears: Number(updates.experienceYears) || 0,
+          consultationFeePaise: (Number(updates.fee) || 500) * 100,
+        });
+      } catch {}
+
+      return currentDoctors[index];
+    }
+    return null;
+  },
+
+  /**
    * Get clinic appointments (Instant cache-first <5ms)
    */
   async getClinicAppointments(clinicId = 'default') {

@@ -221,6 +221,7 @@ export const AppRoutes = () => {
         <Route path="appointments" element={<ReceptionistAppointmentsPage />} />
         <Route path="doctors" element={<ReceptionistDoctorsPage />} />
         <Route path="manage-doctors" element={<ReceptionistDoctorsPage initialTab="manage" />} />
+        <Route path="assign-doctors" element={<ReceptionistDoctorsPage initialTab="assign" />} />
       </Route>
 
       {/* 404 Fallback */}

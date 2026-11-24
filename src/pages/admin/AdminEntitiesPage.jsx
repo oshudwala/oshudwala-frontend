@@ -43,6 +43,36 @@ import adminApi from '../../services/api/admin.api';
 import accountRegistry from '../../services/api/accountRegistry';
 import ImageDropzone from '../../components/common/ImageDropzone';
 
+const STANDARD_TIME_SLOTS = [
+  '08:00 AM',
+  '08:30 AM',
+  '09:00 AM',
+  '09:30 AM',
+  '10:00 AM',
+  '10:30 AM',
+  '11:00 AM',
+  '11:30 AM',
+  '12:00 PM',
+  '12:30 PM',
+  '01:00 PM',
+  '01:30 PM',
+  '02:00 PM',
+  '02:30 PM',
+  '03:00 PM',
+  '03:30 PM',
+  '04:00 PM',
+  '04:30 PM',
+  '05:00 PM',
+  '05:30 PM',
+  '06:00 PM',
+  '06:30 PM',
+  '07:00 PM',
+  '07:30 PM',
+  '08:00 PM',
+  '08:30 PM',
+  '09:00 PM',
+];
+
 export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -92,6 +122,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     experienceYears: '5',
     specialization: 'General Physician',
     consultationFee: '500',
+    startTime: '10:00 AM',
+    endTime: '01:00 PM',
     clinicName: '',
     // Pharmacy specific
     ownerName: '',
@@ -326,6 +358,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       registrationNumber: row.registrationNumber || '',
       experienceYears: String(row.experienceYears || '5'),
       consultationFee: String(((row.consultationFeePaise || 50000) / 100).toFixed(0)),
+      startTime: row.startTime || (row.shift ? row.shift.split('–')[0]?.trim().split('-')[0]?.trim() : '10:00 AM') || '10:00 AM',
+      endTime: row.endTime || (row.shift ? (row.shift.split('–')[1] || row.shift.split('-')[1])?.trim() : '01:00 PM') || '01:00 PM',
       // Clinic
       chamberCount: row.settings?.chamberCount || row.chamberCount || '6 Chambers',
       // Pharmacy
@@ -359,6 +393,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           registrationNumber: editFormData.registrationNumber,
           experienceYears: Number(editFormData.experienceYears) || 0,
           consultationFeePaise: (Number(editFormData.consultationFee) || 500) * 100,
+          startTime: editFormData.startTime || '10:00 AM',
+          endTime: editFormData.endTime || '01:00 PM',
+          shift: `${editFormData.startTime || '10:00 AM'} – ${editFormData.endTime || '01:00 PM'}`,
         });
         addToast(`Doctor ${editFormData.fullName} details updated successfully!`, 'success');
       } else if (type === 'pharmacies') {
@@ -437,7 +474,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           experienceYears: Number(formData.experienceYears) || 0,
           specialization: formData.specialization,
           consultationFeePaise: (Number(formData.consultationFee) || 500) * 100,
-          clinicName: formData.clinicName,
+          startTime: formData.startTime || '10:00 AM',
+          endTime: formData.endTime || '01:00 PM',
+          shift: `${formData.startTime || '10:00 AM'} – ${formData.endTime || '01:00 PM'}`,
         };
         const created = await adminApi.createDoctor(payload);
         setDoctors((prev) => [created, ...prev]);
@@ -511,6 +550,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         experienceYears: '5',
         specialization: 'General Physician',
         consultationFee: '500',
+        startTime: '10:00 AM',
+        endTime: '01:00 PM',
         clinicName: '',
         ownerName: '',
         licenseNumber: '',
@@ -778,6 +819,18 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         <div>
           <p className="text-xs font-semibold text-brandText-main">{row.user?.email || row.email}</p>
           <p className="text-[11px] text-brandText-secondary font-mono">{row.user?.phone || row.phone}</p>
+        </div>
+      ),
+    },
+    {
+      header: 'Shift Timing',
+      key: 'shift',
+      render: (row) => (
+        <div>
+          <span className="text-xs font-semibold text-forest-800">
+            {row.shift || (row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : '10:00 AM – 01:00 PM')}
+          </span>
+          <p className="text-[10px] text-brandText-muted">Daily Consultation</p>
         </div>
       ),
     },
@@ -1643,15 +1696,53 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
                       <div>
                         <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          Chamber Fee (₹)
+                          Consultation Fee (₹) *
                         </label>
                         <input
                           type="number"
                           name="consultationFee"
                           value={formData.consultationFee}
                           onChange={handleInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-bold"
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">
+                          Shift Start Time *
+                        </label>
+                        <select
+                          name="startTime"
+                          value={formData.startTime || '10:00 AM'}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        >
+                          {STANDARD_TIME_SLOTS.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">
+                          Shift End Time *
+                        </label>
+                        <select
+                          name="endTime"
+                          value={formData.endTime || '01:00 PM'}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        >
+                          {STANDARD_TIME_SLOTS.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -1946,14 +2037,52 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">Chamber Fee (₹)</label>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Consultation Fee (₹)</label>
                         <input
                           type="number"
                           name="consultationFee"
                           value={editFormData.consultationFee || ''}
                           onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-bold"
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">
+                          Shift Start Time
+                        </label>
+                        <select
+                          name="startTime"
+                          value={editFormData.startTime || '10:00 AM'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        >
+                          {STANDARD_TIME_SLOTS.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">
+                          Shift End Time
+                        </label>
+                        <select
+                          name="endTime"
+                          value={editFormData.endTime || '01:00 PM'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        >
+                          {STANDARD_TIME_SLOTS.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </div>

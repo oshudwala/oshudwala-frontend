@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { authApi } from '../services/api/auth.api';
 import { userApi } from '../services/api/user.api';
 import { tokenStorage, onSessionExpired } from '../services/api/client';
-import accountRegistry from '../services/api/accountRegistry';
 
 const AuthContext = createContext(null);
 
@@ -50,10 +49,9 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const profile = await userApi.getProfile();
-      const registeredAccount = accountRegistry.findAccount(profile.phone || profile.email || profile.id);
-      const effectiveRole = (registeredAccount && registeredAccount.role !== 'PATIENT')
-        ? registeredAccount.role
-        : (cachedUser?.role && cachedUser.role !== 'PATIENT' ? cachedUser.role : normalizeRole(profile.role?.name || profile.role));
+      const effectiveRole = normalizeRole(
+        profile.role?.name || profile.role || cachedUser?.role
+      );
 
       const normalizedUser = {
         id: profile.id,
@@ -114,16 +112,14 @@ export const AuthProvider = ({ children }) => {
       const loginId = identifier || phone || email;
       const res = await authApi.login({ identifier: loginId, password });
       setToken(res.accessToken);
-
-      const registeredAccount = accountRegistry.findAccount(loginId || res.user?.phone || res.user?.email || res.user?.id);
-      const staffRole = (registeredAccount && registeredAccount.role !== 'PATIENT')
-        ? registeredAccount.role
-        : (res.user?.role && res.user.role !== 'PATIENT' ? res.user.role : null);
+      const backendRole = normalizeRole(res.user?.role);
 
       // Hydrate full user profile from backend
       try {
         const fullProfile = await userApi.getProfile();
-        const effectiveRole = staffRole || normalizeRole(fullProfile.role?.name || fullProfile.role || res.user?.role);
+        const effectiveRole = normalizeRole(
+          fullProfile.role?.name || fullProfile.role || backendRole
+        );
         const userObj = {
           id: fullProfile.id,
           name: fullProfile.fullName,
@@ -139,7 +135,7 @@ export const AuthProvider = ({ children }) => {
         setUser(userObj);
         return { user: userObj, token: res.accessToken };
       } catch {
-        const effectiveRole = staffRole || normalizeRole(res.user?.role);
+        const effectiveRole = backendRole;
         const fallbackUser = {
           ...res.user,
           name: res.user?.fullName,

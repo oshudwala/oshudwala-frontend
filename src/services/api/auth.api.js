@@ -79,12 +79,11 @@ export const authApi = {
       });
       const data = response.data?.data || response.data;
       if (data?.accessToken) {
-        // Cross reference local account registry to ensure staff accounts (Doctor, Rider, Pharmacy, Admin)
-        // are never downgraded to PATIENT by backend default role mapping
-        const localAccount = accountRegistry.findAccount(cleanId);
-        const rawRole = (localAccount && localAccount.role !== 'PATIENT')
-          ? localAccount.role
-          : (typeof data.user?.role === 'object' ? data.user?.role?.name : data.user?.role || 'PATIENT');
+        // Backend role and credentials are authoritative. Local registry is only for
+        // entity metadata and must not override database authentication or roles.
+        const rawRole = typeof data.user?.role === 'object'
+          ? data.user?.role?.name
+          : data.user?.role || 'PATIENT';
         let resolvedRole = String(rawRole || '').trim().toUpperCase();
         if (resolvedRole === 'ADMIN' || resolvedRole === 'SUPERADMIN') resolvedRole = 'SUPER_ADMIN';
 
@@ -111,6 +110,11 @@ export const authApi = {
       try {
         const localUser = accountRegistry.authenticate(cleanId, password);
         if (localUser) {
+          // Super Admin authentication must always come from the backend/database.
+          if (String(localUser.role || '').toUpperCase() === 'SUPER_ADMIN') {
+            throw backendErr;
+          }
+
           // Attempt on-the-fly registration into PostgreSQL database so backend knows this account
           try {
             const regRes = await axios.post(

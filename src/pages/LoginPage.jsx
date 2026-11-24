@@ -19,7 +19,6 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import Button from '../components/common/Button';
 import Logo from '../components/common/Logo';
-import accountRegistry from '../services/api/accountRegistry';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -163,10 +162,9 @@ export const LoginPage = () => {
     setIsLoading(true);
     try {
       const result = await login({ identifier: cleanIdentifier, password });
-      const localStaff = accountRegistry.findAccount(cleanIdentifier);
-      const rawRole = (localStaff && localStaff.role !== 'PATIENT')
-        ? localStaff.role
-        : (typeof result.user?.role === 'object' ? result.user?.role?.name : result.user?.role || 'STAFF');
+      const rawRole = typeof result.user?.role === 'object'
+        ? result.user?.role?.name
+        : result.user?.role || 'STAFF';
       
       let userRole = String(rawRole || '').trim().toUpperCase();
       if (userRole === 'ADMIN' || userRole === 'SUPERADMIN') userRole = 'SUPER_ADMIN';
