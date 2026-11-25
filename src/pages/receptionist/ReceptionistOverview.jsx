@@ -124,21 +124,21 @@ export const ReceptionistOverview = () => {
         {/* Quick Registration & Queue Display Links */}
         <div className="flex items-center gap-2.5 flex-wrap">
           <Link
-            to="/receptionist/registration"
+            to="/clinic/registration"
             className="px-4 py-2 bg-forest-800 hover:bg-forest-700 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2"
           >
             <Plus className="w-4 h-4 text-emerald-300" />
             <span>Register Walk-in Patient</span>
           </Link>
           <Link
-            to="/receptionist/appointments"
+            to="/clinic/appointments"
             className="px-3.5 py-2 bg-surface-warm hover:bg-forest-50 text-forest-800 border border-brandBorder-subtle text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
           >
             <CalendarCheck className="w-4 h-4 text-forest-600" />
             <span>Check-in Appointments</span>
           </Link>
           <Link
-            to="/receptionist/queue"
+            to="/clinic/queue"
             className="px-3.5 py-2 bg-surface-warm hover:bg-forest-50 text-forest-800 border border-brandBorder-subtle text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
           >
             <Tv className="w-4 h-4 text-forest-600" />
@@ -203,7 +203,7 @@ export const ReceptionistOverview = () => {
               </div>
               <div className="flex items-center gap-2">
                 <Link
-                  to="/receptionist/queue"
+                  to="/clinic/queue"
                   className="px-3 py-1.5 rounded-xl text-xs font-bold text-forest-800 bg-surface-warm hover:bg-forest-50 border border-brandBorder-subtle transition-colors flex items-center gap-1"
                 >
                   <span>Chamber Deck</span>
@@ -264,7 +264,7 @@ export const ReceptionistOverview = () => {
                 <span>Chamber Occupancy</span>
               </h3>
               <Link
-                to="/receptionist/doctors"
+                to="/clinic/doctors"
                 className="text-xs font-bold text-forest-700 hover:text-forest-900 flex items-center gap-0.5"
               >
                 <span>Roster</span>

@@ -138,6 +138,22 @@ export const clinicApi = {
       console.warn('Local clinic profile read notice:', e.message);
     }
 
+    // 2. Fetch live assigned facility from backend /pharmacies/my
+    try {
+      const myPhRes = await apiClient.get('/pharmacies/my');
+      const facilities = myPhRes.data?.data || myPhRes.data || [];
+      const primaryFacility = Array.isArray(facilities) ? facilities[0] : facilities;
+      if (primaryFacility && primaryFacility.name) {
+        clinicName = primaryFacility.name;
+        city = primaryFacility.city || primaryFacility.location?.city || city;
+        address = primaryFacility.line1 ? `${primaryFacility.line1}, ${city}` : address;
+        phone = primaryFacility.phone || phone;
+        email = primaryFacility.email || email;
+      }
+    } catch (e) {
+      // Offline or network error fallback silently
+    }
+
     const resolved = {
       id: currentUser?.id || 'clinic-primary-01',
       name: clinicName,

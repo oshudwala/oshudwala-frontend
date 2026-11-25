@@ -196,6 +196,23 @@ let cachedEntities = null;
 let lastEntitiesFetch = 0;
 const ENTITIES_CACHE_TTL = 15000; // 15 seconds
 
+const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(str || ''));
+
+const extractErrorMessage = (err, fallbackMessage = 'Operation failed') => {
+  const data = err?.response?.data;
+  if (data?.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+    const errorDetails = data.errors
+      .map((e) => (typeof e === 'string' ? e : e.message || (e.field ? `${e.field}: invalid` : '')))
+      .filter(Boolean)
+      .join(', ');
+    if (errorDetails) return errorDetails;
+  }
+  if (data?.message) {
+    return data.message;
+  }
+  return err?.message || fallbackMessage;
+};
+
 export const adminApi = {
   // Read in-memory cached entities synchronously
   getCachedEntities() {
@@ -311,7 +328,10 @@ export const adminApi = {
         (excludeId && (p.id === excludeId || p.userId === excludeId)) ||
         (excludeUserId && (p.id === excludeUserId || p.userId === excludeUserId)) ||
         (cleanOrigPhone && p.phone && normalizePhone(p.phone) === cleanOrigPhone) ||
-        (cleanOrigEmail && p.email && p.email.trim().toLowerCase() === cleanOrigEmail)
+        (cleanOrigEmail && p.email && p.email.trim().toLowerCase() === cleanOrigEmail) ||
+        p.status === 'DEACTIVATED' ||
+        p.status === 'CLOSED' ||
+        accountRegistry.isEntityRemoved(p.id, p.userId)
       );
 
     if (shouldCheckPhone) {
@@ -322,7 +342,7 @@ export const adminApi = {
           normalizePhone(p.phone) === cleanPhone
       );
       if (phoneMatch) {
-        throw new Error(`Already used credentials. Mobile number is already assigned to ${phoneMatch.role} "${phoneMatch.name}".`);
+        throw new Error(`Already used credentials. Mobile number is already assigned to another user.`);
       }
     }
 
@@ -334,7 +354,7 @@ export const adminApi = {
           p.email.trim().toLowerCase() === cleanEmail
       );
       if (emailMatch) {
-        throw new Error(`Already used credentials. Email address is already assigned to ${emailMatch.role} "${emailMatch.name}".`);
+        throw new Error(`Already used credentials. Email address is already assigned to another user.`);
       }
     }
 
@@ -350,11 +370,13 @@ export const adminApi = {
               u.id !== excludeUserId &&
               (!cleanOrigPhone || normalizePhone(u.phone) !== cleanOrigPhone) &&
               (!cleanOrigEmail || u.email?.trim().toLowerCase() !== cleanOrigEmail) &&
+              u.status !== 'DEACTIVATED' &&
+              !accountRegistry.isEntityRemoved(u.id) &&
               u.phone &&
               normalizePhone(u.phone) === cleanPhone
           );
           if (uPhoneMatch) {
-            throw new Error(`Already used credentials. Mobile number is already assigned to registered user "${uPhoneMatch.fullName}".`);
+            throw new Error(`Already used credentials. Mobile number is already assigned to another user.`);
           }
         }
 
@@ -365,11 +387,13 @@ export const adminApi = {
               u.id !== excludeUserId &&
               (!cleanOrigPhone || normalizePhone(u.phone) !== cleanOrigPhone) &&
               (!cleanOrigEmail || u.email?.trim().toLowerCase() !== cleanOrigEmail) &&
+              u.status !== 'DEACTIVATED' &&
+              !accountRegistry.isEntityRemoved(u.id) &&
               u.email &&
               u.email.trim().toLowerCase() === cleanEmail
           );
           if (uEmailMatch) {
-            throw new Error(`Already used credentials. Email address is already assigned to registered user "${uEmailMatch.fullName}".`);
+            throw new Error(`Already used credentials. Email address is already assigned to another user.`);
           }
         }
       }
@@ -384,11 +408,13 @@ export const adminApi = {
       const localPhoneMatch = accountRegistry.findAccountByPhone(cleanPhone);
       if (
         localPhoneMatch &&
+        !accountRegistry.isEntityRemoved(localPhoneMatch.id, localPhoneMatch.userId) &&
+        localPhoneMatch.status !== 'DEACTIVATED' &&
         localPhoneMatch.id !== excludeId &&
         localPhoneMatch.userId !== excludeUserId &&
         (!cleanOrigPhone || normalizePhone(localPhoneMatch.phone) !== cleanOrigPhone)
       ) {
-        throw new Error(`Already used credentials. Mobile number is already assigned to account "${localPhoneMatch.fullName}".`);
+        throw new Error(`Already used credentials. Mobile number is already assigned to another user.`);
       }
     }
 
@@ -396,11 +422,13 @@ export const adminApi = {
       const localEmailMatch = accountRegistry.findAccountByEmail(cleanEmail);
       if (
         localEmailMatch &&
+        !accountRegistry.isEntityRemoved(localEmailMatch.id, localEmailMatch.userId) &&
+        localEmailMatch.status !== 'DEACTIVATED' &&
         localEmailMatch.id !== excludeId &&
         localEmailMatch.userId !== excludeUserId &&
         (!cleanOrigEmail || localEmailMatch.email?.trim().toLowerCase() !== cleanOrigEmail)
       ) {
-        throw new Error(`Already used credentials. Email address is already assigned to account "${localEmailMatch.fullName}".`);
+        throw new Error(`Already used credentials. Email address is already assigned to another user.`);
       }
     }
 
@@ -1070,9 +1098,17 @@ export const adminApi = {
   async createDoctor(data) {
     this.invalidateCache();
     const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      throw new Error('Valid 10-digit phone number is required');
+    }
     const validEmail = (data.email && data.email.includes('@'))
       ? data.email.trim().toLowerCase()
       : `dr.${cleanPhone || Date.now()}@oshudwala.local`;
+
+    if (data.password && data.password.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+    const doctorPassword = (data.password && data.password.length >= 8) ? data.password : 'Doctor123';
 
     // 0. Strict check across all profiles and backend database
     await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
@@ -1087,7 +1123,7 @@ export const adminApi = {
         fullName: data.fullName,
         phone: cleanPhone,
         email: validEmail,
-        password: data.password || 'Doctor123',
+        password: doctorPassword,
         roleName: 'DOCTOR',
       });
     } catch (e) {
@@ -1230,12 +1266,15 @@ export const adminApi = {
     this.invalidateCache();
     const targetUserId = userId || id;
     try {
-      await apiClient.put(`/admin/users/${targetUserId}/access`, {
-        roleName: 'DOCTOR',
-        status: 'DEACTIVATED',
-      });
+      await apiClient.delete(`/admin/users/${targetUserId}`);
     } catch (e) {
-      console.warn('Deactivate doctor access notice:', e.message);
+      console.warn('Backend delete doctor user notice:', e.message);
+      try {
+        await apiClient.put(`/admin/users/${targetUserId}/access`, {
+          roleName: 'DOCTOR',
+          status: 'DEACTIVATED',
+        });
+      } catch {}
     }
 
     accountRegistry.removeAccount(id);
@@ -1243,6 +1282,24 @@ export const adminApi = {
     accountRegistry.markEntityRemoved(id);
     accountRegistry.markEntityRemoved(targetUserId);
 
+    try {
+      const curSettings = await this.getSettings();
+      const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'doctor_images')?.value || {});
+      if (curImages[id] || (targetUserId && curImages[targetUserId])) {
+        delete curImages[id];
+        if (targetUserId) delete curImages[targetUserId];
+        await this.setSetting('doctor_images', curImages);
+        localStorage.setItem('oshud_doctor_images', JSON.stringify(curImages));
+      }
+      const curFeatured = curSettings?.find?.((s) => s.key === 'featured_doctors')?.value || [];
+      if (Array.isArray(curFeatured) && (curFeatured.includes(id) || curFeatured.includes(targetUserId))) {
+        const updated = curFeatured.filter((fid) => fid !== id && fid !== targetUserId);
+        await this.setSetting('featured_doctors', updated);
+        localStorage.setItem('oshud_featured_doctors', JSON.stringify(updated));
+      }
+    } catch {}
+
+    this.invalidateCache();
     return { success: true, id };
   },
 
@@ -1250,9 +1307,17 @@ export const adminApi = {
   async createPharmacy(data) {
     this.invalidateCache();
     const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      throw new Error('Valid 10-digit phone number is required');
+    }
     const validEmail = (data.email && data.email.includes('@'))
       ? data.email.trim().toLowerCase()
       : `pharmacy.${cleanPhone || Date.now()}@oshudwala.local`;
+
+    if (data.password && data.password.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+    const ownerPassword = (data.password && data.password.length >= 8) ? data.password : 'Pharmacy123';
 
     // 0. Strict check across all profiles and backend database
     await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
@@ -1261,14 +1326,16 @@ export const adminApi = {
     const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
 
     // 1. Get or find active Location ID from PostgreSQL
-    let locationId = data.locationId;
+    let locationId = isUUID(data.locationId) ? data.locationId : null;
     if (!locationId) {
       try {
         const locRes = await apiClient.get('/locations');
         const locs = locRes.data?.data?.items || locRes.data?.data || locRes.data || [];
         if (Array.isArray(locs) && locs.length > 0) {
-          const match = locs.find((l) => (data.city && l.city?.toLowerCase() === data.city.toLowerCase()) || (data.pincode && l.pincode === data.pincode));
-          locationId = match ? match.id : locs[0].id;
+          const activeLocs = locs.filter((l) => l.isActive !== false);
+          const pool = activeLocs.length > 0 ? activeLocs : locs;
+          const match = pool.find((l) => (data.city && l.city?.toLowerCase() === data.city.toLowerCase()) || (data.pincode && l.pincode === data.pincode));
+          locationId = match ? match.id : pool[0].id;
         }
       } catch (locErr) {
         console.warn('Locations lookup notice:', locErr.message);
@@ -1278,17 +1345,29 @@ export const adminApi = {
     // Auto-create location if still not found
     if (!locationId) {
       try {
+        const rawPin = String(data.pincode || '').replace(/[^0-9]/g, '');
+        const validPin = rawPin.length === 6 ? rawPin : '713216';
         const createLocRes = await apiClient.post('/locations', {
-          city: data.city || 'Durgapur',
-          area: data.line1 || data.address || 'City Centre',
-          state: data.state || 'WB',
-          pincode: data.pincode || '713216',
+          city: (data.city || 'Durgapur').trim().slice(0, 80),
+          area: (data.line1 || data.address || 'City Centre').trim().slice(0, 80),
+          state: (data.state || 'WB').trim().slice(0, 80),
+          pincode: validPin,
         });
         const locData = createLocRes.data?.data || createLocRes.data;
-        locationId = locData?.id;
+        if (locData?.id && isUUID(locData.id)) {
+          locationId = locData.id;
+        }
       } catch (clErr) {
         console.warn('Create location notice:', clErr.message);
       }
+    }
+
+    if (!locationId) {
+      try {
+        const allLocRes = await apiClient.get('/locations');
+        const allItems = allLocRes.data?.data?.items || allLocRes.data?.data || [];
+        if (allItems[0]?.id) locationId = allItems[0].id;
+      } catch {}
     }
 
     // 2. Call backend POST /pharmacies/admin-create
@@ -1298,14 +1377,14 @@ export const adminApi = {
 
     try {
       const resp = await apiClient.post('/pharmacies/admin-create', {
-        name: data.name,
-        ownerName: data.ownerName || data.fullName || 'Pharmacy Owner',
+        name: String(data.name || '').trim(),
+        ownerName: String(data.ownerName || data.fullName || data.name || 'Pharmacy Owner').trim(),
         ownerEmail: validEmail,
-        ownerPassword: data.password || 'Pharmacy123',
+        ownerPassword: ownerPassword,
         phone: cleanPhone,
         locationId: locationId,
-        line1: data.line1 || data.address || 'Main Road',
-        line2: data.line2 || null,
+        line1: String(data.line1 || data.address || 'Main Road').trim(),
+        line2: data.line2 ? String(data.line2).trim() : null,
         isPrimary: Boolean(data.isPrimary),
         hasClinicService,
         hasMedicineService,
@@ -1318,14 +1397,14 @@ export const adminApi = {
       if (phErr.response?.status === 413 && optimizedImage) {
         try {
           const retryResp = await apiClient.post('/pharmacies/admin-create', {
-            name: data.name,
-            ownerName: data.ownerName || data.fullName || 'Pharmacy Owner',
+            name: String(data.name || '').trim(),
+            ownerName: String(data.ownerName || data.fullName || data.name || 'Pharmacy Owner').trim(),
             ownerEmail: validEmail,
-            ownerPassword: data.password || 'Pharmacy123',
+            ownerPassword: ownerPassword,
             phone: cleanPhone,
             locationId: locationId,
-            line1: data.line1 || data.address || 'Main Road',
-            line2: data.line2 || null,
+            line1: String(data.line1 || data.address || 'Main Road').trim(),
+            line2: data.line2 ? String(data.line2).trim() : null,
             isPrimary: Boolean(data.isPrimary),
             hasClinicService,
             hasMedicineService,
@@ -1340,27 +1419,22 @@ export const adminApi = {
 
       if (!createdPharmacy) {
         if (
-          phErr.response?.status === 400 ||
           phErr.response?.status === 409 ||
-          phErr.response?.data?.message?.toLowerCase().includes('already') ||
-          phErr.message?.includes('Already used credentials')
+          phErr.response?.data?.message?.toLowerCase().includes('already')
         ) {
           throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
         }
-        console.warn('POST /pharmacies/admin-create notice:', phErr.response?.data || phErr.message);
-        // Fallback: register user directly
-        await registerUserInDatabase({
-          fullName: data.ownerName || data.name,
-          phone: cleanPhone,
-          email: validEmail,
-          password: data.password || 'Pharmacy123',
-          roleName: 'PHARMACY',
-        });
+        if (phErr.response?.status === 400) {
+          const detail = extractErrorMessage(phErr, 'Validation error creating pharmacy profile.');
+          throw new Error(detail);
+        }
+        const errMsg = extractErrorMessage(phErr, 'Failed to create pharmacy profile in database.');
+        throw new Error(errMsg);
       }
     }
 
     const pharmacyId = createdPharmacy?.id || `pharm_${Date.now()}`;
-    const ownerId = createdPharmacy?.ownerId || pharmacyId;
+    const ownerId = createdPharmacy?.owner?.id || createdPharmacy?.ownerId || pharmacyId;
     const finalPharmacyImage = optimizedImage || data.imageUrl;
 
     // 3. Ensure service flags and media are synced on backend
@@ -1410,10 +1484,11 @@ export const adminApi = {
     // 5. Register in accountRegistry
     accountRegistry.registerAccount({
       id: pharmacyId,
+      userId: ownerId,
       fullName: data.ownerName || data.name,
       email: validEmail,
       phone: cleanPhone,
-      password: data.password || 'Pharmacy123',
+      password: ownerPassword,
       role: 'PHARMACY',
       imageUrl: finalPharmacyImage || '',
       isFeatured: Boolean(data.isFeatured),
@@ -1461,28 +1536,50 @@ export const adminApi = {
   async deletePharmacy(id, userId) {
     this.invalidateCache();
     const targetUserId = userId || id;
+
+    // 1. Delete from pharmacies table & cascade staff user delete
     try {
-      await apiClient.put(`/pharmacies/admin-update/${id}`, {
-        status: 'CLOSED',
-      });
+      await apiClient.delete(`/pharmacies/${id}`);
     } catch (phErr) {
-      console.warn('Deactivate pharmacy in DB notice:', phErr.message);
+      console.warn('Backend delete pharmacy notice:', phErr.response?.data || phErr.message);
+      try {
+        await apiClient.put(`/pharmacies/admin-update/${id}`, { status: 'CLOSED' });
+      } catch {}
     }
 
-    try {
-      await apiClient.put(`/admin/users/${targetUserId}/access`, {
-        roleName: 'PHARMACY',
-        status: 'DEACTIVATED',
-      });
-    } catch (e) {
-      console.warn('Deactivate pharmacy access notice:', e.message);
+    // 2. Also ensure target user is removed from database users table
+    if (targetUserId && targetUserId !== id) {
+      try {
+        await apiClient.delete(`/admin/users/${targetUserId}`);
+      } catch (e) {
+        console.warn('Backend delete pharmacy user notice:', e.message);
+      }
     }
 
+    // 3. Purge from local registry
     accountRegistry.removeAccount(id);
     accountRegistry.removeAccount(targetUserId);
     accountRegistry.markEntityRemoved(id);
     accountRegistry.markEntityRemoved(targetUserId);
 
+    // 4. Remove from settings image map and featured list
+    try {
+      const curSettings = await this.getSettings();
+      const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'facility_images')?.value || {});
+      if (curImages[id]) {
+        delete curImages[id];
+        await this.setSetting('facility_images', curImages);
+        localStorage.setItem('oshud_facility_images', JSON.stringify(curImages));
+      }
+      const curFeatured = curSettings?.find?.((s) => s.key === 'featured_pharmacies')?.value || [];
+      if (Array.isArray(curFeatured) && curFeatured.includes(id)) {
+        const updated = curFeatured.filter((fid) => fid !== id);
+        await this.setSetting('featured_pharmacies', updated);
+        localStorage.setItem('oshud_featured_pharmacies', JSON.stringify(updated));
+      }
+    } catch {}
+
+    this.invalidateCache();
     return { success: true, id };
   },
 
@@ -1490,9 +1587,17 @@ export const adminApi = {
   async createClinic(data) {
     this.invalidateCache();
     const cleanPhone = String(data.phone || '').replace(/[^0-9]/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      throw new Error('Valid 10-digit phone number is required');
+    }
     const validEmail = (data.email && data.email.includes('@'))
       ? data.email.trim().toLowerCase()
       : `clinic.${cleanPhone || Date.now()}@oshudwala.local`;
+
+    if (data.password && data.password.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+    const ownerPassword = (data.password && data.password.length >= 8) ? data.password : 'Clinic123';
 
     // 0. Strict check across all profiles and backend database
     await this.validateCredentialsAvailable({ phone: cleanPhone, email: validEmail });
@@ -1501,14 +1606,16 @@ export const adminApi = {
     const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
 
     // 1. Get or find active Location ID from PostgreSQL
-    let locationId = data.locationId;
+    let locationId = isUUID(data.locationId) ? data.locationId : null;
     if (!locationId) {
       try {
         const locRes = await apiClient.get('/locations');
         const locs = locRes.data?.data?.items || locRes.data?.data || locRes.data || [];
         if (Array.isArray(locs) && locs.length > 0) {
-          const match = locs.find((l) => (data.city && l.city?.toLowerCase() === data.city.toLowerCase()) || (data.pincode && l.pincode === data.pincode));
-          locationId = match ? match.id : locs[0].id;
+          const activeLocs = locs.filter((l) => l.isActive !== false);
+          const pool = activeLocs.length > 0 ? activeLocs : locs;
+          const match = pool.find((l) => (data.city && l.city?.toLowerCase() === data.city.toLowerCase()) || (data.pincode && l.pincode === data.pincode));
+          locationId = match ? match.id : pool[0].id;
         }
       } catch (locErr) {
         console.warn('Locations lookup notice:', locErr.message);
@@ -1518,36 +1625,48 @@ export const adminApi = {
     // Auto-create location if still not found
     if (!locationId) {
       try {
+        const rawPin = String(data.pincode || '').replace(/[^0-9]/g, '');
+        const validPin = rawPin.length === 6 ? rawPin : '713216';
         const createLocRes = await apiClient.post('/locations', {
-          city: data.city || 'Durgapur',
-          area: data.line1 || data.address || 'City Centre',
-          state: data.state || 'WB',
-          pincode: data.pincode || '713216',
+          city: (data.city || 'Durgapur').trim().slice(0, 80),
+          area: (data.line1 || data.address || 'City Centre').trim().slice(0, 80),
+          state: (data.state || 'WB').trim().slice(0, 80),
+          pincode: validPin,
         });
         const locData = createLocRes.data?.data || createLocRes.data;
-        locationId = locData?.id;
+        if (locData?.id && isUUID(locData.id)) {
+          locationId = locData.id;
+        }
       } catch (clErr) {
         console.warn('Create location notice:', clErr.message);
       }
     }
 
+    if (!locationId) {
+      try {
+        const allLocRes = await apiClient.get('/locations');
+        const allItems = allLocRes.data?.data?.items || allLocRes.data?.data || [];
+        if (allItems[0]?.id) locationId = allItems[0].id;
+      } catch {}
+    }
+
     // 2. Call backend POST /pharmacies/admin-create
     let createdClinic = null;
-    const hasClinicService = data.hasClinicService !== false;
+    const hasClinicService = true;
     const hasMedicineService = Boolean(data.hasMedicineService);
 
     try {
       const resp = await apiClient.post('/pharmacies/admin-create', {
-        name: data.name,
-        ownerName: data.managerName || data.fullName || 'Clinic Receptionist',
+        name: String(data.name || '').trim(),
+        ownerName: String(data.managerName || data.fullName || data.name || 'Clinic Admin').trim(),
         ownerEmail: validEmail,
-        ownerPassword: data.password || 'Clinic123',
+        ownerPassword: ownerPassword,
         phone: cleanPhone,
         locationId: locationId,
-        line1: data.line1 || data.address || 'Clinic Road',
-        line2: data.line2 || null,
+        line1: String(data.line1 || data.address || 'Clinic Road').trim(),
+        line2: data.line2 ? String(data.line2).trim() : null,
         isPrimary: false,
-        hasClinicService,
+        hasClinicService: true,
         hasMedicineService,
         logoUrl: optimizedImage || null,
         isFeatured: Boolean(data.isFeatured),
@@ -1558,16 +1677,16 @@ export const adminApi = {
       if (err.response?.status === 413 && optimizedImage) {
         try {
           const retryResp = await apiClient.post('/pharmacies/admin-create', {
-            name: data.name,
-            ownerName: data.managerName || data.fullName || 'Clinic Receptionist',
+            name: String(data.name || '').trim(),
+            ownerName: String(data.managerName || data.fullName || data.name || 'Clinic Admin').trim(),
             ownerEmail: validEmail,
-            ownerPassword: data.password || 'Clinic123',
+            ownerPassword: ownerPassword,
             phone: cleanPhone,
             locationId: locationId,
-            line1: data.line1 || data.address || 'Clinic Road',
-            line2: data.line2 || null,
+            line1: String(data.line1 || data.address || 'Clinic Road').trim(),
+            line2: data.line2 ? String(data.line2).trim() : null,
             isPrimary: false,
-            hasClinicService,
+            hasClinicService: true,
             hasMedicineService,
             logoUrl: null,
             isFeatured: Boolean(data.isFeatured),
@@ -1580,34 +1699,29 @@ export const adminApi = {
 
       if (!createdClinic) {
         if (
-          err.response?.status === 400 ||
           err.response?.status === 409 ||
-          err.response?.data?.message?.toLowerCase().includes('already') ||
-          err.message?.includes('Already used credentials')
+          err.response?.data?.message?.toLowerCase().includes('already')
         ) {
           throw new Error('Already used credentials. This phone number or email is already assigned to another profile.');
         }
-        console.warn('POST /pharmacies/admin-create for clinic notice:', err.response?.data || err.message);
-        // Fallback: register user with RECEPTIONIST role
-        await registerUserInDatabase({
-          fullName: data.managerName || data.name,
-          phone: cleanPhone,
-          email: validEmail,
-          password: data.password || 'Clinic123',
-          roleName: 'RECEPTIONIST',
-        });
+        if (err.response?.status === 400) {
+          const detail = extractErrorMessage(err, 'Validation error creating clinic profile.');
+          throw new Error(detail);
+        }
+        const errMsg = extractErrorMessage(err, 'Failed to create clinic profile in database.');
+        throw new Error(errMsg);
       }
     }
 
     const clinicId = createdClinic?.id || `clinic_${Date.now()}`;
-    const managerId = createdClinic?.ownerId || clinicId;
+    const managerId = createdClinic?.owner?.id || createdClinic?.ownerId || clinicId;
     const finalClinicImage = optimizedImage || data.imageUrl;
 
-    // 3. Enable clinic service on this entity
+    // 3. Ensure service flags and media are synced on backend
     if (createdClinic?.id) {
       try {
         await apiClient.put(`/pharmacies/${createdClinic.id}/services`, {
-          hasClinicService,
+          hasClinicService: true,
           hasMedicineService,
         });
       } catch (svcErr) {
@@ -1624,16 +1738,15 @@ export const adminApi = {
         }
       }
 
-      // 4. Create receptionist staff entry
-      try {
-        await apiClient.post(`/pharmacies/${createdClinic.id}/receptionists`, {
-          fullName: data.managerName || data.name,
-          phone: cleanPhone,
-          email: validEmail,
-          password: data.password || 'Reception123',
-        });
-      } catch (recErr) {
-        console.warn('Create receptionist notice:', recErr.message);
+      // Update owner's database role to RECEPTIONIST so clinic desk endpoints are directly accessible
+      if (createdClinic?.owner?.id) {
+        try {
+          await apiClient.put(`/admin/users/${createdClinic.owner.id}/access`, {
+            roleName: 'RECEPTIONIST',
+          });
+        } catch (accErr) {
+          console.warn('Sync clinic owner access notice:', accErr.message);
+        }
       }
     }
 
@@ -1659,17 +1772,18 @@ export const adminApi = {
       } catch {}
     }
 
-    // 5. Register in accountRegistry
+    // 5. Register in accountRegistry with role CLINIC
     accountRegistry.registerAccount({
       id: clinicId,
+      userId: managerId,
       fullName: data.managerName || data.name,
       email: validEmail,
       phone: cleanPhone,
-      password: data.password || 'Clinic123',
-      role: 'RECEPTIONIST',
+      password: ownerPassword,
+      role: 'CLINIC',
       imageUrl: finalClinicImage || '',
       isFeatured: Boolean(data.isFeatured),
-      hasClinicService,
+      hasClinicService: true,
       hasMedicineService,
       entityData: {
         name: data.name,
@@ -1680,7 +1794,7 @@ export const adminApi = {
         pincode: data.pincode || '700064',
         imageUrl: finalClinicImage || '',
         isFeatured: Boolean(data.isFeatured),
-        hasClinicService,
+        hasClinicService: true,
         hasMedicineService,
       },
     });
@@ -1702,10 +1816,10 @@ export const adminApi = {
       status: 'ACTIVE',
       isPrimary: false,
       isFeatured: Boolean(data.isFeatured),
-      hasClinicService,
+      hasClinicService: true,
       hasMedicineService,
       manager: { id: managerId, fullName: data.managerName || data.name, email: validEmail, phone: cleanPhone },
-      staff: [{ staffRole: 'RECEPTIONIST', user: { fullName: data.managerName || data.name, email: validEmail, phone: cleanPhone, status: 'ACTIVE' } }],
+      staff: [{ staffRole: 'OWNER', user: { fullName: data.managerName || data.name, email: validEmail, phone: cleanPhone, status: 'ACTIVE' } }],
       settings: { chamberCount: data.chamberCount || '6 Chambers' },
       createdAt: new Date().toISOString(),
     };
@@ -1714,28 +1828,50 @@ export const adminApi = {
   async deleteClinic(id, userId) {
     this.invalidateCache();
     const targetUserId = userId || id;
+
+    // 1. Delete from pharmacies table & cascade staff user delete
     try {
-      await apiClient.put(`/pharmacies/admin-update/${id}`, {
-        status: 'CLOSED',
-      });
+      await apiClient.delete(`/pharmacies/${id}`);
     } catch (e) {
-      console.warn('Deactivate clinic in DB notice:', e.message);
+      console.warn('Backend delete clinic notice:', e.response?.data || e.message);
+      try {
+        await apiClient.put(`/pharmacies/admin-update/${id}`, { status: 'CLOSED' });
+      } catch {}
     }
 
-    try {
-      await apiClient.put(`/admin/users/${targetUserId}/access`, {
-        roleName: 'RECEPTIONIST',
-        status: 'DEACTIVATED',
-      });
-    } catch (e) {
-      console.warn('Deactivate clinic access notice:', e.message);
+    // 2. Also ensure target user is removed from database users table
+    if (targetUserId && targetUserId !== id) {
+      try {
+        await apiClient.delete(`/admin/users/${targetUserId}`);
+      } catch (e) {
+        console.warn('Backend delete clinic user notice:', e.message);
+      }
     }
 
+    // 3. Purge from local registry
     accountRegistry.removeAccount(id);
     accountRegistry.removeAccount(targetUserId);
     accountRegistry.markEntityRemoved(id);
     accountRegistry.markEntityRemoved(targetUserId);
 
+    // 4. Remove from settings image map and featured list
+    try {
+      const curSettings = await this.getSettings();
+      const curImages = cleanImageMap(curSettings?.find?.((s) => s.key === 'facility_images')?.value || {});
+      if (curImages[id]) {
+        delete curImages[id];
+        await this.setSetting('facility_images', curImages);
+        localStorage.setItem('oshud_facility_images', JSON.stringify(curImages));
+      }
+      const curFeatured = curSettings?.find?.((s) => s.key === 'featured_clinics')?.value || [];
+      if (Array.isArray(curFeatured) && curFeatured.includes(id)) {
+        const updated = curFeatured.filter((fid) => fid !== id);
+        await this.setSetting('featured_clinics', updated);
+        localStorage.setItem('oshud_featured_clinics', JSON.stringify(updated));
+      }
+    } catch {}
+
+    this.invalidateCache();
     return { success: true, id };
   },
 
@@ -1827,20 +1963,20 @@ export const adminApi = {
   async deleteRider(id, userId) {
     this.invalidateCache();
     const targetUserId = userId || id;
+
     try {
-      await apiClient.patch(`/riders/${targetUserId}/status`, {
-        status: 'SUSPENDED',
-      });
+      await apiClient.delete(`/admin/users/${targetUserId}`);
     } catch (e) {
-      console.warn('Deactivate rider status notice:', e.message);
-    }
-    try {
-      await apiClient.put(`/admin/users/${targetUserId}/access`, {
-        roleName: 'RIDER',
-        status: 'DEACTIVATED',
-      });
-    } catch (e) {
-      console.warn('Deactivate rider access notice:', e.message);
+      console.warn('Backend delete rider user notice:', e.message);
+      try {
+        await apiClient.patch(`/riders/${targetUserId}/status`, {
+          status: 'SUSPENDED',
+        });
+        await apiClient.put(`/admin/users/${targetUserId}/access`, {
+          roleName: 'RIDER',
+          status: 'DEACTIVATED',
+        });
+      } catch {}
     }
 
     accountRegistry.removeAccount(id);
@@ -1848,6 +1984,7 @@ export const adminApi = {
     accountRegistry.markEntityRemoved(id);
     accountRegistry.markEntityRemoved(targetUserId);
 
+    this.invalidateCache();
     return { success: true, id };
   },
 

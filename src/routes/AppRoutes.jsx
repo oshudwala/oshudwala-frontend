@@ -207,12 +207,12 @@ export const AppRoutes = () => {
         <Route path="earnings" element={<RiderEarningsPage />} />
       </Route>
 
-      {/* 6. Receptionist Workspace */}
+      {/* 6. Clinic Operations Desk Workspace */}
       <Route
-        path="/receptionist"
+        path="/clinic"
         element={
-          <ProtectedRoute allowedRoles={['RECEPTIONIST', 'SUPER_ADMIN']}>
-            <WorkspaceLayout roleTitle="Clinic Reception Desk" />
+          <ProtectedRoute allowedRoles={['CLINIC', 'RECEPTIONIST', 'PHARMACY', 'SUPER_ADMIN']}>
+            <WorkspaceLayout roleTitle="Clinic Operations Desk" />
           </ProtectedRoute>
         }
       >
@@ -224,6 +224,10 @@ export const AppRoutes = () => {
         <Route path="manage-doctors" element={<ReceptionistDoctorsPage initialTab="manage" />} />
         <Route path="assign-doctors" element={<ReceptionistDoctorsPage initialTab="assign" />} />
       </Route>
+
+      {/* Backward-compatibility: Receptionist paths redirect to /clinic */}
+      <Route path="/receptionist" element={<Navigate to="/clinic" replace />} />
+      <Route path="/receptionist/*" element={<Navigate to="/clinic" replace />} />
 
       {/* 404 Fallback */}
       <Route path="*" element={<NotFoundPage />} />

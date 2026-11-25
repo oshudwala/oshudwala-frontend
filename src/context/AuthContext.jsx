@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authApi } from '../services/api/auth.api';
 import { userApi } from '../services/api/user.api';
-import { tokenStorage, onSessionExpired } from '../services/api/client';
+import apiClient, { tokenStorage, onSessionExpired } from '../services/api/client';
+import accountRegistry from '../services/api/accountRegistry';
 
 const AuthContext = createContext(null);
 
@@ -22,11 +23,52 @@ export const AuthProvider = ({ children }) => {
     if (str === 'DOCTOR') return 'DOCTOR';
     if (str === 'PHARMACY' || str === 'PHARMACIST') return 'PHARMACY';
     if (str === 'RIDER' || str === 'DRIVER') return 'RIDER';
-    if (str === 'RECEPTIONIST' || str === 'CLINIC') return 'RECEPTIONIST';
+    if (str === 'RECEPTIONIST' || str === 'CLINIC') return 'CLINIC';
     if (str === 'PATIENT') return 'PATIENT';
     if (str.includes('ADMIN')) return 'SUPER_ADMIN';
     if (str === '[OBJECT OBJECT]') return 'SUPER_ADMIN';
     return 'PATIENT';
+  };
+
+  // Helper to dynamically distinguish between Pharmacy and Clinic accounts
+  const resolveClinicOrPharmacyRole = async (baseRole, userProfile) => {
+    let effectiveRole = normalizeRole(baseRole);
+    if (effectiveRole === 'PHARMACY') {
+      try {
+        // 1. Check accountRegistry by phone, email, or id
+        const matched = accountRegistry.findAccount(userProfile?.phone) ||
+                        accountRegistry.findAccount(userProfile?.email) ||
+                        accountRegistry.findAccountById(userProfile?.id);
+        if (matched?.role === 'CLINIC' || (matched?.hasClinicService && !matched?.hasMedicineService)) {
+          return 'CLINIC';
+        }
+        const entities = accountRegistry.getEntities();
+        const isClinicEntity = entities.clinics?.some(
+          (c) =>
+            c.id === userProfile?.id ||
+            c.userId === userProfile?.id ||
+            (c.email && userProfile?.email && c.email.toLowerCase() === userProfile.email.toLowerCase()) ||
+            (c.phone && userProfile?.phone && c.phone === userProfile.phone)
+        );
+        if (isClinicEntity) {
+          return 'CLINIC';
+        }
+
+        // 2. Query /pharmacies/my to inspect facility services
+        const myPharmacies = await apiClient.get('/pharmacies/my').then((r) => r.data?.data || r.data).catch(() => null);
+        const primaryFacility = Array.isArray(myPharmacies) ? myPharmacies[0] : myPharmacies;
+        if (
+          primaryFacility &&
+          primaryFacility.hasClinicService &&
+          (!primaryFacility.hasMedicineService || primaryFacility.name?.toLowerCase().includes('clinic'))
+        ) {
+          return 'CLINIC';
+        }
+      } catch (err) {
+        console.warn('Could not check clinic vs pharmacy service:', err.message);
+      }
+    }
+    return effectiveRole;
   };
 
   // Synchronize profile with backend
@@ -49,8 +91,9 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const profile = await userApi.getProfile();
-      const effectiveRole = normalizeRole(
-        profile.role?.name || profile.role || cachedUser?.role
+      const effectiveRole = await resolveClinicOrPharmacyRole(
+        profile.role?.name || profile.role || cachedUser?.role,
+        profile
       );
 
       const normalizedUser = {
@@ -117,8 +160,9 @@ export const AuthProvider = ({ children }) => {
       // Hydrate full user profile from backend
       try {
         const fullProfile = await userApi.getProfile();
-        const effectiveRole = normalizeRole(
-          fullProfile.role?.name || fullProfile.role || backendRole
+        const effectiveRole = await resolveClinicOrPharmacyRole(
+          fullProfile.role?.name || fullProfile.role || backendRole,
+          fullProfile
         );
         const userObj = {
           id: fullProfile.id,
@@ -133,15 +177,17 @@ export const AuthProvider = ({ children }) => {
             'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
         };
         setUser(userObj);
+        tokenStorage.setSession({ user: userObj, accessToken: res.accessToken });
         return { user: userObj, token: res.accessToken };
       } catch {
-        const effectiveRole = backendRole;
+        const effectiveRole = await resolveClinicOrPharmacyRole(backendRole, res.user);
         const fallbackUser = {
           ...res.user,
           name: res.user?.fullName,
           role: effectiveRole,
         };
         setUser(fallbackUser);
+        tokenStorage.setSession({ user: fallbackUser, accessToken: res.accessToken });
         return { user: fallbackUser, token: res.accessToken };
       }
     } finally {
@@ -308,13 +354,23 @@ export const AuthProvider = ({ children }) => {
         zone: 'Kolkata South & Salt Lake',
         avatar: '/avatars/male-rider.svg',
       },
-      RECEPTIONIST: {
-        id: 'usr-recep-01',
-        name: 'Ananya Roy',
-        fullName: 'Ananya Roy',
-        email: 'ananya.desk@apollo.oshudwala.in',
+      CLINIC: {
+        id: 'usr-clinic-01',
+        name: 'Apollo Clinic Salt Lake',
+        fullName: 'Apollo Clinic Operations Desk',
+        email: 'desk.saltlake@apolloclinic.com',
         phone: '+91 98305 66778',
-        role: 'RECEPTIONIST',
+        role: 'CLINIC',
+        clinic: 'Apollo Clinic, Salt Lake Kolkata',
+        avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
+      },
+      RECEPTIONIST: {
+        id: 'usr-clinic-01',
+        name: 'Apollo Clinic Salt Lake',
+        fullName: 'Apollo Clinic Operations Desk',
+        email: 'desk.saltlake@apolloclinic.com',
+        phone: '+91 98305 66778',
+        role: 'CLINIC',
         clinic: 'Apollo Clinic, Salt Lake Kolkata',
         avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
       },
@@ -383,8 +439,9 @@ export const AuthProvider = ({ children }) => {
         return '/pharmacy';
       case 'RIDER':
         return '/rider';
+      case 'CLINIC':
       case 'RECEPTIONIST':
-        return '/receptionist';
+        return '/clinic';
       case 'PATIENT':
       default:
         return '/';
@@ -413,7 +470,8 @@ export const AuthProvider = ({ children }) => {
         isDoctor: normalizeRole(user?.role) === 'DOCTOR',
         isPharmacy: ['PHARMACY', 'PHARMACIST'].includes(normalizeRole(user?.role)),
         isRider: normalizeRole(user?.role) === 'RIDER',
-        isReceptionist: normalizeRole(user?.role) === 'RECEPTIONIST',
+        isClinic: ['CLINIC', 'RECEPTIONIST'].includes(normalizeRole(user?.role)),
+        isReceptionist: ['CLINIC', 'RECEPTIONIST'].includes(normalizeRole(user?.role)),
         isPatient: normalizeRole(user?.role) === 'PATIENT',
       }}
     >

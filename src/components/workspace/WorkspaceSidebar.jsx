@@ -158,23 +158,24 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
           },
         ];
 
+      case 'CLINIC':
       case 'RECEPTIONIST':
         return [
           {
             title: 'Clinic Front Desk',
             items: [
-              { label: 'Desk Overview', path: '/receptionist', icon: LayoutDashboard },
-              { label: 'Live Token Queue', path: '/receptionist/queue', icon: Clock, badge: waitingTokensCount, highlight: true },
-              { label: 'Walk-in Registration', path: '/receptionist/registration', icon: UserCheck, highlight: true },
-              { label: 'Appointment Booking', path: '/receptionist/appointments', icon: CalendarCheck },
+              { label: 'Desk Overview', path: '/clinic', icon: LayoutDashboard },
+              { label: 'Live Token Queue', path: '/clinic/queue', icon: Clock, badge: waitingTokensCount, highlight: true },
+              { label: 'Walk-in Registration', path: '/clinic/registration', icon: UserCheck, highlight: true },
+              { label: 'Appointment Booking', path: '/clinic/appointments', icon: CalendarCheck },
             ],
           },
           {
             title: 'Clinic Roster',
             items: [
-              { label: 'Doctor Availability', path: '/receptionist/doctors', icon: Stethoscope },
-              { label: 'Add / Remove Doctors', path: '/receptionist/manage-doctors', icon: UserPlus },
-              { label: 'Assign Doctors', path: '/receptionist/assign-doctors', icon: CalendarPlus },
+              { label: 'Doctor Availability', path: '/clinic/doctors', icon: Stethoscope },
+              { label: 'Add / Remove Doctors', path: '/clinic/manage-doctors', icon: UserPlus },
+              { label: 'Assign Doctors', path: '/clinic/assign-doctors', icon: CalendarPlus },
             ],
           },
         ];

@@ -233,11 +233,11 @@ export const ReceptionistDoctorsPage = ({ initialTab = 'roster' }) => {
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     if (tab === 'manage') {
-      navigate('/receptionist/manage-doctors');
+      navigate('/clinic/manage-doctors');
     } else if (tab === 'assign') {
-      navigate('/receptionist/assign-doctors');
+      navigate('/clinic/assign-doctors');
     } else {
-      navigate('/receptionist/doctors');
+      navigate('/clinic/doctors');
     }
   };
 

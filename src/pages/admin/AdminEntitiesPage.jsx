@@ -51,8 +51,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const location = useLocation();
   const { addToast } = useToast();
 
-  // Tab: 'clinics' | 'doctors' | 'pharmacies' | 'riders' | 'receptionists' | 'users' | 'locations'
-  const [activeTab, setActiveTab] = useState(initialTab);
+  // Tab: 'clinics' | 'doctors' | 'pharmacies' | 'riders' | 'users' | 'locations'
+  const [activeTab, setActiveTab] = useState(initialTab === 'receptionists' ? 'clinics' : initialTab);
 
   // Data states - load cached entities if fresh, else start clean with loader
   const hasCache = adminApi.hasCachedEntities();
@@ -144,13 +144,17 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   useEffect(() => {
     const searchTab = new URLSearchParams(location.search).get('tab');
     const path = location.pathname.split('/').pop();
-    const validTabs = ['clinics', 'doctors', 'pharmacies', 'riders', 'receptionists', 'users', 'locations'];
-    if (validTabs.includes(searchTab)) {
+    const validTabs = ['clinics', 'doctors', 'pharmacies', 'riders', 'users', 'locations'];
+    if (searchTab === 'receptionists' || path === 'receptionists') {
+      setActiveTab('clinics');
+    } else if (validTabs.includes(searchTab)) {
       setActiveTab(searchTab);
     } else if (validTabs.includes(path)) {
       setActiveTab(path);
-    } else if (initialTab) {
+    } else if (initialTab && validTabs.includes(initialTab)) {
       setActiveTab(initialTab);
+    } else {
+      setActiveTab('clinics');
     }
   }, [location.pathname, location.search, initialTab]);
 
@@ -188,14 +192,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       name: r.fullName,
       role: 'Rider',
     })),
-    ...receptionists.map((rc) => ({
-      id: rc.id,
-      userId: rc.userId,
-      phone: rc.phone || rc.user?.phone,
-      email: rc.email || rc.user?.email,
-      name: rc.fullName,
-      role: 'Receptionist',
-    })),
     ...users.map((u) => ({
       id: u.id,
       userId: u.id,
@@ -204,7 +200,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       name: u.fullName,
       role: 'User',
     })),
-  ], [doctors, pharmacies, clinics, riders, receptionists, users]);
+  ], [doctors, pharmacies, clinics, riders, users]);
 
   const normalizePhoneNumber = (p) => {
     if (!p) return '';
@@ -241,7 +237,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       if (match) {
         return {
           type: 'phone',
-          message: `Already used credentials. Mobile number is already assigned to ${match.role} "${match.name}".`,
+          message: `Already used credentials. Mobile number is already assigned.`,
           role: match.role,
           name: match.name,
         };
@@ -256,7 +252,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       if (match) {
         return {
           type: 'email',
-          message: `Already used credentials. Email address is already assigned to ${match.role} "${match.name}".`,
+          message: `Already used credentials. Email address is already assigned.`,
           role: match.role,
           name: match.name,
         };
@@ -914,7 +910,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         };
         const created = await adminApi.createClinic(payload);
         setClinics((prev) => [created, ...prev]);
-        addToast(`Clinic "${created.name}" and Receptionist login created successfully!`, 'success');
+        addToast(`Clinic "${created.name}" profile and login created successfully!`, 'success');
       } else if (activeTab === 'riders') {
         const payload = {
           fullName: formData.fullName,
@@ -930,18 +926,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         const created = await adminApi.createRider(payload);
         setRiders((prev) => [created, ...prev]);
         addToast(`Rider ${created.user?.fullName || payload.fullName} registered! Login profile active.`, 'success');
-      } else if (activeTab === 'receptionists') {
-        const payload = {
-          fullName: formData.fullName,
-          email: formData.email,
-          phone: formData.phone.replace(/[^0-9]/g, ''),
-          password: formData.password,
-          clinicId: formData.clinicId || clinics[0]?.id,
-          clinicName: clinics.find((c) => c.id === formData.clinicId)?.name || 'Central Front Desk',
-        };
-        const created = await adminApi.createReceptionist(payload);
-        setReceptionists((prev) => [created, ...prev]);
-        addToast(`Receptionist ${created.fullName || payload.fullName} registered! Login profile active.`, 'success');
       }
 
       setIsAddModalOpen(false);
@@ -1045,19 +1029,13 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         setClinics((prev) =>
           prev.filter((c) => c.id !== id && c.userId !== targetUserId && c.id !== targetUserId)
         );
-        addToast('Clinic and receptionist account removed.', 'success');
+        addToast('Clinic facility and login account removed.', 'success');
       } else if (type === 'riders') {
         await adminApi.deleteRider(id, targetUserId);
         setRiders((prev) =>
           prev.filter((r) => r.id !== id && r.userId !== targetUserId && r.id !== targetUserId)
         );
         addToast('Rider profile and login access removed.', 'success');
-      } else if (type === 'receptionists') {
-        await adminApi.deleteReceptionist(id, targetUserId);
-        setReceptionists((prev) =>
-          prev.filter((r) => r.id !== id && r.userId !== targetUserId && r.id !== targetUserId)
-        );
-        addToast('Receptionist removed and login access deactivated.', 'success');
       } else if (type === 'users') {
         await adminApi.deactivateUser(targetUserId);
         setUsers((prev) =>
@@ -1108,13 +1086,13 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       ),
     },
     {
-      header: 'Receptionist / Contact',
+      header: 'Clinic Contact & Admin',
       key: 'contact',
       render: (row) => {
         const staff = row.staff?.[0]?.user;
         return (
           <div>
-            <p className="text-xs font-semibold text-brandText-main">{staff?.fullName || row.manager?.fullName || 'Front Desk'}</p>
+            <p className="text-xs font-semibold text-brandText-main">{staff?.fullName || row.manager?.fullName || row.managerName || row.name || 'Clinic Lead'}</p>
             <p className="text-[11px] text-brandText-secondary">{staff?.email || row.email}</p>
             <p className="text-[10px] text-brandText-muted font-mono">{staff?.phone || row.phone}</p>
           </div>
@@ -1738,117 +1716,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     },
   ];
 
-  const receptionistColumns = [
-    {
-      header: 'Receptionist & Photo',
-      key: 'fullName',
-      render: (row) => (
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
-            {row.imageUrl || row.user?.imageUrl ? (
-              <img src={row.imageUrl || row.user?.imageUrl} alt={row.fullName} className="w-full h-full object-cover" />
-            ) : (
-              <Users className="w-5 h-5 text-forest-700" />
-            )}
-          </div>
-          <div>
-            <p className="font-bold text-xs text-forest-900">{row.fullName || row.user?.fullName || 'Receptionist'}</p>
-            <span className="inline-block mt-0.5 text-[10px] font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded">
-              {row.clinicName || 'Reception Desk'}
-            </span>
-          </div>
-        </div>
-      ),
-    },
-    {
-      header: 'Assigned Center',
-      key: 'clinicName',
-      render: (row) => (
-        <div>
-          <p className="text-xs font-semibold text-brandText-main">{row.clinicName || 'Central Front Desk'}</p>
-          <p className="text-[11px] text-brandText-secondary">Front Desk & Consultations</p>
-        </div>
-      ),
-    },
-    {
-      header: 'Contact Info',
-      key: 'contact',
-      render: (row) => (
-        <div>
-          <p className="text-xs font-semibold text-brandText-main">{row.email || row.user?.email || 'No email'}</p>
-          <p className="text-[11px] text-brandText-secondary font-mono">{row.phone || row.user?.phone}</p>
-        </div>
-      ),
-    },
-    {
-      header: 'Status & Deadline',
-      key: 'status',
-      render: (row) => (
-        <div>
-          <StatusBadge status={row.status || 'ACTIVE'} />
-          {getDeadlineBadge(row)}
-        </div>
-      ),
-    },
-    {
-      header: 'Actions',
-      key: 'action',
-      align: 'right',
-      render: (row) => {
-        const isDeactivated = row.status === 'DEACTIVATED';
-        const isToggling = togglingStatusId === (row.id || row.userId);
-        return (
-          <div className="flex items-center justify-end gap-1.5">
-            {/* Activate / Deactivate (30d) */}
-            <button
-              type="button"
-              disabled={isToggling}
-              onClick={() => handleToggleStatus(row, 'receptionists')}
-              className={`px-2 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                isToggling ? 'opacity-60 cursor-not-allowed' : ''
-              } ${
-                isDeactivated
-                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-              }`}
-              title={isDeactivated ? 'Activate Receptionist' : 'Deactivate with 30-day purge deadline'}
-            >
-              {isToggling && <RefreshCw className="w-3 h-3 animate-spin text-current" />}
-              <span>{isToggling ? 'Updating…' : isDeactivated ? 'Activate' : 'Deactivate (30d)'}</span>
-            </button>
-
-            {/* Edit */}
-            <button
-              type="button"
-              onClick={() => handleOpenEdit(row, 'receptionists')}
-              className="p-1.5 text-forest-700 hover:text-forest-900 hover:bg-forest-50 rounded-lg transition-colors"
-              title="Edit Receptionist Details"
-            >
-              <Edit3 className="w-4 h-4" />
-            </button>
-
-            {/* Delete */}
-            <button
-              type="button"
-              onClick={() =>
-                setItemToDelete({
-                  id: row.id,
-                  userId: row.userId || row.user?.id || row.id,
-                  name: row.fullName || 'Receptionist',
-                  type: 'receptionists',
-                })
-              }
-              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
-              title="Remove Receptionist"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        );
-      },
-    },
-  ];
-
   const locationColumns = [
     {
       header: 'Locality & Area Hub',
@@ -2000,13 +1867,13 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
               }}
               className="text-xs shadow-card font-bold"
             >
-              Add {activeTab === 'clinics' ? 'Clinic' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'pharmacies' ? 'Pharmacy' : activeTab === 'receptionists' ? 'Receptionist' : activeTab === 'locations' ? 'Location' : 'Rider'}
+              Add {activeTab === 'clinics' ? 'Clinic' : activeTab === 'doctors' ? 'Doctor' : activeTab === 'pharmacies' ? 'Pharmacy' : activeTab === 'locations' ? 'Location' : 'Rider'}
             </Button>
           )}
         </div>
       </div>
 
-      {/* 7 Dedicated Management Tabs */}
+      {/* Dedicated Management Tabs */}
       <div className="flex items-center gap-1.5 sm:gap-2 border-b border-brandBorder-subtle pb-2 overflow-x-auto no-scrollbar">
         <button
           onClick={() => handleTabChange('clinics')}
@@ -2054,18 +1921,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         >
           <Bike className="w-4 h-4" />
           <span>Riders ({isLoading ? '...' : riders.length})</span>
-        </button>
-
-        <button
-          onClick={() => handleTabChange('receptionists')}
-          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-            activeTab === 'receptionists'
-              ? 'bg-forest-800 text-white shadow-sm'
-              : 'text-brandText-secondary hover:bg-forest-50 hover:text-forest-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Receptionists ({isLoading ? '...' : receptionists.length})</span>
         </button>
 
         <button
@@ -2134,16 +1989,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         />
       )}
 
-      {activeTab === 'receptionists' && (
-        <DataTable
-          columns={receptionistColumns}
-          data={receptionists}
-          searchKey="fullName"
-          searchPlaceholder="Search receptionist by name, phone or clinic..."
-          isLoading={isLoading}
-        />
-      )}
-
       {activeTab === 'locations' && (
         <DataTable
           columns={locationColumns}
@@ -2185,15 +2030,13 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                       <Stethoscope className="w-5 h-5" />
                     ) : activeTab === 'pharmacies' ? (
                       <Building2 className="w-5 h-5" />
-                    ) : activeTab === 'receptionists' ? (
-                      <Users className="w-5 h-5" />
                     ) : (
                       <Bike className="w-5 h-5" />
                     )}
                   </div>
                   <div>
                     <h2 className="text-lg font-heading font-extrabold text-forest-800">
-                      Add New {activeTab === 'clinics' ? 'Clinic & Receptionist' : activeTab === 'doctors' ? 'Doctor Profile' : activeTab === 'pharmacies' ? 'Pharmacy & Pharmacist' : activeTab === 'receptionists' ? 'Front Desk Receptionist' : 'Delivery Rider'}
+                      Add New {activeTab === 'clinics' ? 'Clinic Facility' : activeTab === 'doctors' ? 'Doctor Profile' : activeTab === 'pharmacies' ? 'Pharmacy & Pharmacist' : 'Delivery Rider'}
                     </h2>
                     <p className="text-xs text-brandText-secondary">
                       Create verified entity profile with photo and dedicated login credentials.
@@ -2222,8 +2065,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                       ? 'Doctor Profile Photo'
                       : activeTab === 'pharmacies'
                       ? 'Pharmacy Store Front / Logo'
-                      : activeTab === 'receptionists'
-                      ? 'Receptionist Profile Photo'
                       : 'Rider Profile Photo'
                   }
                   description="Drag & drop profile photo here or click to browse. Shown on search and booking."
@@ -2249,7 +2090,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-brandText-main mb-1">
-                        Receptionist / Manager Name *
+                        Clinic Manager / Admin Name *
                       </label>
                       <input
                         type="text"
@@ -2304,7 +2145,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                       name="fullName"
                       value={formData.fullName}
                       onChange={handleInputChange}
-                      placeholder={activeTab === 'doctors' ? 'e.g. Dr. Debabrata Mukherjee' : activeTab === 'receptionists' ? 'e.g. Priya Sharma' : 'e.g. Rahul Das'}
+                      placeholder={activeTab === 'doctors' ? 'e.g. Dr. Debabrata Mukherjee' : 'e.g. Rahul Das'}
                       className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                     />
                   </div>
@@ -2348,14 +2189,14 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
                     <div>
                       <label className="block text-xs font-semibold text-brandText-main mb-1">
-                        Password (min. 6 characters) *
+                        Password (min. 8 characters) *
                       </label>
                       <div className="relative">
                         <Lock className="w-4 h-4 text-brandText-muted absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                           type={showPassword ? 'text' : 'password'}
                           required
-                          minLength={6}
+                          minLength={8}
                           name="password"
                           value={formData.password}
                           onChange={handleInputChange}
@@ -2703,29 +2544,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         placeholder="Kolkata South"
                         className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                       />
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'receptionists' && (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">
-                        Assign to Registered Clinic / Center *
-                      </label>
-                      <select
-                        name="clinicId"
-                        value={formData.clinicId}
-                        onChange={handleInputChange}
-                        className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-semibold"
-                      >
-                        <option value="">Select Clinic Center</option>
-                        {clinics.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.city || 'Kolkata'})
-                          </option>
-                        ))}
-                      </select>
                     </div>
                   </div>
                 )}

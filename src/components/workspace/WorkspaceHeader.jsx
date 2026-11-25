@@ -47,8 +47,9 @@ export const WorkspaceHeader = ({ roleTitle, onToggleSidebar, isSidebarCollapsed
         return Building2;
       case 'RIDER':
         return Bike;
+      case 'CLINIC':
       case 'RECEPTIONIST':
-        return UserCheck;
+        return Building2;
       default:
         return Shield;
     }

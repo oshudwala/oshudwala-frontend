@@ -168,6 +168,7 @@ export const LoginPage = () => {
       
       let userRole = String(rawRole || '').trim().toUpperCase();
       if (userRole === 'ADMIN' || userRole === 'SUPERADMIN') userRole = 'SUPER_ADMIN';
+      if (userRole === 'RECEPTIONIST') userRole = 'CLINIC';
 
       addToast(`Signed in successfully as ${userRole.replace('_', ' ')}`, 'success');
 

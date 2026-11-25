@@ -23,8 +23,9 @@ export const WorkspaceLayout = ({ roleTitle }) => {
         return 'Pharmacy Operations';
       case 'RIDER':
         return 'Rider Delivery Desk';
+      case 'CLINIC':
       case 'RECEPTIONIST':
-        return 'Clinic Reception Desk';
+        return 'Clinic Operations Desk';
       default:
         return 'Workspace OS';
     }
