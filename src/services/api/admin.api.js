@@ -214,7 +214,14 @@ export const adminApi = {
   },
 
   // Validate whether phone or email is already assigned to ANY profile
-  async validateCredentialsAvailable({ phone, email, excludeId = null, excludeUserId = null }) {
+  async validateCredentialsAvailable({
+    phone,
+    email,
+    excludeId = null,
+    excludeUserId = null,
+    originalPhone = null,
+    originalEmail = null,
+  }) {
     const normalizePhone = (p) => {
       if (!p) return '';
       const digits = String(p).replace(/[^0-9]/g, '');
@@ -223,8 +230,28 @@ export const adminApi = {
 
     const cleanPhone = normalizePhone(phone);
     const cleanEmail = email && typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : '';
+    let cleanOrigPhone = normalizePhone(originalPhone);
+    let cleanOrigEmail = originalEmail && typeof originalEmail === 'string' && originalEmail.includes('@') ? originalEmail.trim().toLowerCase() : '';
 
-    if (!cleanPhone && !cleanEmail) return true;
+    // If originalPhone / originalEmail was not passed, resolve from existing registered accounts
+    if (excludeId || excludeUserId) {
+      const getAcc = (accId) =>
+        (accountRegistry.findAccountById && accountRegistry.findAccountById(accId)) ||
+        (accountRegistry.findAccount && accountRegistry.findAccount(accId)) ||
+        null;
+      const localAcc = (excludeId && getAcc(excludeId)) || (excludeUserId && getAcc(excludeUserId));
+      if (localAcc) {
+        if (!cleanOrigPhone && localAcc.phone) cleanOrigPhone = normalizePhone(localAcc.phone);
+        if (!cleanOrigEmail && localAcc.email) cleanOrigEmail = localAcc.email.trim().toLowerCase();
+      }
+    }
+
+    // Determine if phone/email actually changed from existing values
+    const shouldCheckPhone = Boolean(cleanPhone && cleanPhone.length === 10 && cleanPhone !== cleanOrigPhone);
+    const shouldCheckEmail = Boolean(cleanEmail && cleanEmail !== cleanOrigEmail);
+
+    // If neither phone nor email changed (e.g. updating name, fee, image, status), NO conflict check is needed!
+    if (!shouldCheckPhone && !shouldCheckEmail) return true;
 
     // 1. Check in all loaded entities (doctors, pharmacies, clinics, riders, receptionists, users)
     const entities = await this.fetchAllEntities();
@@ -282,33 +309,33 @@ export const adminApi = {
     const isExcluded = (p) =>
       Boolean(
         (excludeId && (p.id === excludeId || p.userId === excludeId)) ||
-        (excludeUserId && (p.id === excludeUserId || p.userId === excludeUserId))
+        (excludeUserId && (p.id === excludeUserId || p.userId === excludeUserId)) ||
+        (cleanOrigPhone && p.phone && normalizePhone(p.phone) === cleanOrigPhone) ||
+        (cleanOrigEmail && p.email && p.email.trim().toLowerCase() === cleanOrigEmail)
       );
 
-    const phoneMatch = cleanPhone
-      ? allProfiles.find(
-          (p) =>
-            !isExcluded(p) &&
-            p.phone &&
-            normalizePhone(p.phone) === cleanPhone
-        )
-      : null;
-
-    if (phoneMatch) {
-      throw new Error(`Already used credentials. Mobile number is already assigned to ${phoneMatch.role} "${phoneMatch.name}".`);
+    if (shouldCheckPhone) {
+      const phoneMatch = allProfiles.find(
+        (p) =>
+          !isExcluded(p) &&
+          p.phone &&
+          normalizePhone(p.phone) === cleanPhone
+      );
+      if (phoneMatch) {
+        throw new Error(`Already used credentials. Mobile number is already assigned to ${phoneMatch.role} "${phoneMatch.name}".`);
+      }
     }
 
-    const emailMatch = cleanEmail
-      ? allProfiles.find(
-          (p) =>
-            !isExcluded(p) &&
-            p.email &&
-            p.email.trim().toLowerCase() === cleanEmail
-        )
-      : null;
-
-    if (emailMatch) {
-      throw new Error(`Already used credentials. Email address is already assigned to ${emailMatch.role} "${emailMatch.name}".`);
+    if (shouldCheckEmail) {
+      const emailMatch = allProfiles.find(
+        (p) =>
+          !isExcluded(p) &&
+          p.email &&
+          p.email.trim().toLowerCase() === cleanEmail
+      );
+      if (emailMatch) {
+        throw new Error(`Already used credentials. Email address is already assigned to ${emailMatch.role} "${emailMatch.name}".`);
+      }
     }
 
     // 2. Double check directly with backend users list
@@ -316,30 +343,34 @@ export const adminApi = {
       const usersRes = await apiClient.get('/admin/users', { params: { limit: 500 } });
       const backendUsers = usersRes.data?.data?.users || usersRes.data?.data || usersRes.data?.users || usersRes.data || [];
       if (Array.isArray(backendUsers)) {
-        const uPhoneMatch = cleanPhone
-          ? backendUsers.find(
-              (u) =>
-                u.id !== excludeId &&
-                u.id !== excludeUserId &&
-                u.phone &&
-                normalizePhone(u.phone) === cleanPhone
-            )
-          : null;
-        if (uPhoneMatch) {
-          throw new Error(`Already used credentials. Mobile number is already assigned to registered user "${uPhoneMatch.fullName}".`);
+        if (shouldCheckPhone) {
+          const uPhoneMatch = backendUsers.find(
+            (u) =>
+              u.id !== excludeId &&
+              u.id !== excludeUserId &&
+              (!cleanOrigPhone || normalizePhone(u.phone) !== cleanOrigPhone) &&
+              (!cleanOrigEmail || u.email?.trim().toLowerCase() !== cleanOrigEmail) &&
+              u.phone &&
+              normalizePhone(u.phone) === cleanPhone
+          );
+          if (uPhoneMatch) {
+            throw new Error(`Already used credentials. Mobile number is already assigned to registered user "${uPhoneMatch.fullName}".`);
+          }
         }
 
-        const uEmailMatch = cleanEmail
-          ? backendUsers.find(
-              (u) =>
-                u.id !== excludeId &&
-                u.id !== excludeUserId &&
-                u.email &&
-                u.email.trim().toLowerCase() === cleanEmail
-            )
-          : null;
-        if (uEmailMatch) {
-          throw new Error(`Already used credentials. Email address is already assigned to registered user "${uEmailMatch.fullName}".`);
+        if (shouldCheckEmail) {
+          const uEmailMatch = backendUsers.find(
+            (u) =>
+              u.id !== excludeId &&
+              u.id !== excludeUserId &&
+              (!cleanOrigPhone || normalizePhone(u.phone) !== cleanOrigPhone) &&
+              (!cleanOrigEmail || u.email?.trim().toLowerCase() !== cleanOrigEmail) &&
+              u.email &&
+              u.email.trim().toLowerCase() === cleanEmail
+          );
+          if (uEmailMatch) {
+            throw new Error(`Already used credentials. Email address is already assigned to registered user "${uEmailMatch.fullName}".`);
+          }
         }
       }
     } catch (err) {
@@ -349,14 +380,28 @@ export const adminApi = {
     }
 
     // 3. Double check with local accounts registry
-    const localPhoneMatch = cleanPhone ? accountRegistry.findAccountByPhone(cleanPhone) : null;
-    if (localPhoneMatch && localPhoneMatch.id !== excludeId && localPhoneMatch.userId !== excludeUserId) {
-      throw new Error(`Already used credentials. Mobile number is already assigned to account "${localPhoneMatch.fullName}".`);
+    if (shouldCheckPhone) {
+      const localPhoneMatch = accountRegistry.findAccountByPhone(cleanPhone);
+      if (
+        localPhoneMatch &&
+        localPhoneMatch.id !== excludeId &&
+        localPhoneMatch.userId !== excludeUserId &&
+        (!cleanOrigPhone || normalizePhone(localPhoneMatch.phone) !== cleanOrigPhone)
+      ) {
+        throw new Error(`Already used credentials. Mobile number is already assigned to account "${localPhoneMatch.fullName}".`);
+      }
     }
 
-    const localEmailMatch = cleanEmail ? accountRegistry.findAccountByEmail(cleanEmail) : null;
-    if (localEmailMatch && localEmailMatch.id !== excludeId && localEmailMatch.userId !== excludeUserId) {
-      throw new Error(`Already used credentials. Email address is already assigned to account "${localEmailMatch.fullName}".`);
+    if (shouldCheckEmail) {
+      const localEmailMatch = accountRegistry.findAccountByEmail(cleanEmail);
+      if (
+        localEmailMatch &&
+        localEmailMatch.id !== excludeId &&
+        localEmailMatch.userId !== excludeUserId &&
+        (!cleanOrigEmail || localEmailMatch.email?.trim().toLowerCase() !== cleanOrigEmail)
+      ) {
+        throw new Error(`Already used credentials. Email address is already assigned to account "${localEmailMatch.fullName}".`);
+      }
     }
 
     return true;
@@ -2005,23 +2050,35 @@ export const adminApi = {
   },
 
   // ================= ENTITY EDIT / UPDATE =================
-  async toggleFeatured(row, type, newFeatured) {
+  async toggleFeatured(row, type, newFeatured, explicitOrder = null) {
     this.invalidateCache();
     const id = row.id;
     const settingKey = type === 'doctors' ? 'featured_doctors' : type === 'pharmacies' ? 'featured_pharmacies' : 'featured_clinics';
+    const orderKey = `${settingKey}_order`;
 
     // 1. Sync platform settings list
     try {
       const curSettings = await this.getSettings();
       const existingList = curSettings?.find?.((s) => s.key === settingKey)?.value || [];
+      const existingOrders = curSettings?.find?.((s) => s.key === orderKey)?.value || {};
       let updatedList = Array.isArray(existingList) ? [...existingList] : [];
+      let updatedOrders = typeof existingOrders === 'object' && existingOrders !== null ? { ...existingOrders } : {};
+
       if (newFeatured) {
         if (!updatedList.includes(id)) updatedList.push(id);
+        const maxOrder = Object.values(updatedOrders).reduce((max, val) => Math.max(max, Number(val) || 0), 0);
+        updatedOrders[id] = explicitOrder !== null ? explicitOrder : (updatedOrders[id] || maxOrder + 1);
+        if (row.userId) updatedOrders[row.userId] = updatedOrders[id];
       } else {
         updatedList = updatedList.filter((item) => item !== id);
+        delete updatedOrders[id];
+        if (row.userId) delete updatedOrders[row.userId];
       }
+
       await this.setSetting(settingKey, updatedList);
+      await this.setSetting(orderKey, updatedOrders);
       localStorage.setItem(`oshud_${settingKey}`, JSON.stringify(updatedList));
+      localStorage.setItem(`oshud_${orderKey}`, JSON.stringify(updatedOrders));
     } catch (setErr) {
       console.warn('Set setting toggle featured notice:', setErr.message);
     }
@@ -2050,6 +2107,44 @@ export const adminApi = {
     return { id, isFeatured: newFeatured };
   },
 
+  async saveFeaturedOrdering(type, orderedItems) {
+    this.invalidateCache();
+    const settingKey = type === 'doctors' ? 'featured_doctors' : type === 'pharmacies' ? 'featured_pharmacies' : 'featured_clinics';
+    const orderKey = `${settingKey}_order`;
+
+    // Filter only featured items and sort by order number
+    const featuredItems = (orderedItems || []).filter((it) => Boolean(it.isFeatured));
+    featuredItems.sort((a, b) => (Number(a.order) || 999) - (Number(b.order) || 999));
+
+    const orderedIds = featuredItems.map((it) => it.id);
+    const ordersMap = {};
+    featuredItems.forEach((it, idx) => {
+      const orderNum = Number(it.order) || idx + 1;
+      ordersMap[it.id] = orderNum;
+      if (it.userId) ordersMap[it.userId] = orderNum;
+    });
+
+    try {
+      await this.setSetting(settingKey, orderedIds);
+      await this.setSetting(orderKey, ordersMap);
+      localStorage.setItem(`oshud_${settingKey}`, JSON.stringify(orderedIds));
+      localStorage.setItem(`oshud_${orderKey}`, JSON.stringify(ordersMap));
+
+      // Sync isFeatured flag to PostgreSQL for modified entities
+      for (const it of orderedItems) {
+        if (type === 'doctors' && it.id && it.id.includes('-')) {
+          apiClient.put(`/doctors/${it.id}`, { isFeatured: Boolean(it.isFeatured) }).catch(() => {});
+        } else if ((type === 'clinics' || type === 'pharmacies') && it.id && it.id.includes('-')) {
+          apiClient.put(`/pharmacies/admin-update/${it.id}`, { isFeatured: Boolean(it.isFeatured) }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn('saveFeaturedOrdering notice:', err.message);
+    }
+
+    return { orderedIds, ordersMap };
+  },
+
   async updateDoctor(id, data) {
     this.invalidateCache();
     if (data.phone || data.email) {
@@ -2058,6 +2153,8 @@ export const adminApi = {
         email: data.email,
         excludeId: id,
         excludeUserId: data.userId,
+        originalPhone: data.originalPhone || data.currentPhone,
+        originalEmail: data.originalEmail || data.currentEmail,
       });
     }
     try {
@@ -2117,6 +2214,8 @@ export const adminApi = {
         email: data.email,
         excludeId: id,
         excludeUserId: data.userId,
+        originalPhone: data.originalPhone || data.currentPhone,
+        originalEmail: data.originalEmail || data.currentEmail,
       });
     }
     const hasClinicService = Boolean(data.hasClinicService);
@@ -2187,6 +2286,8 @@ export const adminApi = {
         email: data.email,
         excludeId: id,
         excludeUserId: data.userId,
+        originalPhone: data.originalPhone || data.currentPhone,
+        originalEmail: data.originalEmail || data.currentEmail,
       });
     }
     const hasClinicService = data.hasClinicService !== false;
@@ -2260,6 +2361,8 @@ export const adminApi = {
         email: data.email,
         excludeId: id,
         excludeUserId: data.userId,
+        originalPhone: data.originalPhone || data.currentPhone,
+        originalEmail: data.originalEmail || data.currentEmail,
       });
     }
     try {
@@ -2291,6 +2394,8 @@ export const adminApi = {
         email: data.email,
         excludeId: id,
         excludeUserId: id,
+        originalPhone: data.originalPhone || data.currentPhone,
+        originalEmail: data.originalEmail || data.currentEmail,
       });
     }
     try {

@@ -30,10 +30,34 @@ export const FeaturedClinics = ({ onBookDoctor }) => {
             }
           })();
 
+          const savedClinOrders = (() => {
+            try {
+              const raw = localStorage.getItem('oshud_featured_clinics_order');
+              return raw ? JSON.parse(raw) : {};
+            } catch {
+              return {};
+            }
+          })();
+          const savedClinList = (() => {
+            try {
+              const raw = localStorage.getItem('oshud_featured_clinics');
+              return raw ? JSON.parse(raw) : [];
+            } catch {
+              return [];
+            }
+          })();
+
           // Filter entities that offer clinic chambers and are marked as isFeatured
           const clinicEntities = allPharmacies.filter(
             (p) => (p.hasClinicService || (p.doctorsCount && p.doctorsCount > 0)) && Boolean(p.isFeatured)
           );
+
+          // Strictly sort clinics by featured order number (ascending)
+          clinicEntities.sort((a, b) => {
+            const orderA = Number(a.clinOrder ?? a.featuredOrder ?? savedClinOrders[a.id] ?? (Array.isArray(savedClinList) && savedClinList.indexOf(a.id) !== -1 ? savedClinList.indexOf(a.id) + 1 : 9999));
+            const orderB = Number(b.clinOrder ?? b.featuredOrder ?? savedClinOrders[b.id] ?? (Array.isArray(savedClinList) && savedClinList.indexOf(b.id) !== -1 ? savedClinList.indexOf(b.id) + 1 : 9999));
+            return orderA - orderB;
+          });
 
           const formatted = clinicEntities.map((c) => ({
             id: c.id,

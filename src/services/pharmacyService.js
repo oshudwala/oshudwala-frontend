@@ -39,8 +39,26 @@ export const pharmacyService = {
           }
         })();
 
+        const savedClinOrders = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_featured_clinics_order');
+            return raw ? JSON.parse(raw) : {};
+          } catch {
+            return {};
+          }
+        })();
+
+        const savedPharmOrders = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_featured_pharmacies_order');
+            return raw ? JSON.parse(raw) : {};
+          } catch {
+            return {};
+          }
+        })();
+
         return {
-          pharmacies: items.map((p) => {
+          pharmacies: items.map((p, idx) => {
             const activeReceptionist =
               p.staff?.find((s) => s.staffRole === 'RECEPTIONIST' && s.isActive !== false)?.user?.fullName ||
               p.staff?.find((s) => s.isActive !== false)?.user?.fullName || null;
@@ -54,11 +72,25 @@ export const pharmacyService = {
               p.imageUrl ||
               '';
 
-            const isItemFeatured = Boolean(
-              p.isFeatured ||
-              (p.hasClinicService && Array.isArray(savedFeaturedClins) && savedFeaturedClins.includes(p.id)) ||
+            const isClinFeatured = Boolean(
+              (p.isFeatured && p.hasClinicService) ||
+              (p.hasClinicService && Array.isArray(savedFeaturedClins) && savedFeaturedClins.includes(p.id))
+            );
+            const isPharmFeatured = Boolean(
+              (p.isFeatured && p.hasMedicineService !== false) ||
               (p.hasMedicineService !== false && Array.isArray(savedFeaturedPharms) && savedFeaturedPharms.includes(p.id))
             );
+
+            const explicitClinOrder = savedClinOrders[p.id];
+            const arrayClinOrder = Array.isArray(savedFeaturedClins) && savedFeaturedClins.indexOf(p.id) !== -1 ? savedFeaturedClins.indexOf(p.id) + 1 : null;
+            const clinOrder = Number(explicitClinOrder || arrayClinOrder || (isClinFeatured ? idx + 1 : 9999));
+
+            const explicitPharmOrder = savedPharmOrders[p.id];
+            const arrayPharmOrder = Array.isArray(savedFeaturedPharms) && savedFeaturedPharms.indexOf(p.id) !== -1 ? savedFeaturedPharms.indexOf(p.id) + 1 : null;
+            const pharmOrder = Number(explicitPharmOrder || arrayPharmOrder || (isPharmFeatured ? idx + 1 : 9999));
+
+            const isItemFeatured = Boolean(isClinFeatured || isPharmFeatured);
+            const featuredOrder = p.hasClinicService ? clinOrder : pharmOrder;
 
             return {
               id: p.id,
@@ -76,6 +108,11 @@ export const pharmacyService = {
               logoUrl: facilityImage || p.logoUrl || '',
               isPrimary: Boolean(p.isPrimary),
               isFeatured: isItemFeatured,
+              isClinFeatured,
+              isPharmFeatured,
+              clinOrder,
+              pharmOrder,
+              featuredOrder,
               hasClinicService: Boolean(p.hasClinicService),
               hasMedicineService: Boolean(p.hasMedicineService !== false),
               deliveryTime: '30-45 mins',

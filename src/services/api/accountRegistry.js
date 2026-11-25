@@ -136,6 +136,12 @@ export const accountRegistry = {
     });
   },
 
+  findAccountById(id) {
+    if (!id) return null;
+    const cleanId = String(id).trim().toLowerCase();
+    return this.getAccounts().find((a) => a.id && String(a.id).toLowerCase() === cleanId) || null;
+  },
+
   findAccountByPhone(phone) {
     if (!phone) return null;
     const cleanPhone = String(phone).replace(/[^0-9]/g, '');

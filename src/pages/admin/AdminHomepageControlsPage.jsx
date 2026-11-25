@@ -16,7 +16,18 @@ import {
   Package,
   Sparkles,
   Save,
-  Check
+  Check,
+  Star,
+  Stethoscope,
+  Building2,
+  Activity,
+  ArrowUp,
+  ArrowDown,
+  Search,
+  Filter,
+  CheckCheck,
+  MapPin,
+  ChevronRight
 } from 'lucide-react';
 import Button from '../../components/common/Button';
 import { useToast } from '../../context/ToastContext';
@@ -27,8 +38,17 @@ import ImageDropzone from '../../components/common/ImageDropzone';
 
 export const AdminHomepageControlsPage = () => {
   const { addToast } = useToast();
-  // Section tab: 'banners' | 'categories' | 'category-items'
+  // Section tab: 'banners' | 'categories' | 'category-items' | 'featured'
   const [activeSection, setActiveSection] = useState('banners');
+
+  // Featured Section sub-tab: 'doctors' | 'clinics' | 'pharmacies'
+  const [activeFeaturedSubTab, setActiveFeaturedSubTab] = useState('doctors');
+  const [featuredDoctorsData, setFeaturedDoctorsData] = useState([]);
+  const [featuredClinicsData, setFeaturedClinicsData] = useState([]);
+  const [featuredPharmaciesData, setFeaturedPharmaciesData] = useState([]);
+  const [featuredSearchQuery, setFeaturedSearchQuery] = useState('');
+  const [featuredFilterMode, setFeaturedFilterMode] = useState('all'); // 'all' | 'featured'
+  const [isSavingFeatured, setIsSavingFeatured] = useState(false);
 
   // Data states
   const [banners, setBanners] = useState([]);
@@ -120,11 +140,207 @@ export const AdminHomepageControlsPage = () => {
       if (initialCategories.length > 0 && !selectedParentCategory) {
         setSelectedParentCategory(initialCategories[0].id);
       }
+
+      // 4. Featured Entities & Ordering
+      try {
+        const entitiesRes = await adminApi.fetchAllEntities(false);
+
+        const savedFeaturedDocs = settings?.find?.((s) => s.key === 'featured_doctors')?.value ||
+          (() => { try { return JSON.parse(localStorage.getItem('oshud_featured_doctors') || '[]'); } catch { return []; } })();
+        const savedDocOrders = settings?.find?.((s) => s.key === 'featured_doctors_order')?.value ||
+          (() => { try { return JSON.parse(localStorage.getItem('oshud_featured_doctors_order') || '{}'); } catch { return {}; } })();
+
+        const savedFeaturedClins = settings?.find?.((s) => s.key === 'featured_clinics')?.value ||
+          (() => { try { return JSON.parse(localStorage.getItem('oshud_featured_clinics') || '[]'); } catch { return []; } })();
+        const savedClinOrders = settings?.find?.((s) => s.key === 'featured_clinics_order')?.value ||
+          (() => { try { return JSON.parse(localStorage.getItem('oshud_featured_clinics_order') || '{}'); } catch { return {}; } })();
+
+        const savedFeaturedPharms = settings?.find?.((s) => s.key === 'featured_pharmacies')?.value ||
+          (() => { try { return JSON.parse(localStorage.getItem('oshud_featured_pharmacies') || '[]'); } catch { return []; } })();
+        const savedPharmOrders = settings?.find?.((s) => s.key === 'featured_pharmacies_order')?.value ||
+          (() => { try { return JSON.parse(localStorage.getItem('oshud_featured_pharmacies_order') || '{}'); } catch { return {}; } })();
+
+        // Map Doctors
+        const mappedDocs = (entitiesRes.doctors || []).map((doc, idx) => {
+          const isFeatured = Boolean(
+            doc.isFeatured ||
+            (Array.isArray(savedFeaturedDocs) && (savedFeaturedDocs.includes(doc.id) || (doc.userId && savedFeaturedDocs.includes(doc.userId))))
+          );
+          const explicitOrder = savedDocOrders[doc.id] || (doc.userId && savedDocOrders[doc.userId]);
+          const arrayOrder = Array.isArray(savedFeaturedDocs) && savedFeaturedDocs.indexOf(doc.id) !== -1 ? savedFeaturedDocs.indexOf(doc.id) + 1 : null;
+          const order = Number(explicitOrder || arrayOrder || (isFeatured ? idx + 1 : 999));
+          return {
+            id: doc.id,
+            userId: doc.userId,
+            name: doc.fullName || doc.name,
+            fullName: doc.fullName,
+            specialization: doc.specializations?.[0]?.specialization?.name || doc.specialization || 'General Physician',
+            qualifications: doc.qualifications || 'MBBS',
+            image: doc.imageUrl || doc.user?.imageUrl || '',
+            city: doc.city || 'Durgapur',
+            experienceYears: doc.experienceYears || 5,
+            isFeatured,
+            order,
+          };
+        });
+
+        // Map Clinics
+        const mappedClins = (entitiesRes.clinics || []).map((clin, idx) => {
+          const isFeatured = Boolean(
+            clin.isFeatured ||
+            (Array.isArray(savedFeaturedClins) && savedFeaturedClins.includes(clin.id))
+          );
+          const explicitOrder = savedClinOrders[clin.id];
+          const arrayOrder = Array.isArray(savedFeaturedClins) && savedFeaturedClins.indexOf(clin.id) !== -1 ? savedFeaturedClins.indexOf(clin.id) + 1 : null;
+          const order = Number(explicitOrder || arrayOrder || (isFeatured ? idx + 1 : 999));
+          return {
+            id: clin.id,
+            name: clin.name,
+            address: clin.line1 || clin.address,
+            city: clin.city || 'Durgapur',
+            pincode: clin.pincode,
+            chamberCount: 'Clinic Facility',
+            image: clin.imageUrl || clin.logoUrl || '',
+            isFeatured,
+            order,
+          };
+        });
+
+        // Map Pharmacies
+        const mappedPharms = (entitiesRes.pharmacies || []).map((pharm, idx) => {
+          const isFeatured = Boolean(
+            pharm.isFeatured ||
+            (Array.isArray(savedFeaturedPharms) && savedFeaturedPharms.includes(pharm.id))
+          );
+          const explicitOrder = savedPharmOrders[pharm.id];
+          const arrayOrder = Array.isArray(savedFeaturedPharms) && savedFeaturedPharms.indexOf(pharm.id) !== -1 ? savedFeaturedPharms.indexOf(pharm.id) + 1 : null;
+          const order = Number(explicitOrder || arrayOrder || (isFeatured ? idx + 1 : 999));
+          return {
+            id: pharm.id,
+            name: pharm.name,
+            address: pharm.line1 || pharm.address,
+            city: pharm.city || 'Durgapur',
+            pincode: pharm.pincode,
+            licenseNumber: pharm.licenseNumber,
+            image: pharm.imageUrl || pharm.logoUrl || '',
+            isFeatured,
+            order,
+          };
+        });
+
+        setFeaturedDoctorsData(mappedDocs);
+        setFeaturedClinicsData(mappedClins);
+        setFeaturedPharmaciesData(mappedPharms);
+      } catch (entErr) {
+        console.warn('Error loading entities for featured controls:', entErr);
+      }
     } catch (err) {
       console.error('Error loading homepage controls:', err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // ================= FEATURED SECTION ACTIONS =================
+  const handleSaveFeatured = async (type) => {
+    setIsSavingFeatured(true);
+    try {
+      let list = [];
+      if (type === 'doctors') list = featuredDoctorsData;
+      else if (type === 'clinics') list = featuredClinicsData;
+      else if (type === 'pharmacies') list = featuredPharmaciesData;
+
+      await adminApi.saveFeaturedOrdering(type, list);
+      addToast(`Featured ${type} ordering saved successfully! Patient home page updated.`, 'success');
+    } catch (err) {
+      addToast(err.message || 'Failed to save featured ordering.', 'error');
+    } finally {
+      setIsSavingFeatured(false);
+    }
+  };
+
+  const handleToggleFeatured = async (type, id) => {
+    let targetItem = null;
+    let nextList = [];
+
+    const toggleInList = (list) => {
+      const currentFeatured = list.filter((it) => it.isFeatured);
+      const maxOrder = currentFeatured.reduce((max, it) => Math.max(max, Number(it.order) || 0), 0);
+      return list.map((it) => {
+        if (it.id === id) {
+          const nextFeatured = !it.isFeatured;
+          targetItem = {
+            ...it,
+            isFeatured: nextFeatured,
+            order: nextFeatured ? (it.order && it.order < 900 ? it.order : maxOrder + 1) : it.order,
+          };
+          return targetItem;
+        }
+        return it;
+      });
+    };
+
+    if (type === 'doctors') {
+      nextList = toggleInList(featuredDoctorsData);
+      setFeaturedDoctorsData(nextList);
+    } else if (type === 'clinics') {
+      nextList = toggleInList(featuredClinicsData);
+      setFeaturedClinicsData(nextList);
+    } else if (type === 'pharmacies') {
+      nextList = toggleInList(featuredPharmaciesData);
+      setFeaturedPharmaciesData(nextList);
+    }
+
+    if (targetItem) {
+      try {
+        await adminApi.saveFeaturedOrdering(type, nextList);
+        addToast(
+          targetItem.isFeatured
+            ? `⭐ "${targetItem.name || targetItem.fullName}" added to Featured (Order #${targetItem.order})!`
+            : `"${targetItem.name || targetItem.fullName}" removed from Featured on Home Page.`,
+          'success'
+        );
+      } catch (err) {
+        addToast('Failed to update featured status.', 'error');
+      }
+    }
+  };
+
+  const handleOrderChange = (type, id, newOrder) => {
+    const parsed = Math.max(1, parseInt(newOrder, 10) || 1);
+    const update = (list) => list.map((it) => (it.id === id ? { ...it, order: parsed } : it));
+    if (type === 'doctors') setFeaturedDoctorsData(update);
+    else if (type === 'clinics') setFeaturedClinicsData(update);
+    else if (type === 'pharmacies') setFeaturedPharmaciesData(update);
+  };
+
+  const handleMoveOrder = async (type, id, direction) => {
+    let list = [];
+    if (type === 'doctors') list = [...featuredDoctorsData];
+    else if (type === 'clinics') list = [...featuredClinicsData];
+    else if (type === 'pharmacies') list = [...featuredPharmaciesData];
+
+    const currentItem = list.find((it) => it.id === id);
+    if (!currentItem) return;
+
+    const currentOrder = Number(currentItem.order) || 1;
+    const targetOrder = direction === 'up' ? Math.max(1, currentOrder - 1) : currentOrder + 1;
+
+    // Find if another item has targetOrder to swap
+    const partner = list.find((it) => it.isFeatured && Number(it.order) === targetOrder && it.id !== id);
+
+    const updated = list.map((it) => {
+      if (it.id === id) return { ...it, order: targetOrder };
+      if (partner && it.id === partner.id) return { ...it, order: currentOrder };
+      return it;
+    });
+
+    if (type === 'doctors') setFeaturedDoctorsData(updated);
+    else if (type === 'clinics') setFeaturedClinicsData(updated);
+    else if (type === 'pharmacies') setFeaturedPharmaciesData(updated);
+
+    await adminApi.saveFeaturedOrdering(type, updated);
+    addToast(`Order updated: "${currentItem.name || currentItem.fullName}" is now #${targetOrder}`, 'info');
   };
 
   useEffect(() => {
@@ -400,6 +616,18 @@ export const AdminHomepageControlsPage = () => {
         >
           <Package className="w-4 h-4" />
           <span>Category Items & Medicines</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('featured')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            activeSection === 'featured'
+              ? 'bg-forest-800 text-white shadow-sm'
+              : 'text-brandText-secondary hover:bg-forest-50 hover:text-forest-800'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span>Featured Section Controls ({featuredDoctorsData.filter((d) => d.isFeatured).length + featuredClinicsData.filter((c) => c.isFeatured).length + featuredPharmaciesData.filter((p) => p.isFeatured).length})</span>
         </button>
       </div>
 
@@ -686,6 +914,333 @@ export const AdminHomepageControlsPage = () => {
           )}
         </div>
       )}
+
+      {/* ============================================================== */}
+      {/* SECTION 4: FEATURED DOCTORS, CLINICS & PHARMACIES ORDERING     */}
+      {/* ============================================================== */}
+      {activeSection === 'featured' && (() => {
+        const currentFeaturedList =
+          activeFeaturedSubTab === 'doctors'
+            ? featuredDoctorsData
+            : activeFeaturedSubTab === 'clinics'
+            ? featuredClinicsData
+            : featuredPharmaciesData;
+
+        const orderedLiveItems = currentFeaturedList
+          .filter((it) => it.isFeatured)
+          .sort((a, b) => (Number(a.order) || 999) - (Number(b.order) || 999));
+
+        const filteredFeaturedList = currentFeaturedList
+          .filter((item) => {
+            const q = featuredSearchQuery.trim().toLowerCase();
+            const matchSearch =
+              !q ||
+              item.name?.toLowerCase().includes(q) ||
+              item.fullName?.toLowerCase().includes(q) ||
+              item.specialization?.toLowerCase().includes(q) ||
+              item.city?.toLowerCase().includes(q) ||
+              item.address?.toLowerCase().includes(q);
+
+            const matchFilter = featuredFilterMode === 'featured' ? item.isFeatured : true;
+            return matchSearch && matchFilter;
+          })
+          .sort((a, b) => {
+            if (a.isFeatured && b.isFeatured) {
+              return (Number(a.order) || 999) - (Number(b.order) || 999);
+            }
+            if (a.isFeatured) return -1;
+            if (b.isFeatured) return 1;
+            return (a.name || '').localeCompare(b.name || '');
+          });
+
+        return (
+          <div className="space-y-5 animate-fade-in">
+            {/* Top Sub-tabs & Save Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-pure p-4 rounded-3xl border border-brandBorder-subtle shadow-xs">
+              {/* 3 Sub-tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-surface-warm rounded-2xl border border-brandBorder-subtle/80 overflow-x-auto no-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveFeaturedSubTab('doctors');
+                    setFeaturedSearchQuery('');
+                  }}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    activeFeaturedSubTab === 'doctors'
+                      ? 'bg-white text-forest-900 shadow-sm border border-brandBorder-subtle'
+                      : 'text-brandText-secondary hover:text-forest-800'
+                  }`}
+                >
+                  <Stethoscope className="w-4 h-4 text-forest-700" />
+                  <span>Doctors ({featuredDoctorsData.filter((d) => d.isFeatured).length} Featured)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveFeaturedSubTab('clinics');
+                    setFeaturedSearchQuery('');
+                  }}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    activeFeaturedSubTab === 'clinics'
+                      ? 'bg-white text-forest-900 shadow-sm border border-brandBorder-subtle'
+                      : 'text-brandText-secondary hover:text-forest-800'
+                  }`}
+                >
+                  <Activity className="w-4 h-4 text-forest-700" />
+                  <span>Clinics ({featuredClinicsData.filter((c) => c.isFeatured).length} Featured)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveFeaturedSubTab('pharmacies');
+                    setFeaturedSearchQuery('');
+                  }}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    activeFeaturedSubTab === 'pharmacies'
+                      ? 'bg-white text-forest-900 shadow-sm border border-brandBorder-subtle'
+                      : 'text-brandText-secondary hover:text-forest-800'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4 text-forest-700" />
+                  <span>Pharmacies ({featuredPharmaciesData.filter((p) => p.isFeatured).length} Featured)</span>
+                </button>
+              </div>
+
+              {/* Save Ordering Button */}
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={Save}
+                isLoading={isSavingFeatured}
+                onClick={() => handleSaveFeatured(activeFeaturedSubTab)}
+                className="text-xs font-bold shadow-card px-4"
+              >
+                Save {activeFeaturedSubTab === 'doctors' ? 'Doctors' : activeFeaturedSubTab === 'clinics' ? 'Clinics' : 'Pharmacies'} Ordering
+              </Button>
+            </div>
+
+            {/* Live Home Page Carousel Order Sequence Ribbon */}
+            <div className="p-4 bg-gradient-to-r from-emerald-50 via-forest-50 to-amber-50 border border-brandBorder-subtle rounded-3xl space-y-2.5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
+                  <span className="text-xs font-extrabold text-forest-900 uppercase tracking-wider">
+                    Live Home Page Carousel Order ({orderedLiveItems.length} Featured)
+                  </span>
+                </div>
+                <span className="text-[11px] text-brandText-secondary font-medium hidden sm:inline">
+                  Appears left-to-right on Patient Home in this exact order
+                </span>
+              </div>
+
+              {orderedLiveItems.length === 0 ? (
+                <div className="py-2 text-xs text-brandText-muted italic flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <span>No {activeFeaturedSubTab} currently selected as featured. Click "+ Feature on Home" below to feature profiles on the homepage.</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
+                  {orderedLiveItems.map((item, idx) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-white border border-forest-200 rounded-2xl shadow-xs flex-shrink-0"
+                    >
+                      <span className="w-5 h-5 rounded-full bg-forest-800 text-white font-mono text-[10px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <div className="w-7 h-7 rounded-xl bg-forest-50 overflow-hidden flex-shrink-0">
+                        {item.image ? (
+                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-forest-700">
+                            {activeFeaturedSubTab === 'doctors' ? (
+                              <Stethoscope className="w-3.5 h-3.5" />
+                            ) : (
+                              <Building2 className="w-3.5 h-3.5" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-forest-900 max-w-[130px] truncate">{item.name}</p>
+                        <p className="text-[10px] text-forest-700 font-semibold">Rank #{item.order}</p>
+                      </div>
+                      {idx < orderedLiveItems.length - 1 && (
+                        <ChevronRight className="w-3.5 h-3.5 text-forest-400 ml-1 flex-shrink-0" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Search & Filter Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-brandText-muted absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={featuredSearchQuery}
+                  onChange={(e) => setFeaturedSearchQuery(e.target.value)}
+                  placeholder={`Search ${activeFeaturedSubTab} by name, specialty or city...`}
+                  className="w-full pl-9 pr-3.5 py-2 text-xs bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFeaturedFilterMode('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    featuredFilterMode === 'all'
+                      ? 'bg-forest-800 text-white shadow-xs'
+                      : 'bg-surface-warm text-brandText-secondary hover:text-forest-900'
+                  }`}
+                >
+                  All ({currentFeaturedList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeaturedFilterMode('featured')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all ${
+                    featuredFilterMode === 'featured'
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300 shadow-xs'
+                      : 'bg-surface-warm text-brandText-secondary hover:text-forest-900'
+                  }`}
+                >
+                  <Sparkles className="w-3 h-3 text-amber-600 fill-amber-500" />
+                  <span>Featured Only ({orderedLiveItems.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* List of Entities with Order Number Controls */}
+            {filteredFeaturedList.length === 0 ? (
+              <div className="p-8 text-center bg-surface-pure rounded-3xl border border-dashed border-brandBorder-subtle">
+                <AlertCircle className="w-8 h-8 text-forest-600 mx-auto mb-2" />
+                <p className="text-xs font-bold text-forest-900">No {activeFeaturedSubTab} match your filter.</p>
+                <p className="text-[11px] text-brandText-secondary mt-0.5">Try adjusting your search query or filter mode.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {filteredFeaturedList.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`p-4 rounded-3xl border transition-all ${
+                      item.isFeatured
+                        ? 'bg-surface-pure border-amber-300/80 shadow-card ring-1 ring-amber-300/30'
+                        : 'bg-surface-pure/80 border-brandBorder-subtle/80 hover:border-brandBorder-subtle'
+                    } flex items-center justify-between gap-3`}
+                  >
+                    {/* Left: Reorder Controls & Entity Info */}
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Order Number Box & Up/Down Stepper */}
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <div className="flex flex-col items-center">
+                          <button
+                            type="button"
+                            disabled={!item.isFeatured || item.order <= 1}
+                            onClick={() => handleMoveOrder(activeFeaturedSubTab, item.id, 'up')}
+                            className="p-1 text-forest-700 hover:bg-forest-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move up in display order"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!item.isFeatured}
+                            onClick={() => handleMoveOrder(activeFeaturedSubTab, item.id, 'down')}
+                            className="p-1 text-forest-700 hover:bg-forest-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Move down in display order"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="text-center">
+                          <span className="block text-[9px] font-extrabold uppercase tracking-wider text-brandText-muted mb-0.5">
+                            Order
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="99"
+                            value={item.order || 1}
+                            disabled={!item.isFeatured}
+                            onChange={(e) => handleOrderChange(activeFeaturedSubTab, item.id, e.target.value)}
+                            className={`w-12 py-1 text-center text-xs font-mono font-bold rounded-xl border transition-all ${
+                              item.isFeatured
+                                ? 'bg-white border-forest-500 text-forest-900 shadow-xs ring-1 ring-forest-500/20'
+                                : 'bg-surface-warm border-brandBorder-subtle text-brandText-muted cursor-not-allowed'
+                            }`}
+                            title="Set order number on patient homepage"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Photo */}
+                      <div className="w-12 h-12 rounded-2xl bg-forest-50 border border-brandBorder-subtle overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        {item.image ? (
+                          <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        ) : activeFeaturedSubTab === 'doctors' ? (
+                          <Stethoscope className="w-5 h-5 text-forest-700" />
+                        ) : (
+                          <Building2 className="w-5 h-5 text-forest-700" />
+                        )}
+                      </div>
+
+                      {/* Details */}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="font-heading font-extrabold text-xs text-forest-900 truncate">
+                            {item.name || item.fullName}
+                          </h4>
+                          {item.isFeatured && (
+                            <span className="text-[10px] font-extrabold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-full border border-amber-300">
+                              Order #{item.order}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-[11px] text-forest-700 font-medium truncate mt-0.5">
+                          {activeFeaturedSubTab === 'doctors'
+                            ? `${item.specialization} &bull; ${item.qualifications || 'MBBS'}`
+                            : activeFeaturedSubTab === 'clinics'
+                            ? `Clinic Facility &bull; ${item.city || 'Durgapur'}`
+                            : `Lic: ${item.licenseNumber || 'Verified'} &bull; ${item.city || 'Durgapur'}`}
+                        </p>
+
+                        <p className="text-[10px] text-brandText-muted truncate mt-0.5">
+                          {item.address || `${item.city || 'Durgapur'}, West Bengal`}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Right: Toggle Button */}
+                    <div className="flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFeatured(activeFeaturedSubTab, item.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs ${
+                          item.isFeatured
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                            : 'bg-surface-warm text-brandText-muted border border-brandBorder-subtle hover:bg-forest-50 hover:text-forest-800'
+                        }`}
+                        title="Toggle visibility in featured section on patient home page"
+                      >
+                        <Sparkles className={`w-3.5 h-3.5 ${item.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+                        <span>{item.isFeatured ? 'Featured' : '+ Feature'}</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ============================================================== */}
       {/* MODAL: ADD / EDIT BANNER                                       */}
@@ -1069,6 +1624,7 @@ export const AdminHomepageControlsPage = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

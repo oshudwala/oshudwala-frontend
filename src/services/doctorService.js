@@ -71,7 +71,16 @@ export const doctorService = {
           }
         })();
 
-        let mapped = items.map((doc) => {
+        const savedOrders = (() => {
+          try {
+            const raw = localStorage.getItem('oshud_featured_doctors_order');
+            return raw ? JSON.parse(raw) : {};
+          } catch {
+            return {};
+          }
+        })();
+
+        let mapped = items.map((doc, idx) => {
           const specNames = doc.specializations
             ?.map((s) => s.specialization?.name || s.name)
             .filter(Boolean)
@@ -92,6 +101,10 @@ export const doctorService = {
             (Array.isArray(savedFeatured) && (savedFeatured.includes(doc.id) || (doc.userId && savedFeatured.includes(doc.userId))))
           );
 
+          const explicitOrder = savedOrders[doc.id] || (doc.userId && savedOrders[doc.userId]);
+          const arrayOrder = Array.isArray(savedFeatured) && savedFeatured.indexOf(doc.id) !== -1 ? savedFeatured.indexOf(doc.id) + 1 : null;
+          const docOrder = Number(explicitOrder || arrayOrder || (isDocFeatured ? idx + 1 : 9999));
+
           return {
             id: doc.id,
             name: doc.fullName,
@@ -106,11 +119,22 @@ export const doctorService = {
             image: docPhoto,
             imageUrl: docPhoto,
             isFeatured: isDocFeatured,
+            featuredOrder: docOrder,
             rating: 4.9,
             reviews: 'Verified Doctor',
             nextAvailable: 'Available Today',
             raw: doc,
           };
+        });
+
+        // Sort so that featured doctors respect their order number
+        mapped.sort((a, b) => {
+          if (a.isFeatured && b.isFeatured) {
+            return (a.featuredOrder || 9999) - (b.featuredOrder || 9999);
+          }
+          if (a.isFeatured) return -1;
+          if (b.isFeatured) return 1;
+          return 0;
         });
 
         if (specialization && specialization !== 'All') {

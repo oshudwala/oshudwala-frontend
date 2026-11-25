@@ -20,8 +20,31 @@ export const FeaturedDoctors = ({ onBookDoctor }) => {
         const res = await doctorService.getDoctors();
         if (isMounted) {
           if (Array.isArray(res?.doctors) && res.doctors.length > 0) {
-            // Only show doctors marked as isFeatured = true
+            const savedOrders = (() => {
+              try {
+                const raw = localStorage.getItem('oshud_featured_doctors_order');
+                return raw ? JSON.parse(raw) : {};
+              } catch {
+                return {};
+              }
+            })();
+            const savedList = (() => {
+              try {
+                const raw = localStorage.getItem('oshud_featured_doctors');
+                return raw ? JSON.parse(raw) : [];
+              } catch {
+                return [];
+              }
+            })();
+
+            // Only show doctors marked as isFeatured = true, strictly ordered by featured order number
             const featured = res.doctors.filter((d) => Boolean(d.isFeatured));
+            featured.sort((a, b) => {
+              const orderA = Number(a.featuredOrder ?? savedOrders[a.id] ?? (Array.isArray(savedList) && savedList.indexOf(a.id) !== -1 ? savedList.indexOf(a.id) + 1 : 9999));
+              const orderB = Number(b.featuredOrder ?? savedOrders[b.id] ?? (Array.isArray(savedList) && savedList.indexOf(b.id) !== -1 ? savedList.indexOf(b.id) + 1 : 9999));
+              return orderA - orderB;
+            });
+
             setFeaturedDoctorsList(featured);
           } else {
             setFeaturedDoctorsList([]);

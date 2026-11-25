@@ -212,38 +212,51 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     return digits.length >= 10 ? digits.slice(-10) : digits;
   };
 
-  const checkCredentialConflict = (phone, email, excludeId = null, excludeUserId = null) => {
+  const checkCredentialConflict = (
+    phone,
+    email,
+    excludeId = null,
+    excludeUserId = null,
+    origPhone = null,
+    origEmail = null
+  ) => {
     const normPhone = normalizePhoneNumber(phone);
     const normEmail = email && typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : '';
+    const normOrigPhone = normalizePhoneNumber(origPhone);
+    const normOrigEmail = origEmail && typeof origEmail === 'string' && origEmail.includes('@') ? origEmail.trim().toLowerCase() : '';
 
     const isExcluded = (p) =>
       Boolean(
         (excludeId && (p.id === excludeId || p.userId === excludeId)) ||
-        (excludeUserId && (p.id === excludeUserId || p.userId === excludeUserId))
+        (excludeUserId && (p.id === excludeUserId || p.userId === excludeUserId)) ||
+        (normOrigPhone && p.phone && normalizePhoneNumber(p.phone) === normOrigPhone) ||
+        (normOrigEmail && p.email && p.email.trim().toLowerCase() === normOrigEmail)
       );
 
-    if (normPhone && normPhone.length === 10) {
+    // Only validate phone if provided and genuinely changed from original
+    if (normPhone && normPhone.length === 10 && normPhone !== normOrigPhone) {
       const match = allExistingProfiles.find(
         (p) => !isExcluded(p) && p.phone && normalizePhoneNumber(p.phone) === normPhone
       );
       if (match) {
         return {
           type: 'phone',
-          message: `Already used credentials. Mobile number is already assigned.`,
+          message: `Already used credentials. Mobile number is already assigned to ${match.role} "${match.name}".`,
           role: match.role,
           name: match.name,
         };
       }
     }
 
-    if (normEmail) {
+    // Only validate email if provided and genuinely changed from original
+    if (normEmail && normEmail !== normOrigEmail) {
       const match = allExistingProfiles.find(
         (p) => !isExcluded(p) && p.email && p.email.trim().toLowerCase() === normEmail
       );
       if (match) {
         return {
           type: 'email',
-          message: `Already used credentials. Email address is already assigned.`,
+          message: `Already used credentials. Email address is already assigned to ${match.role} "${match.name}".`,
           role: match.role,
           name: match.name,
         };
@@ -272,10 +285,17 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const editEmailConflict = useMemo(() => {
     if (!editFormData.email || !editFormData.email.includes('@') || !itemToEdit) return null;
     const cleanEmail = editFormData.email.trim().toLowerCase();
+    const origEmail = (itemToEdit.email || itemToEdit.user?.email || '').trim().toLowerCase();
+    // If the email was NOT changed on edit, it belongs to this account!
+    if (cleanEmail === origEmail) return null;
+
+    const origPhone = normalizePhoneNumber(itemToEdit.phone || itemToEdit.user?.phone);
     const isCurrent = (p) =>
       Boolean(
         (itemToEdit.id && (p.id === itemToEdit.id || p.userId === itemToEdit.id)) ||
-        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId))
+        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId)) ||
+        (origEmail && p.email && p.email.trim().toLowerCase() === origEmail) ||
+        (origPhone && p.phone && normalizePhoneNumber(p.phone) === origPhone)
       );
     const match = allExistingProfiles.find((p) => !isCurrent(p) && p.email && p.email.trim().toLowerCase() === cleanEmail);
     return match ? `Already used credentials` : null;
@@ -285,10 +305,17 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     if (!itemToEdit) return null;
     const cleanPhone = normalizePhoneNumber(editFormData.phone);
     if (cleanPhone.length < 10) return null;
+    const origPhone = normalizePhoneNumber(itemToEdit.phone || itemToEdit.user?.phone);
+    // If the phone was NOT changed on edit, it belongs to this account!
+    if (cleanPhone === origPhone) return null;
+
+    const origEmail = (itemToEdit.email || itemToEdit.user?.email || '').trim().toLowerCase();
     const isCurrent = (p) =>
       Boolean(
         (itemToEdit.id && (p.id === itemToEdit.id || p.userId === itemToEdit.id)) ||
-        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId))
+        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId)) ||
+        (origPhone && p.phone && normalizePhoneNumber(p.phone) === origPhone) ||
+        (origEmail && p.email && p.email.trim().toLowerCase() === origEmail)
       );
     const match = allExistingProfiles.find((p) => !isCurrent(p) && p.phone && normalizePhoneNumber(p.phone) === cleanPhone);
     return match ? `Already used credentials` : null;
@@ -640,12 +667,18 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     e.preventDefault();
     if (!itemToEdit) return;
 
-    // Strict duplicate credential check
+    const origPhone = itemToEdit.phone || itemToEdit.user?.phone;
+    const origEmail = itemToEdit.email || itemToEdit.user?.email;
+    const origUserId = itemToEdit.userId || itemToEdit.user?.id || itemToEdit.ownerId || itemToEdit.owner?.id;
+
+    // Strict duplicate credential check (skips if phone/email was not changed)
     const conflict = checkCredentialConflict(
       editFormData.phone,
       editFormData.email,
       itemToEdit?.id,
-      itemToEdit?.userId
+      origUserId,
+      origPhone,
+      origEmail
     );
     if (conflict) {
       addToast(conflict.message, 'error');
@@ -681,6 +714,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         }
 
         await adminApi.updateDoctor(targetId, {
+          userId: origUserId,
+          originalPhone: origPhone,
+          originalEmail: origEmail,
           fullName: editFormData.fullName,
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
@@ -698,6 +734,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         setEditCustomSpecialization('');
       } else if (type === 'pharmacies') {
         await adminApi.updatePharmacy(targetId, {
+          userId: origUserId,
+          originalPhone: origPhone,
+          originalEmail: origEmail,
           name: editFormData.name,
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
@@ -715,6 +754,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         addToast(`Pharmacy "${editFormData.name}" updated successfully!`, 'success');
       } else if (type === 'clinics') {
         await adminApi.updateClinic(targetId, {
+          userId: origUserId,
+          originalPhone: origPhone,
+          originalEmail: origEmail,
           name: editFormData.name,
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
@@ -722,7 +764,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           isFeatured: Boolean(editFormData.isFeatured),
           hasClinicService: editFormData.hasClinicService !== false,
           hasMedicineService: Boolean(editFormData.hasMedicineService),
-          chamberCount: editFormData.chamberCount,
           locationId: editFormData.locationId || undefined,
           line1: editFormData.address,
           city: editFormData.city,
@@ -732,6 +773,9 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         addToast(`Clinic "${editFormData.name}" updated successfully!`, 'success');
       } else if (type === 'riders') {
         await adminApi.updateRider(targetId, {
+          userId: origUserId,
+          originalPhone: origPhone,
+          originalEmail: origEmail,
           fullName: editFormData.fullName,
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
@@ -744,6 +788,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         addToast(`Rider ${editFormData.fullName} profile updated!`, 'success');
       } else if (type === 'receptionists') {
         await adminApi.updateUser(targetId, {
+          originalPhone: origPhone,
+          originalEmail: origEmail,
           fullName: editFormData.fullName,
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
@@ -752,6 +798,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         addToast(`Receptionist ${editFormData.fullName} profile updated!`, 'success');
       } else if (type === 'users') {
         await adminApi.updateUser(targetId, {
+          originalPhone: origPhone,
+          originalEmail: origEmail,
           fullName: editFormData.fullName,
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
@@ -1053,7 +1101,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
             </div>
             <p className="text-[11px] text-brandText-secondary">{row.line1 || row.address}, {row.city}</p>
             <span className="inline-block mt-0.5 text-[10px] font-bold text-forest-700 bg-forest-50 px-1.5 py-0.5 rounded">
-              {row.settings?.chamberCount || row.chamberCount || '6 Chambers'}
+              Clinic Facility
             </span>
           </div>
         </div>
@@ -2409,9 +2457,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           className="w-full px-3 py-2 text-xs bg-white border border-forest-300 rounded-lg focus:outline-none focus:border-forest-600 font-medium"
                           autoFocus
                         />
-                        <p className="text-[10px] text-forest-700">
-                          Will be saved to backend database via <code>POST /specializations</code> and assigned to this doctor.
-                        </p>
                       </div>
                     )}
 
@@ -2508,7 +2553,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className={`grid grid-cols-1 ${activeTab === 'pharmacies' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
                       <div>
                         <label className="block text-xs font-semibold text-brandText-main mb-1">City</label>
                         <input
@@ -2530,19 +2575,21 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium font-mono cursor-not-allowed"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          {activeTab === 'clinics' ? 'Chambers' : 'Drug License No.'}
-                        </label>
-                        <input
-                          type="text"
-                          name={activeTab === 'clinics' ? 'chamberCount' : 'licenseNumber'}
-                          value={activeTab === 'clinics' ? formData.chamberCount : formData.licenseNumber}
-                          onChange={handleInputChange}
-                          placeholder={activeTab === 'clinics' ? '8 Chambers' : 'WB-DL-9901'}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                        />
-                      </div>
+                      {activeTab === 'pharmacies' && (
+                        <div>
+                          <label className="block text-xs font-semibold text-brandText-main mb-1">
+                            Drug License No.
+                          </label>
+                          <input
+                            type="text"
+                            name="licenseNumber"
+                            value={formData.licenseNumber}
+                            onChange={handleInputChange}
+                            placeholder="WB-DL-9901"
+                            className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Active Facility Services (hasClinicService & hasMedicineService) */}
@@ -2566,8 +2613,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                             className="mt-0.5 rounded text-forest-700 focus:ring-forest-500"
                           />
                           <div>
-                            <span className="block text-xs font-bold text-forest-900">Clinic & Chambers</span>
-                            <span className="block text-[10px] text-brandText-muted">Doctor appointments & chamber queues</span>
+                            <span className="block text-xs font-bold text-forest-900">Clinic Service</span>
+                            <span className="block text-[10px] text-brandText-muted">Doctor consultations & appointments</span>
                           </div>
                         </label>
 
@@ -2960,7 +3007,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                       />
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className={`grid grid-cols-1 ${itemToEdit.entityType === 'pharmacies' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
                       <div>
                         <label className="block text-xs font-semibold text-brandText-main mb-1">City</label>
                         <input
@@ -2981,18 +3028,21 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium font-mono cursor-not-allowed"
                         />
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-brandText-main mb-1">
-                          {itemToEdit.entityType === 'clinics' ? 'Chambers' : 'Drug License No.'}
-                        </label>
-                        <input
-                          type="text"
-                          name={itemToEdit.entityType === 'clinics' ? 'chamberCount' : 'licenseNumber'}
-                          value={itemToEdit.entityType === 'clinics' ? editFormData.chamberCount : editFormData.licenseNumber}
-                          onChange={handleEditInputChange}
-                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                        />
-                      </div>
+                      {itemToEdit.entityType === 'pharmacies' && (
+                        <div>
+                          <label className="block text-xs font-semibold text-brandText-main mb-1">
+                            Drug License No.
+                          </label>
+                          <input
+                            type="text"
+                            name="licenseNumber"
+                            value={editFormData.licenseNumber || ''}
+                            onChange={handleEditInputChange}
+                            placeholder="WB-DL-9901"
+                            className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                          />
+                        </div>
+                      )}
                     </div>
 
                     {/* Active Facility Services (hasClinicService & hasMedicineService) */}
@@ -3016,8 +3066,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                             className="mt-0.5 rounded text-forest-700 focus:ring-forest-500"
                           />
                           <div>
-                            <span className="block text-xs font-bold text-forest-900">Clinic & Chambers</span>
-                            <span className="block text-[10px] text-brandText-muted">Doctor appointments & chamber queues</span>
+                            <span className="block text-xs font-bold text-forest-900">Clinic Service</span>
+                            <span className="block text-[10px] text-brandText-muted">Doctor consultations & appointments</span>
                           </div>
                         </label>
 

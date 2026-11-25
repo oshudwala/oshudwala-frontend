@@ -20,8 +20,33 @@ export const FeaturedPharmacies = ({ onSelectPharmacy }) => {
         const res = await pharmacyService.getPharmacies();
         if (isMounted) {
           const list = Array.isArray(res?.pharmacies) ? res.pharmacies : [];
+          const savedPharmOrders = (() => {
+            try {
+              const raw = localStorage.getItem('oshud_featured_pharmacies_order');
+              return raw ? JSON.parse(raw) : {};
+            } catch {
+              return {};
+            }
+          })();
+          const savedPharmList = (() => {
+            try {
+              const raw = localStorage.getItem('oshud_featured_pharmacies');
+              return raw ? JSON.parse(raw) : [];
+            } catch {
+              return [];
+            }
+          })();
+
           // Prioritize pharmacies with medicine service that are marked as isFeatured
           const medicineHubs = list.filter((p) => p.hasMedicineService !== false && Boolean(p.isFeatured));
+
+          // Strictly sort pharmacies by featured order number (ascending)
+          medicineHubs.sort((a, b) => {
+            const orderA = Number(a.pharmOrder ?? a.featuredOrder ?? savedPharmOrders[a.id] ?? (Array.isArray(savedPharmList) && savedPharmList.indexOf(a.id) !== -1 ? savedPharmList.indexOf(a.id) + 1 : 9999));
+            const orderB = Number(b.pharmOrder ?? b.featuredOrder ?? savedPharmOrders[b.id] ?? (Array.isArray(savedPharmList) && savedPharmList.indexOf(b.id) !== -1 ? savedPharmList.indexOf(b.id) + 1 : 9999));
+            return orderA - orderB;
+          });
+
           setPharmaciesList(medicineHubs);
         }
       } catch (err) {
