@@ -1104,35 +1104,35 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       key: 'city',
       render: (row) => <span className="text-xs">{row.city} &bull; {row.pincode}</span>,
     },
-    {
-      header: 'Featured on Home',
-      key: 'featured',
-      render: (row) => {
-        const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
-        return (
-          <button
-            type="button"
-            disabled={isTogglingFeatured}
-            onClick={() => handleToggleFeatured(row, 'clinics')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
-              isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
-            } ${
-              row.isFeatured
-                ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
-                : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
-            }`}
-            title="Toggle visibility on patient home page"
-          >
-            {isTogglingFeatured ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
-            ) : (
-              <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
-            )}
-            <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
-          </button>
-        );
-      },
-    },
+    // {
+    //   header: 'Featured on Home',
+    //   key: 'featured',
+    //   render: (row) => {
+    //     const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
+    //     return (
+    //       <button
+    //         type="button"
+    //         disabled={isTogglingFeatured}
+    //         onClick={() => handleToggleFeatured(row, 'clinics')}
+    //         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+    //           isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
+    //         } ${
+    //           row.isFeatured
+    //             ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+    //             : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+    //         }`}
+    //         title="Toggle visibility on patient home page"
+    //       >
+    //         {isTogglingFeatured ? (
+    //           <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
+    //         ) : (
+    //           <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+    //         )}
+    //         <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
+    //       </button>
+    //     );
+    //   },
+    // },
     {
       header: 'Status & Deadline',
       key: 'status',
@@ -1238,18 +1238,6 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       ),
     },
     {
-      header: 'Shift Timing',
-      key: 'shift',
-      render: (row) => (
-        <div>
-          <span className="text-xs font-semibold text-forest-800">
-            {row.shift || (row.startTime && row.endTime ? `${row.startTime} – ${row.endTime}` : '10:00 AM – 01:00 PM')}
-          </span>
-          <p className="text-[10px] text-brandText-muted">Daily Consultation</p>
-        </div>
-      ),
-    },
-    {
       header: 'Experience & Fee',
       key: 'experience',
       render: (row) => (
@@ -1261,35 +1249,35 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
         </div>
       ),
     },
-    {
-      header: 'Featured on Home',
-      key: 'featured',
-      render: (row) => {
-        const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
-        return (
-          <button
-            type="button"
-            disabled={isTogglingFeatured}
-            onClick={() => handleToggleFeatured(row, 'doctors')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
-              isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
-            } ${
-              row.isFeatured
-                ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
-                : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
-            }`}
-            title="Toggle visibility in Featured Doctors on home page"
-          >
-            {isTogglingFeatured ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
-            ) : (
-              <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
-            )}
-            <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
-          </button>
-        );
-      },
-    },
+    // {
+    //   header: 'Featured on Home',
+    //   key: 'featured',
+    //   render: (row) => {
+    //     const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
+    //     return (
+    //       <button
+    //         type="button"
+    //         disabled={isTogglingFeatured}
+    //         onClick={() => handleToggleFeatured(row, 'doctors')}
+    //         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+    //           isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
+    //         } ${
+    //           row.isFeatured
+    //             ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+    //             : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+    //         }`}
+    //         title="Toggle visibility in Featured Doctors on home page"
+    //       >
+    //         {isTogglingFeatured ? (
+    //           <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
+    //         ) : (
+    //           <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+    //         )}
+    //         <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
+    //       </button>
+    //     );
+    //   },
+    // },
     {
       header: 'Status & Deadline',
       key: 'status',
@@ -1406,35 +1394,35 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       key: 'city',
       render: (row) => <span className="text-xs">{row.city}, {row.state || 'West Bengal'}</span>,
     },
-    {
-      header: 'Featured on Home',
-      key: 'featured',
-      render: (row) => {
-        const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
-        return (
-          <button
-            type="button"
-            disabled={isTogglingFeatured}
-            onClick={() => handleToggleFeatured(row, 'pharmacies')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
-              isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
-            } ${
-              row.isFeatured
-                ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
-                : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
-            }`}
-            title="Toggle visibility in Featured Pharmacies on home page"
-          >
-            {isTogglingFeatured ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
-            ) : (
-              <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
-            )}
-            <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
-          </button>
-        );
-      },
-    },
+    // {
+    //   header: 'Featured on Home',
+    //   key: 'featured',
+    //   render: (row) => {
+    //     const isTogglingFeatured = togglingFeaturedId === (row.id || row.userId);
+    //     return (
+    //       <button
+    //         type="button"
+    //         disabled={isTogglingFeatured}
+    //         onClick={() => handleToggleFeatured(row, 'pharmacies')}
+    //         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all ${
+    //           isTogglingFeatured ? 'opacity-60 cursor-not-allowed' : ''
+    //         } ${
+    //           row.isFeatured
+    //             ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-sm'
+    //             : 'bg-surface-warm text-brandText-muted hover:bg-forest-50 hover:text-forest-700 border border-brandBorder-subtle'
+    //         }`}
+    //         title="Toggle visibility in Featured Pharmacies on home page"
+    //       >
+    //         {isTogglingFeatured ? (
+    //           <RefreshCw className="w-3.5 h-3.5 animate-spin text-current" />
+    //         ) : (
+    //           <Sparkles className={`w-3.5 h-3.5 ${row.isFeatured ? 'text-amber-600 fill-amber-500' : ''}`} />
+    //         )}
+    //         <span>{isTogglingFeatured ? 'Saving…' : row.isFeatured ? 'Featured' : 'Standard'}</span>
+    //       </button>
+    //     );
+    //   },
+    // },
     {
       header: 'Status & Deadline',
       key: 'status',

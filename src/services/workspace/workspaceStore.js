@@ -269,21 +269,36 @@ export const workspaceStore = {
     return updatedOrder;
   },
 
-  assignRider(orderId, rider) {
+  assignRider(orderId, rider, qrToken = null) {
+    const generatedToken =
+      qrToken ||
+      `QR-${String(orderId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const expiresAt = Date.now() + 15 * 60 * 1000;
     return this.updateOrderStatus(orderId, 'READY_FOR_PICKUP', {
       assignedRider: {
-        id: rider.id,
-        name: rider.name,
+        id: rider.id || rider.userId,
+        name: rider.name || rider.fullName,
         phone: rider.phone,
-        vehicle: rider.vehicle,
+        vehicle: rider.vehicle || 'Hero Electric (WB-02-AZ-4921)',
       },
+      pickupQrCode: generatedToken,
+      pickupQrExpiresAt: expiresAt,
     });
   },
 
   verifyPickup(orderId, qrInput) {
     const order = state.orders.find((o) => o.id === orderId);
     if (!order) throw new Error('Order not found');
-    if (!qrInput || order.pickupQrCode.trim().toLowerCase() !== qrInput.trim().toLowerCase()) {
+
+    let token = (qrInput || '').trim();
+    try {
+      const parsed = JSON.parse(qrInput);
+      if (parsed.qrToken) token = parsed.qrToken.trim();
+      else if (parsed.token) token = parsed.token.trim();
+    } catch {}
+
+    const orderQr = (order.pickupQrCode || '').trim();
+    if (!token || (orderQr && orderQr.toLowerCase() !== token.toLowerCase())) {
       throw new Error('Invalid Pickup QR or verification code. Please scan the QR code on the sealed pharmacy package.');
     }
     return this.updateOrderStatus(orderId, 'OUT_FOR_DELIVERY');

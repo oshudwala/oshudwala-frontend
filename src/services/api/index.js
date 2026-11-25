@@ -8,3 +8,4 @@ export { default as notificationApi } from './notification.api';
 export { default as promotionApi } from './promotion.api';
 export { default as couponApi } from './coupon.api';
 export { default as adminApi } from './admin.api';
+export { default as deliveryApi } from './delivery.api';

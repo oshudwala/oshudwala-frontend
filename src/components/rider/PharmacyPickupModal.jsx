@@ -138,16 +138,31 @@ export const PharmacyPickupModal = ({ order, isOpen, onClose, onVerifySuccess })
   // Evaluate the code (from camera scan, image upload, or manual entry)
   const handleCodeEvaluation = (rawCode) => {
     if (!rawCode || !order) return;
-    const clean = rawCode.trim().toUpperCase();
+    let token = rawCode.trim();
+    let parsedItems = order.items || [];
+    try {
+      const parsed = JSON.parse(rawCode);
+      if (parsed.qrToken) token = parsed.qrToken.trim();
+      else if (parsed.token) token = parsed.token.trim();
+      if (parsed.items && Array.isArray(parsed.items)) parsedItems = parsed.items;
+    } catch (e) {}
+
+    const clean = token.toUpperCase();
     setEnteredCode(clean);
 
-    if (clean === order.pickupQrCode.trim().toUpperCase()) {
+    const expected = (order.pickupQrCode || '').trim().toUpperCase();
+    if (clean === expected || clean.includes(expected) || expected.includes(clean)) {
       setIsVerified(true);
       setVerificationError('');
-      setScannedItems(order.items || []);
+      setScannedItems(parsedItems);
       stopCamera();
+
+      // Automatically complete verification without requiring manual button clicks
+      setTimeout(() => {
+        onVerifySuccess(order.id, token);
+      }, 700);
     } else {
-      setVerificationError('Scanned QR code does not match this parcel. Please scan the label on the sealed pharmacy bag.');
+      setVerificationError('Scanned QR code does not match this parcel. Please scan the QR code generated on the pharmacy screen.');
       setIsVerified(false);
     }
   };

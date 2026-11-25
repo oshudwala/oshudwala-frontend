@@ -57,10 +57,13 @@ export const PrescriptionReviewPage = () => {
     { name: 'Pan 40 Tablet', qty: 2, price: 100 },
   ]);
 
-  // Manual In-Store Order Modal State (Payment method removed, directly approved with Total MRP)
+  // Manual Walk-in / In-Store Order Modal State
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [manualCustomerName, setManualCustomerName] = useState('');
   const [manualCustomerPhone, setManualCustomerPhone] = useState('');
+  const [manualDeliveryType, setManualDeliveryType] = useState('DELIVERY'); // 'DELIVERY' | 'PICKUP'
+  const [manualAddress, setManualAddress] = useState('');
+  const [manualArea, setManualArea] = useState('City Centre');
   const [manualNotes, setManualNotes] = useState('');
   const [manualItems, setManualItems] = useState([
     { name: 'Paracetamol 650mg (Dolo 650)', qty: 1, price: 35 },
@@ -160,13 +163,15 @@ export const PrescriptionReviewPage = () => {
     );
   };
 
-  // Pricing rules calculation for Manual In-Store Order
+  // Pricing rules calculation for Walk-in Registration / In-Store Order
+  // Delivery Fee Rule: Under ₹499 order = ₹30 delivery fee, ₹499+ = FREE delivery
+  const isPickupOrder = manualDeliveryType === 'PICKUP';
   const manualBill = calculateOrderBill({
     items: manualItems,
-    isPickup: true, // In-store counter pickup
+    isPickup: isPickupOrder,
   });
 
-  // Submit Manual In-Store Order: Directly approved, directly created as approved order, NO re-approval needed!
+  // Submit Walk-in Order: Directly created as approved order in READY_FOR_PICKUP
   const handleConfirmManualOrder = (e) => {
     e.preventDefault();
     if (!manualCustomerName.trim()) {
@@ -180,34 +185,43 @@ export const PrescriptionReviewPage = () => {
       return;
     }
 
-    // Directly create the order in READY_FOR_PICKUP (already approved right at the counter!)
+    const resolvedAddress = isPickupOrder
+      ? 'In-Store Counter Pickup'
+      : (manualAddress.trim() || 'Walk-in Registered Delivery Address');
+
+    const resolvedArea = isPickupOrder
+      ? 'In-Store Counter'
+      : (manualArea.trim() || 'City Centre');
+
+    // Directly create the order in READY_FOR_PICKUP with calculated delivery fee
     const newOrder = createOrder({
       customerName: manualCustomerName.trim(),
       customerPhone: manualCustomerPhone.trim(),
-      address: 'In-Store Counter Pickup',
-      area: 'In-Store Counter',
+      address: resolvedAddress,
+      area: resolvedArea,
       items: manualItems,
       totalMrp: manualBill.totalMrp,
       subtotal: manualBill.totalMrp,
       packagingFee: manualBill.packagingFee,
       platformFee: manualBill.platformFee,
-      deliveryFee: 0,
+      deliveryFee: manualBill.deliveryFee, // ₹30 under ₹499, ₹0 if ₹499+
       discount: manualBill.discount,
       cashback: manualBill.cashback,
       total: manualBill.finalTotal,
       status: 'READY_FOR_PICKUP',
-      paymentMethod: 'IN_STORE_COUNTER',
+      paymentMethod: isPickupOrder ? 'IN_STORE_COUNTER' : 'COD',
       paymentStatus: 'PAID',
       isManualInStore: true,
-      notes: `In-Store counter prescription approved & dispensed. ${manualNotes}`,
+      notes: `Walk-in registration prescription billed. Delivery Fee: ₹${manualBill.deliveryFee}. ${manualNotes}`,
     });
 
     setIsManualModalOpen(false);
     setManualCustomerName('');
     setManualCustomerPhone('');
+    setManualAddress('');
     setManualNotes('');
     addToast(
-      `In-Store Order ${newOrder.id} approved and billed! Total: ₹${manualBill.finalTotal.toFixed(2)}`,
+      `Walk-in Order ${newOrder.id} registered & billed! Total: ₹${manualBill.finalTotal.toFixed(2)} (Delivery Fee: ₹${manualBill.deliveryFee})`,
       'success'
     );
   };
@@ -233,7 +247,7 @@ export const PrescriptionReviewPage = () => {
             onClick={() => setIsManualModalOpen(true)}
             className="text-xs font-bold shadow-sm"
           >
-            New In-Store Prescription Order
+            Walk-in Registration & Order
           </Button>
         </div>
       </div>
@@ -691,14 +705,14 @@ export const PrescriptionReviewPage = () => {
             className="fixed inset-0 bg-forest-950/60 backdrop-blur-sm"
             onClick={() => setIsManualModalOpen(false)}
           />
-          <div className="relative bg-surface-pure rounded-3xl max-w-lg w-full p-6 shadow-floating border border-brandBorder-subtle z-10 space-y-5 animate-scale-up">
+          <div className="relative bg-surface-pure rounded-3xl max-w-lg w-full p-6 shadow-floating border border-brandBorder-subtle z-10 space-y-5 animate-scale-up max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-brandBorder-subtle">
               <div>
                 <h3 className="font-heading font-extrabold text-base text-forest-900">
-                  New In-Store Walk-in Prescription Order
+                  Walk-in Registration & Medicine Order
                 </h3>
                 <p className="text-xs text-brandText-secondary">
-                  Directly verified & approved at the counter with instant billing
+                  Directly verified & registered with automated delivery fee & billing rules
                 </p>
               </div>
               <button
@@ -711,6 +725,50 @@ export const PrescriptionReviewPage = () => {
             </div>
 
             <form onSubmit={handleConfirmManualOrder} className="space-y-4">
+              {/* Delivery Option Toggle */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-forest-900">Fulfillment / Delivery Method</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setManualDeliveryType('DELIVERY')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex items-center justify-between ${
+                      manualDeliveryType === 'DELIVERY'
+                        ? 'bg-forest-50 border-forest-600 text-forest-900 shadow-xs'
+                        : 'bg-surface-warm border-brandBorder-subtle text-brandText-secondary hover:bg-forest-50/50'
+                    }`}
+                  >
+                    <div>
+                      <p>Home Delivery</p>
+                      <span className="text-[10px] font-normal text-brandText-muted">Rider Handover</span>
+                    </div>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      manualBill.deliveryFee === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    }`}>
+                      {manualBill.deliveryFee === 0 ? 'FREE (₹499+)' : '₹30 Fee'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setManualDeliveryType('PICKUP')}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition-all text-left flex items-center justify-between ${
+                      manualDeliveryType === 'PICKUP'
+                        ? 'bg-forest-50 border-forest-600 text-forest-900 shadow-xs'
+                        : 'bg-surface-warm border-brandBorder-subtle text-brandText-secondary hover:bg-forest-50/50'
+                    }`}
+                  >
+                    <div>
+                      <p>Counter Pickup</p>
+                      <span className="text-[10px] font-normal text-brandText-muted">Patient Collects</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                      ₹0 Fee
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-bold text-forest-900">Walk-in Patient Name</label>
@@ -738,6 +796,34 @@ export const PrescriptionReviewPage = () => {
                 </div>
               </div>
 
+              {/* Delivery Address fields when Home Delivery is selected */}
+              {manualDeliveryType === 'DELIVERY' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
+                  <div>
+                    <label className="text-xs font-bold text-forest-900">Delivery Address</label>
+                    <input
+                      type="text"
+                      required
+                      value={manualAddress}
+                      onChange={(e) => setManualAddress(e.target.value)}
+                      placeholder="e.g. Flat 3B, Bidhannagar"
+                      className="w-full mt-1 px-3 py-2 text-xs font-semibold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-forest-900">Delivery Area</label>
+                    <input
+                      type="text"
+                      required
+                      value={manualArea}
+                      onChange={(e) => setManualArea(e.target.value)}
+                      placeholder="e.g. City Centre, Durgapur"
+                      className="w-full mt-1 px-3 py-2 text-xs font-semibold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Medicine Item Rows */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -754,7 +840,7 @@ export const PrescriptionReviewPage = () => {
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                   {manualItems.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-surface-warm p-2 rounded-xl text-xs">
                       <input
@@ -808,7 +894,7 @@ export const PrescriptionReviewPage = () => {
                 </div>
               </div>
 
-              {/* Price Summary with Total MRP, Packaging Fee (₹6), Platform Fee & Discount */}
+              {/* Price Summary with Delivery Fee Rule (₹30 under ₹499, FREE for ₹499+) */}
               <div className="p-3.5 rounded-2xl bg-forest-50/80 border border-forest-100 text-xs space-y-1.5">
                 <div className="flex justify-between font-bold text-forest-900">
                   <span>Total MRP:</span>
@@ -830,6 +916,32 @@ export const PrescriptionReviewPage = () => {
                   <span>Platform Fee:</span>
                   <span className="font-mono">₹{manualBill.platformFee.toFixed(2)}</span>
                 </div>
+
+                {/* Delivery Fee with official rule indicator */}
+                <div className="flex justify-between text-brandText-secondary items-center">
+                  <span>Delivery Charges:</span>
+                  <span className="font-mono font-bold flex items-center gap-1.5">
+                    {manualBill.deliveryFee > 0 ? (
+                      <>
+                        <span className="text-amber-800">₹{manualBill.deliveryFee.toFixed(2)}</span>
+                        <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-sans font-bold">
+                          Order &lt; ₹499
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full text-[10px]">
+                        FREE Delivery {manualBill.totalMrp >= 499 ? '(Order ₹499+)' : ''}
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {manualDeliveryType === 'DELIVERY' && manualBill.totalMrp < 499 && (
+                  <p className="text-[10px] text-amber-800 font-medium bg-amber-50/90 p-1.5 rounded-lg border border-amber-200/60">
+                    💡 Delivery fee of <strong>₹30</strong> applied on orders under ₹499. Add ₹{(499 - manualBill.totalMrp).toFixed(2)} more for <strong>FREE Delivery</strong>!
+                  </p>
+                )}
+
                 {manualBill.cashback > 0 && (
                   <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-100/60 px-2 py-1 rounded-lg">
                     <span>Wallet Cashback (2%):</span>
@@ -837,7 +949,7 @@ export const PrescriptionReviewPage = () => {
                   </div>
                 )}
                 <div className="border-t border-forest-200/80 pt-1.5 flex justify-between font-bold text-forest-900 text-sm">
-                  <span>Net Payable at Counter:</span>
+                  <span>Net Payable:</span>
                   <span className="font-mono text-forest-800">
                     ₹{manualBill.finalTotal.toFixed(2)}
                   </span>
@@ -861,7 +973,7 @@ export const PrescriptionReviewPage = () => {
                   leftIcon={CheckCircle}
                   className="text-xs font-bold px-4 py-2"
                 >
-                  Approve & Create In-Store Order
+                  Confirm & Create Order
                 </Button>
               </div>
             </form>

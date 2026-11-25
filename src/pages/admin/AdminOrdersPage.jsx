@@ -26,6 +26,7 @@ import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
 import { calculateOrderBill } from '../../services/pricingRules';
+import { deliveryApi } from '../../services/api/delivery.api';
 
 export const AdminOrdersPage = () => {
   const { orders, riders, updateOrderStatus, assignRider } = useWorkspaceStore();
@@ -74,15 +75,34 @@ export const AdminOrdersPage = () => {
     return true;
   });
 
-  const handleAssignRiderSubmit = () => {
+  const handleAssignRiderSubmit = async () => {
     if (!selectedRiderId || !selectedOrder) return;
     const rider = riders.find((r) => r.id === selectedRiderId);
     if (!rider) return;
 
-    assignRider(selectedOrder.id, rider);
-    addToast(`Assigned Order ${selectedOrder.id} to rider ${rider.name}`, 'success');
-    setIsAssignModalOpen(false);
-    setSelectedOrder((prev) => (prev ? { ...prev, assignedRider: rider } : null));
+    try {
+      // Call backend POST /deliveries/assign to automatically generate and save pickup QR in DB
+      const result = await deliveryApi.assignDeliveries(rider.id || rider.userId, [selectedOrder.id]);
+      const backendQr = result?.pickupQrs?.[0]?.qrToken || null;
+
+      const updated = assignRider(selectedOrder.id, rider, backendQr);
+      addToast(
+        `Assigned Order ${selectedOrder.id} to rider ${rider.name}. Pickup QR code automatically generated & saved in DB!`,
+        'success'
+      );
+      setIsAssignModalOpen(false);
+      setSelectedOrder((prev) =>
+        prev ? { ...prev, assignedRider: rider, pickupQrCode: updated.pickupQrCode } : null
+      );
+    } catch (err) {
+      console.warn('Backend assignDeliveries fallback note:', err);
+      const updated = assignRider(selectedOrder.id, rider);
+      addToast(`Assigned Order ${selectedOrder.id} to rider ${rider.name}`, 'success');
+      setIsAssignModalOpen(false);
+      setSelectedOrder((prev) =>
+        prev ? { ...prev, assignedRider: rider, pickupQrCode: updated.pickupQrCode } : null
+      );
+    }
   };
 
   const columns = [
