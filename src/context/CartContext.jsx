@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { calculateOrderBill } from '../services/pricingRules';
+import couponApi from '../services/api/coupon.api';
 
 const CartContext = createContext(null);
 
@@ -64,9 +65,40 @@ export const CartProvider = ({ children }) => {
     setAppliedCoupon(null);
   };
 
-  const applyCoupon = (code) => {
+  const applyCoupon = async (code) => {
     setCouponError('');
-    const cleanCode = code.trim().toUpperCase();
+    const cleanCode = String(code || '').trim().toUpperCase();
+    if (!cleanCode) return false;
+
+    // Calculate current subtotal in paise for backend validation
+    const currentSubtotal = cartItems.reduce(
+      (sum, it) => sum + (Number(it.sellingPrice || it.price) || 0) * (it.quantity || 1),
+      0
+    );
+    const subtotalPaise = Math.round(currentSubtotal * 100);
+
+    try {
+      const res = await couponApi.validateCoupon(cleanCode, subtotalPaise);
+      if (res && (res.discountPaise !== undefined || res.couponId)) {
+        const discountRupees = Math.round(Number(res.discountPaise || 0)) / 100;
+        setAppliedCoupon({
+          id: res.couponId,
+          code: res.code || cleanCode,
+          type: 'fixed',
+          value: discountRupees,
+          discountPaise: res.discountPaise,
+          label: `₹${discountRupees} OFF (${res.code || cleanCode})`,
+        });
+        return true;
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message;
+      if (msg && !msg.includes('Network Error')) {
+        setCouponError(msg);
+        return false;
+      }
+    }
+
     if (cleanCode === 'OSHUD10') {
       setAppliedCoupon({ code: 'OSHUD10', type: 'percent', value: 10, label: '10% OFF Oshud Care' });
       return true;
@@ -74,7 +106,7 @@ export const CartProvider = ({ children }) => {
       setAppliedCoupon({ code: 'WELCOME50', type: 'fixed', value: 50, label: '₹50 OFF First Order' });
       return true;
     } else {
-      setCouponError('Invalid coupon code. Try OSHUD10 or WELCOME50');
+      setCouponError('Invalid or expired coupon code.');
       return false;
     }
   };

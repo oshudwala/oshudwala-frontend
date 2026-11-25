@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import couponApi from '../services/api/coupon.api';
 import {
   ShoppingBag,
   Trash2,
@@ -35,12 +36,29 @@ export const CartPage = () => {
   } = useCart();
 
   const [couponInput, setCouponInput] = useState('');
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
 
-  const handleApplyCoupon = (e) => {
+  useEffect(() => {
+    couponApi.getCoupons().then((list) => {
+      if (Array.isArray(list)) {
+        const now = new Date();
+        const active = list.filter((c) => c.isActive && new Date(c.validTo) >= now);
+        setAvailableCoupons(active);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleApplyCoupon = async (e) => {
     e.preventDefault();
     if (!couponInput.trim()) return;
-    const ok = applyCoupon(couponInput);
-    if (ok) setCouponInput('');
+    setIsApplyingCoupon(true);
+    try {
+      const ok = await applyCoupon(couponInput);
+      if (ok) setCouponInput('');
+    } finally {
+      setIsApplyingCoupon(false);
+    }
   };
 
   return (
@@ -223,29 +241,44 @@ export const CartPage = () => {
                       onChange={(e) => setCouponInput(e.target.value)}
                       className="flex-1 px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl uppercase tracking-wider font-semibold focus:outline-none focus:border-forest-500"
                     />
-                    <Button variant="secondary" size="sm" type="submit">
+                    <Button variant="secondary" size="sm" type="submit" isLoading={isApplyingCoupon}>
                       Apply
                     </Button>
                   </div>
                   {couponError && (
                     <p className="text-[11px] text-rose-600">{couponError}</p>
                   )}
-                  <div className="pt-1 flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => applyCoupon('OSHUD10')}
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200"
-                    >
-                      Use OSHUD10 (10% OFF)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyCoupon('WELCOME50')}
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200"
-                    >
-                      Use WELCOME50 (₹50 OFF)
-                    </button>
-                  </div>
+                  {availableCoupons.length > 0 ? (
+                    <div className="pt-1 flex flex-wrap gap-1.5">
+                      {availableCoupons.slice(0, 4).map((c) => (
+                        <button
+                          key={c.id || c.code}
+                          type="button"
+                          onClick={() => applyCoupon(c.code)}
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200 cursor-pointer transition-colors"
+                        >
+                          Use {c.code} ({c.discountType === 'PERCENT' ? `${c.discountValue}% OFF` : `₹${c.discountValue / 100} OFF`})
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="pt-1 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => applyCoupon('OSHUD10')}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200 cursor-pointer"
+                      >
+                        Use OSHUD10 (10% OFF)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyCoupon('WELCOME50')}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200 cursor-pointer"
+                      >
+                        Use WELCOME50 (₹50 OFF)
+                      </button>
+                    </div>
+                  )}
                 </form>
               )}
             </div>

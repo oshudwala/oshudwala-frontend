@@ -1163,6 +1163,64 @@ export const adminApi = {
     return res.data?.data || res.data;
   },
 
+  // ================= COUPONS & PROMO CODES =================
+  async getCoupons() {
+    try {
+      const res = await apiClient.get('/coupons');
+      const data = res.data?.data || res.data || [];
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn('Backend getCoupons notice:', err.message);
+      return [];
+    }
+  },
+
+  async createCoupon(data) {
+    this.invalidateCache();
+    const payload = {
+      code: String(data.code || '').trim().toUpperCase(),
+      description: data.description ? String(data.description).trim() : null,
+      discountType: data.discountType || 'PERCENT',
+      discountValue: parseInt(data.discountValue, 10),
+      maxDiscountPaise: data.maxDiscountPaise ? parseInt(data.maxDiscountPaise, 10) : null,
+      minOrderPaise: data.minOrderPaise ? parseInt(data.minOrderPaise, 10) : 0,
+      validFrom: data.validFrom ? new Date(data.validFrom).toISOString() : new Date().toISOString(),
+      validTo: data.validTo ? new Date(data.validTo).toISOString() : new Date(Date.now() + 30 * 86400000).toISOString(),
+      usageLimitTotal: data.usageLimitTotal ? parseInt(data.usageLimitTotal, 10) : null,
+      usageLimitPerUser: data.usageLimitPerUser ? parseInt(data.usageLimitPerUser, 10) : 1,
+      isActive: data.isActive !== false,
+    };
+
+    const res = await apiClient.post('/coupons', payload);
+    return res.data?.data || res.data;
+  },
+
+  async updateCoupon(id, data) {
+    this.invalidateCache();
+    const payload = {};
+    if (data.description !== undefined) payload.description = data.description ? String(data.description).trim() : null;
+    if (data.maxDiscountPaise !== undefined) payload.maxDiscountPaise = data.maxDiscountPaise ? parseInt(data.maxDiscountPaise, 10) : null;
+    if (data.minOrderPaise !== undefined) payload.minOrderPaise = parseInt(data.minOrderPaise, 10) || 0;
+    if (data.validTo !== undefined && data.validTo) payload.validTo = new Date(data.validTo).toISOString();
+    if (data.usageLimitTotal !== undefined) payload.usageLimitTotal = data.usageLimitTotal ? parseInt(data.usageLimitTotal, 10) : null;
+    if (data.usageLimitPerUser !== undefined) payload.usageLimitPerUser = parseInt(data.usageLimitPerUser, 10) || 1;
+    if (data.isActive !== undefined) payload.isActive = Boolean(data.isActive);
+
+    const res = await apiClient.put(`/coupons/${id}`, payload);
+    return res.data?.data || res.data;
+  },
+
+  async updateCouponStatus(id, isActive) {
+    this.invalidateCache();
+    try {
+      const res = await apiClient.patch(`/coupons/${id}/status`, { isActive });
+      return res.data?.data || res.data;
+    } catch {
+      const res = await apiClient.put(`/coupons/${id}`, { isActive });
+      return res.data?.data || res.data;
+    }
+  },
+
   // ================= SPECIALIZATIONS =================
   async getSpecializations() {
     try {
