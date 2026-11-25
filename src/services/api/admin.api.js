@@ -1037,6 +1037,132 @@ export const adminApi = {
     }
   },
 
+  // ================= PROMOTIONS / HERO BANNERS =================
+  async getPromotions(placement = 'HOME_TOP') {
+    const normalizePromo = (p) => {
+      if (!p) return p;
+      let primaryText = p.buttonText || '';
+      let primaryLink = p.buttonLink || '';
+      let secondaryText = p.secondaryButtonText || '';
+      let secondaryLink = p.secondaryButtonLink || '';
+
+      if (!secondaryText && primaryLink && primaryLink.includes('||')) {
+        const parts = primaryLink.split('||');
+        primaryLink = parts[0] || '';
+        secondaryText = parts[1] || '';
+        secondaryLink = parts[2] || '';
+      }
+
+      return {
+        ...p,
+        buttonText: primaryText,
+        buttonLink: primaryLink,
+        secondaryButtonText: secondaryText,
+        secondaryButtonLink: secondaryLink,
+      };
+    };
+
+    try {
+      const res = await apiClient.get('/promotions/admin');
+      const data = res.data?.data || res.data || [];
+      return Array.isArray(data) ? data.map(normalizePromo) : [];
+    } catch (err) {
+      console.warn('Backend getAdminPromotions notice:', err.message);
+      try {
+        const pubRes = await apiClient.get('/promotions', { params: placement ? { placement } : undefined });
+        const pubData = pubRes.data?.data || pubRes.data || [];
+        return Array.isArray(pubData) ? pubData.map(normalizePromo) : [];
+      } catch {
+        return [];
+      }
+    }
+  },
+
+  async createPromotion(data) {
+    this.invalidateCache();
+    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl || data.image);
+
+    let buttonLink = data.buttonLink || data.ctaLink || null;
+    const secondaryButtonText = data.secondaryButtonText || data.secondaryCtaText || null;
+    const secondaryButtonLink = data.secondaryButtonLink || data.secondaryCtaLink || null;
+
+    if (secondaryButtonText && buttonLink && !buttonLink.includes('||')) {
+      buttonLink = `${buttonLink}||${secondaryButtonText}||${secondaryButtonLink || ''}`;
+    }
+
+    const payload = {
+      heading: String(data.heading || data.headline || '').trim(),
+      paragraph: data.paragraph !== undefined ? data.paragraph : (data.subtext ? String(data.subtext).trim() : null),
+      imageUrl: optimizedImage || String(data.imageUrl || data.image || '').trim(),
+      buttonText: data.buttonText || data.ctaText || null,
+      buttonLink: buttonLink,
+      secondaryButtonText: secondaryButtonText,
+      secondaryButtonLink: secondaryButtonLink,
+      couponCode: data.couponCode ? String(data.couponCode).trim().toUpperCase() : (data.badge ? String(data.badge).trim().toUpperCase() : null),
+      placement: data.placement ? String(data.placement).trim() : 'HOME_TOP',
+      sortOrder: Math.max(0, parseInt(data.sortOrder, 10) || 0),
+      isActive: data.isActive !== false,
+      validFrom: data.validFrom || null,
+      validTo: data.validTo || null,
+    };
+
+    let created = null;
+    try {
+      const res = await apiClient.post('/promotions', payload);
+      created = res.data?.data || res.data;
+    } catch (err) {
+      if (err.response?.status === 413) {
+        payload.imageUrl = 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&q=80&w=1200';
+        const retryRes = await apiClient.post('/promotions', payload);
+        created = retryRes.data?.data || retryRes.data;
+      } else {
+        const detail = extractErrorMessage(err, 'Failed to create promotion banner');
+        throw new Error(detail);
+      }
+    }
+    return created;
+  },
+
+  async updatePromotion(id, data) {
+    this.invalidateCache();
+    const payload = {};
+    if (data.heading !== undefined || data.headline !== undefined) payload.heading = String(data.heading || data.headline || '').trim();
+    if (data.paragraph !== undefined || data.subtext !== undefined) payload.paragraph = data.paragraph !== undefined ? data.paragraph : (data.subtext ? String(data.subtext).trim() : null);
+    if (data.imageUrl !== undefined || data.image !== undefined) {
+      payload.imageUrl = await ensureOptimizedImageUrl(data.imageUrl || data.image);
+    }
+
+    let buttonLink = data.buttonLink !== undefined ? data.buttonLink : (data.ctaLink || null);
+    const secondaryButtonText = data.secondaryButtonText !== undefined ? data.secondaryButtonText : (data.secondaryCtaText || null);
+    const secondaryButtonLink = data.secondaryButtonLink !== undefined ? data.secondaryButtonLink : (data.secondaryCtaLink || null);
+
+    if (secondaryButtonText && buttonLink && !buttonLink.includes('||')) {
+      buttonLink = `${buttonLink}||${secondaryButtonText}||${secondaryButtonLink || ''}`;
+    }
+
+    if (data.buttonText !== undefined || data.ctaText !== undefined) payload.buttonText = data.buttonText || data.ctaText || null;
+    if (buttonLink !== undefined) payload.buttonLink = buttonLink;
+    if (secondaryButtonText !== undefined) payload.secondaryButtonText = secondaryButtonText;
+    if (secondaryButtonLink !== undefined) payload.secondaryButtonLink = secondaryButtonLink;
+    if (data.couponCode !== undefined || data.badge !== undefined) {
+      payload.couponCode = data.couponCode !== undefined ? (data.couponCode ? String(data.couponCode).trim().toUpperCase() : null) : (data.badge ? String(data.badge).trim().toUpperCase() : null);
+    }
+    if (data.placement !== undefined) payload.placement = String(data.placement).trim();
+    if (data.sortOrder !== undefined) payload.sortOrder = Math.max(0, parseInt(data.sortOrder, 10) || 0);
+    if (data.isActive !== undefined) payload.isActive = Boolean(data.isActive);
+    if (data.validFrom !== undefined) payload.validFrom = data.validFrom;
+    if (data.validTo !== undefined) payload.validTo = data.validTo;
+
+    const res = await apiClient.put(`/promotions/${id}`, payload);
+    return res.data?.data || res.data;
+  },
+
+  async deletePromotion(id) {
+    this.invalidateCache();
+    const res = await apiClient.delete(`/promotions/${id}`);
+    return res.data?.data || res.data;
+  },
+
   // ================= SPECIALIZATIONS =================
   async getSpecializations() {
     try {

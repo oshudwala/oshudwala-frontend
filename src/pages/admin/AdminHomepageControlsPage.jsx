@@ -32,7 +32,6 @@ import {
 import Button from '../../components/common/Button';
 import { useToast } from '../../context/ToastContext';
 import adminApi from '../../services/api/admin.api';
-import { bannersData as initialBanners } from '../../data/bannersData';
 import { parentCategories as initialCategories, categoryItemsByParent as initialCategoryItems } from '../../data/categoriesData';
 import ImageDropzone from '../../components/common/ImageDropzone';
 
@@ -63,16 +62,28 @@ export const AdminHomepageControlsPage = () => {
   const [editingBanner, setEditingBanner] = useState(null);
   const [bannerForm, setBannerForm] = useState({
     id: '',
-    badge: 'Oshud Wala Care',
+    heading: '',
     headline: '',
+    paragraph: '',
     subtext: '',
-    ctaText: 'Order Now',
-    ctaLink: '/shop',
-    secondaryCtaText: 'Upload Prescription',
-    secondaryCtaLink: '/shop',
-    theme: 'emerald',
+    imageUrl: '',
     image: '',
+    hasButton1: true,
+    buttonText: 'Order Now',
+    ctaText: 'Order Now',
+    buttonLink: '/medicines',
+    ctaLink: '/medicines',
+    hasButton2: false,
+    secondaryButtonText: '',
+    secondaryCtaText: '',
+    secondaryButtonLink: '',
+    secondaryCtaLink: '',
+    couponCode: '',
+    badge: '',
+    placement: 'HOME_TOP',
+    sortOrder: 0,
     isActive: true,
+    theme: 'emerald',
   });
 
   // Modal states for Categories
@@ -110,13 +121,62 @@ export const AdminHomepageControlsPage = () => {
     try {
       const settings = await adminApi.getSettings();
 
-      // 1. Banners
-      const savedBanners = settings?.find?.((s) => s.key === 'homepage_banners')?.value;
-      if (Array.isArray(savedBanners) && savedBanners.length > 0) {
-        setBanners(savedBanners);
-      } else {
+      // 1. Promotional Hero Banners (From Backend /promotions)
+      try {
+        const promoBanners = await adminApi.getPromotions('HOME_TOP');
+        if (Array.isArray(promoBanners) && promoBanners.length > 0) {
+          const mapped = promoBanners.map((p) => {
+            let primaryText = p.buttonText || '';
+            let primaryLink = p.buttonLink || '';
+            let secondaryText = p.secondaryButtonText || '';
+            let secondaryLink = p.secondaryButtonLink || '';
+
+            if (!secondaryText && primaryLink && primaryLink.includes('||')) {
+              const parts = primaryLink.split('||');
+              primaryLink = parts[0] || '';
+              secondaryText = parts[1] || '';
+              secondaryLink = parts[2] || '';
+            }
+
+            return {
+              id: p.id,
+              heading: p.heading || '',
+              headline: p.heading || '',
+              paragraph: p.paragraph || '',
+              subtext: p.paragraph || '',
+              imageUrl: p.imageUrl || '',
+              image: p.imageUrl || '',
+              buttonText: primaryText,
+              ctaText: primaryText,
+              buttonLink: primaryLink,
+              ctaLink: primaryLink,
+              secondaryButtonText: secondaryText,
+              secondaryCtaText: secondaryText,
+              secondaryButtonLink: secondaryLink,
+              secondaryCtaLink: secondaryLink,
+              couponCode: p.couponCode || '',
+              badge: p.couponCode ? `CODE: ${p.couponCode}` : (p.badge || ''),
+              placement: p.placement || 'HOME_TOP',
+              sortOrder: p.sortOrder ?? 0,
+              isActive: p.isActive !== false,
+              theme: 'emerald',
+            };
+          });
+          setBanners(mapped);
+          localStorage.setItem('oshud_homepage_banners', JSON.stringify(mapped));
+        } else {
+          const savedBanners = settings?.find?.((s) => s.key === 'homepage_banners')?.value;
+          if (Array.isArray(savedBanners) && savedBanners.length > 0) {
+            setBanners(savedBanners);
+          } else {
+            const local = localStorage.getItem('oshud_homepage_banners');
+            setBanners(local ? JSON.parse(local) : []);
+          }
+        }
+      } catch (bErr) {
+        console.warn('Backend load promotions notice:', bErr.message);
         const local = localStorage.getItem('oshud_homepage_banners');
-        setBanners(local ? JSON.parse(local) : initialBanners.map((b) => ({ ...b, isActive: true })));
+        setBanners(local ? JSON.parse(local) : []);
       }
 
       // 2. Categories
@@ -384,21 +444,59 @@ export const AdminHomepageControlsPage = () => {
   const handleOpenBannerModal = (banner = null) => {
     if (banner) {
       setEditingBanner(banner);
-      setBannerForm({ ...banner });
+      const hasBtn1 = Boolean(banner.buttonText || banner.ctaText);
+      const hasBtn2 = Boolean(banner.secondaryButtonText || banner.secondaryCtaText);
+      setBannerForm({
+        id: banner.id,
+        heading: banner.heading || banner.headline || '',
+        headline: banner.heading || banner.headline || '',
+        paragraph: banner.paragraph || banner.subtext || '',
+        subtext: banner.paragraph || banner.subtext || '',
+        imageUrl: banner.imageUrl || banner.image || '',
+        image: banner.imageUrl || banner.image || '',
+        hasButton1: hasBtn1,
+        buttonText: banner.buttonText || banner.ctaText || (hasBtn1 ? 'Order Now' : ''),
+        ctaText: banner.buttonText || banner.ctaText || (hasBtn1 ? 'Order Now' : ''),
+        buttonLink: banner.buttonLink || banner.ctaLink || (hasBtn1 ? '/medicines' : ''),
+        ctaLink: banner.buttonLink || banner.ctaLink || (hasBtn1 ? '/medicines' : ''),
+        hasButton2: hasBtn2,
+        secondaryButtonText: banner.secondaryButtonText || banner.secondaryCtaText || '',
+        secondaryCtaText: banner.secondaryButtonText || banner.secondaryCtaText || '',
+        secondaryButtonLink: banner.secondaryButtonLink || banner.secondaryCtaLink || '',
+        secondaryCtaLink: banner.secondaryButtonLink || banner.secondaryCtaLink || '',
+        couponCode: banner.couponCode || '',
+        badge: banner.couponCode ? `CODE: ${banner.couponCode}` : (banner.badge || ''),
+        placement: banner.placement || 'HOME_TOP',
+        sortOrder: banner.sortOrder ?? 0,
+        isActive: banner.isActive !== false,
+        theme: banner.theme || 'emerald',
+      });
     } else {
       setEditingBanner(null);
       setBannerForm({
-        id: `banner-${Date.now()}`,
-        badge: 'Special Offer',
-        headline: 'Flat 18% Off on All Medicines',
-        subtext: 'Delivered in 45 minutes from verified pharmacies near you.',
-        ctaText: 'Shop Now',
-        ctaLink: '/shop',
-        secondaryCtaText: 'Upload Rx',
-        secondaryCtaLink: '/shop',
-        theme: 'emerald',
-        image: 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&q=80&w=1200',
+        id: '',
+        heading: '',
+        headline: '',
+        paragraph: '',
+        subtext: '',
+        imageUrl: '',
+        image: '',
+        hasButton1: true,
+        buttonText: 'Order Now',
+        ctaText: 'Order Now',
+        buttonLink: '/medicines',
+        ctaLink: '/medicines',
+        hasButton2: false,
+        secondaryButtonText: '',
+        secondaryCtaText: '',
+        secondaryButtonLink: '',
+        secondaryCtaLink: '',
+        couponCode: '',
+        badge: '',
+        placement: 'HOME_TOP',
+        sortOrder: banners.length,
         isActive: true,
+        theme: 'emerald',
       });
     }
     setIsBannerModalOpen(true);
@@ -406,37 +504,93 @@ export const AdminHomepageControlsPage = () => {
 
   const handleSaveBanner = async (e) => {
     e.preventDefault();
+    const heading = (bannerForm.heading || bannerForm.headline || '').trim();
+    if (!heading) {
+      addToast('Banner headline is required.', 'error');
+      return;
+    }
+    const imageUrl = (bannerForm.imageUrl || bannerForm.image || '').trim();
+    if (!imageUrl) {
+      addToast('Please upload or provide an image for the promotional banner.', 'error');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      let updated;
-      if (editingBanner) {
-        updated = banners.map((b) => (b.id === editingBanner.id ? { ...bannerForm } : b));
-        addToast('Banner updated successfully!', 'success');
+      const payload = {
+        heading: heading,
+        paragraph: bannerForm.paragraph !== undefined ? bannerForm.paragraph : (bannerForm.subtext || null),
+        imageUrl: imageUrl,
+        buttonText: bannerForm.hasButton1 && bannerForm.buttonText ? bannerForm.buttonText.trim() : null,
+        buttonLink: bannerForm.hasButton1 && bannerForm.buttonLink ? bannerForm.buttonLink.trim() : null,
+        secondaryButtonText: bannerForm.hasButton2 && bannerForm.secondaryButtonText ? bannerForm.secondaryButtonText.trim() : null,
+        secondaryButtonLink: bannerForm.hasButton2 && bannerForm.secondaryButtonLink ? bannerForm.secondaryButtonLink.trim() : null,
+        couponCode: bannerForm.couponCode ? bannerForm.couponCode.trim().toUpperCase() : null,
+        placement: bannerForm.placement || 'HOME_TOP',
+        sortOrder: Math.max(0, parseInt(bannerForm.sortOrder, 10) || 0),
+        isActive: bannerForm.isActive !== false,
+      };
+
+      const isBackendId = editingBanner && editingBanner.id && !editingBanner.id.startsWith('banner-');
+
+      if (isBackendId) {
+        await adminApi.updatePromotion(editingBanner.id, payload);
+        addToast(`Promotion banner "${heading}" updated successfully!`, 'success');
       } else {
-        updated = [...banners, { ...bannerForm, id: `banner-${Date.now()}` }];
-        addToast('New homepage banner added!', 'success');
+        await adminApi.createPromotion(payload);
+        addToast(`New promotional hero banner "${heading}" created on backend!`, 'success');
       }
-      await saveBanners(updated);
+
+      await loadData();
       setIsBannerModalOpen(false);
+    } catch (err) {
+      console.error('Save promotion error:', err);
+      addToast(err.message || 'Failed to save promotional banner to backend.', 'error');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteBanner = async (id) => {
-    if (banners.length <= 1) {
-      addToast('At least one hero banner is required on the homepage.', 'error');
-      return;
+    const isBackendId = id && !id.startsWith('banner-');
+    if (isBackendId) {
+      try {
+        await adminApi.deletePromotion(id);
+        addToast('Promotional banner deleted from backend!', 'success');
+        await loadData();
+      } catch (err) {
+        addToast(err.message || 'Failed to delete promotion from backend.', 'error');
+      }
+    } else {
+      const filtered = banners.filter((b) => b.id !== id);
+      setBanners(filtered);
+      localStorage.setItem('oshud_homepage_banners', JSON.stringify(filtered));
+      addToast('Banner removed from homepage.', 'success');
     }
-    const filtered = banners.filter((b) => b.id !== id);
-    await saveBanners(filtered);
-    addToast('Banner removed from homepage.', 'success');
   };
 
   const handleToggleBannerActive = async (id) => {
-    const updated = banners.map((b) => (b.id === id ? { ...b, isActive: !b.isActive } : b));
-    await saveBanners(updated);
-    addToast('Banner visibility toggled.', 'info');
+    const target = banners.find((b) => b.id === id);
+    if (!target) return;
+    const nextState = !target.isActive;
+
+    // Optimistically update
+    const updated = banners.map((b) => (b.id === id ? { ...b, isActive: nextState } : b));
+    setBanners(updated);
+    localStorage.setItem('oshud_homepage_banners', JSON.stringify(updated));
+
+    const isBackendId = id && !id.startsWith('banner-');
+    if (isBackendId) {
+      try {
+        await adminApi.updatePromotion(id, { isActive: nextState });
+        addToast(nextState ? 'Banner active on patient home!' : 'Banner hidden from patient home.', 'info');
+      } catch (err) {
+        addToast(err.message || 'Failed to update visibility on backend.', 'error');
+        await loadData();
+      }
+    } else {
+      addToast(nextState ? 'Banner active on patient home!' : 'Banner hidden.', 'info');
+    }
   };
 
   // ================= CATEGORY ACTIONS =================
@@ -651,46 +805,84 @@ export const AdminHomepageControlsPage = () => {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {banners.map((b, idx) => (
-              <div
-                key={b.id || idx}
-                className={`bg-surface-pure rounded-3xl border ${
-                  b.isActive ? 'border-brandBorder-subtle' : 'border-amber-200 bg-amber-50/20'
-                } p-5 shadow-card relative overflow-hidden flex flex-col justify-between`}
+          {banners.length === 0 ? (
+            <div className="bg-surface-pure rounded-3xl border border-dashed border-brandBorder-subtle p-10 text-center">
+              <div className="w-14 h-14 rounded-full bg-forest-50 text-forest-700 flex items-center justify-center mx-auto mb-3">
+                <ImageIcon className="w-7 h-7" />
+              </div>
+              <h3 className="font-heading font-extrabold text-sm text-forest-900 mb-1">
+                No Promotional Hero Banners Added
+              </h3>
+              <p className="text-xs text-brandText-secondary max-w-sm mx-auto mb-4">
+                The patient home page currently has zero promotional banners. Click below to add your first banner with custom heading, paragraph, and 1 or 2 action buttons.
+              </p>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={Plus}
+                onClick={() => handleOpenBannerModal()}
+                className="text-xs font-bold shadow-card"
               >
-                <div>
-                  {/* Banner Image Preview */}
-                  <div className="w-full h-36 rounded-2xl overflow-hidden bg-forest-950/10 mb-3 relative">
-                    <img
-                      src={b.image}
-                      alt={b.headline}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.src = 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&q=80&w=600';
-                      }}
-                    />
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-forest-900/80 text-white backdrop-blur-sm">
-                      {b.badge || 'Offer'}
+                Add First Hero Banner
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {banners.map((b, idx) => (
+                <div
+                  key={b.id || idx}
+                  className={`bg-surface-pure rounded-3xl border ${
+                    b.isActive ? 'border-brandBorder-subtle' : 'border-amber-200 bg-amber-50/20'
+                  } p-5 shadow-card relative overflow-hidden flex flex-col justify-between`}
+                >
+                  <div>
+                    {/* Banner Image Preview */}
+                    <div className="w-full h-36 rounded-2xl overflow-hidden bg-forest-950/10 mb-3 relative">
+                      <img
+                        src={b.imageUrl || b.image}
+                        alt={b.heading || b.headline}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.src = 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?auto=format&fit=crop&q=80&w=600';
+                        }}
+                      />
+                      {(b.couponCode || b.badge) && (
+                        <div className="absolute top-2 left-2 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-forest-900/85 text-white backdrop-blur-sm border border-white/20 shadow-xs">
+                          {b.couponCode ? `Coupon: ${b.couponCode}` : b.badge}
+                        </div>
+                      )}
+                      <div className="absolute top-2 right-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white/95 text-forest-800 backdrop-blur-sm shadow-xs border border-brandBorder-subtle">
+                        Order: #{b.sortOrder ?? 0}
+                      </div>
                     </div>
-                    <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/90 text-forest-800 backdrop-blur-sm">
-                      Theme: {b.theme}
+
+                    {/* Headline & Subtext */}
+                    <h3 className="font-heading font-extrabold text-sm text-forest-900 line-clamp-2">
+                      {b.heading || b.headline}
+                    </h3>
+                    <p className="text-xs text-brandText-secondary mt-1 line-clamp-2">
+                      {b.paragraph || b.subtext}
+                    </p>
+
+                    {/* Configured Action Buttons */}
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                      {(b.buttonText || b.ctaText) && (
+                        <span className="px-2 py-0.5 bg-forest-50 text-forest-700 rounded-md border border-forest-100 flex items-center gap-1">
+                          <span>Btn 1: {b.buttonText || b.ctaText}</span>
+                          <span className="text-brandText-muted font-mono font-normal">({b.buttonLink || b.ctaLink || '/medicines'})</span>
+                        </span>
+                      )}
+                      {(b.secondaryButtonText || b.secondaryCtaText) && (
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 rounded-md border border-emerald-100 flex items-center gap-1">
+                          <span>Btn 2: {b.secondaryButtonText || b.secondaryCtaText}</span>
+                          <span className="text-brandText-muted font-mono font-normal">({b.secondaryButtonLink || b.secondaryCtaLink || '/prescription'})</span>
+                        </span>
+                      )}
+                      {!(b.buttonText || b.ctaText) && !(b.secondaryButtonText || b.secondaryCtaText) && (
+                        <span className="text-brandText-muted text-[10px] italic">No action buttons</span>
+                      )}
                     </div>
                   </div>
-
-                  {/* Headline & Subtext */}
-                  <h3 className="font-heading font-extrabold text-sm text-forest-900 line-clamp-2">
-                    {b.headline}
-                  </h3>
-                  <p className="text-xs text-brandText-secondary mt-1 line-clamp-2">
-                    {b.subtext}
-                  </p>
-
-                  <div className="mt-3 flex items-center gap-2 text-[11px] font-bold text-forest-700">
-                    <span className="px-2 py-0.5 bg-forest-50 rounded-md">CTA: {b.ctaText}</span>
-                    <span className="text-brandText-muted">&bull; Link: {b.ctaLink}</span>
-                  </div>
-                </div>
 
                 {/* Actions */}
                 <div className="mt-4 pt-3 border-t border-brandBorder-subtle flex items-center justify-between">
@@ -727,7 +919,8 @@ export const AdminHomepageControlsPage = () => {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1267,54 +1460,22 @@ export const AdminHomepageControlsPage = () => {
 
               <form onSubmit={handleSaveBanner} className="mt-4 space-y-3.5">
                 <ImageDropzone
-                  value={bannerForm.image}
-                  onChange={(img) => setBannerForm((prev) => ({ ...prev, image: img }))}
+                  value={bannerForm.imageUrl || bannerForm.image}
+                  onChange={(img) => setBannerForm((prev) => ({ ...prev, imageUrl: img, image: img }))}
                   label="Banner Promotional Image *"
                   description="Drag & drop promotional banner creative here or click to browse"
                   aspectRatio="banner"
                 />
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Badge Text
-                    </label>
-                    <input
-                      type="text"
-                      value={bannerForm.badge}
-                      onChange={(e) => setBannerForm({ ...bannerForm, badge: e.target.value })}
-                      placeholder="e.g. FLAT 18% OFF"
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Color Theme
-                    </label>
-                    <select
-                      value={bannerForm.theme}
-                      onChange={(e) => setBannerForm({ ...bannerForm, theme: e.target.value })}
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
-                    >
-                      <option value="emerald">Emerald Green</option>
-                      <option value="mint">Mint Refresh</option>
-                      <option value="teal">Teal Healthcare</option>
-                      <option value="sapphire">Sapphire Blue</option>
-                      <option value="amber">Amber Warm</option>
-                    </select>
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-xs font-semibold text-brandText-main mb-1">
-                    Main Headline *
+                    Main Heading (Headline) *
                   </label>
                   <input
                     type="text"
                     required
-                    value={bannerForm.headline}
-                    onChange={(e) => setBannerForm({ ...bannerForm, headline: e.target.value })}
+                    value={bannerForm.heading || bannerForm.headline || ''}
+                    onChange={(e) => setBannerForm({ ...bannerForm, heading: e.target.value, headline: e.target.value })}
                     placeholder="e.g. Quality Medicines Delivered in 45 Mins."
                     className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
                   />
@@ -1322,13 +1483,13 @@ export const AdminHomepageControlsPage = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-brandText-main mb-1">
-                    Subtext / Description
+                    Paragraph / Description
                   </label>
                   <textarea
                     rows={2}
-                    value={bannerForm.subtext}
-                    onChange={(e) => setBannerForm({ ...bannerForm, subtext: e.target.value })}
-                    placeholder="Sourced strictly from licensed pharmacies near you."
+                    value={bannerForm.paragraph !== undefined ? bannerForm.paragraph : (bannerForm.subtext || '')}
+                    onChange={(e) => setBannerForm({ ...bannerForm, paragraph: e.target.value, subtext: e.target.value })}
+                    placeholder="e.g. Sourced strictly from licensed pharmacies near you in Durgapur."
                     className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
                   />
                 </div>
@@ -1336,28 +1497,191 @@ export const AdminHomepageControlsPage = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      CTA Button Text
+                      Coupon Code (Optional)
                     </label>
                     <input
                       type="text"
-                      value={bannerForm.ctaText}
-                      onChange={(e) => setBannerForm({ ...bannerForm, ctaText: e.target.value })}
-                      placeholder="e.g. Order Now"
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
+                      value={bannerForm.couponCode || ''}
+                      onChange={(e) => setBannerForm({ ...bannerForm, couponCode: e.target.value.toUpperCase() })}
+                      placeholder="e.g. OSHUD20"
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-mono uppercase"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      CTA Link Target
+                      Sort Order
                     </label>
                     <input
-                      type="text"
-                      value={bannerForm.ctaLink}
-                      onChange={(e) => setBannerForm({ ...bannerForm, ctaLink: e.target.value })}
-                      placeholder="/shop or /appointments"
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-mono"
+                      type="number"
+                      min="0"
+                      value={bannerForm.sortOrder ?? 0}
+                      onChange={(e) => setBannerForm({ ...bannerForm, sortOrder: Math.max(0, parseInt(e.target.value, 10) || 0) })}
+                      placeholder="0"
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl"
                     />
+                  </div>
+                </div>
+
+                {/* Action Buttons Section (Max 2 Buttons) */}
+                <div className="border border-brandBorder-subtle rounded-2xl p-3 bg-surface-warm/60 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-forest-900 block">Action Buttons (Max 2)</span>
+                      <span className="text-[10px] text-brandText-muted">Optional action buttons for patients</span>
+                    </div>
+                    {!bannerForm.hasButton2 && (
+                      <button
+                        type="button"
+                        onClick={() => setBannerForm((prev) => ({
+                          ...prev,
+                          hasButton2: true,
+                          secondaryButtonText: prev.secondaryButtonText || 'Upload Prescription',
+                          secondaryButtonLink: prev.secondaryButtonLink || '/prescription',
+                          secondaryCtaText: prev.secondaryButtonText || 'Upload Prescription',
+                          secondaryCtaLink: prev.secondaryButtonLink || '/prescription',
+                        }))}
+                        className="text-[11px] font-bold text-forest-700 hover:text-forest-900 flex items-center gap-1 hover:underline cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Second Button
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Button 1 Configuration */}
+                  <div className="bg-surface-pure rounded-xl p-2.5 border border-brandBorder-subtle space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={bannerForm.hasButton1}
+                          onChange={(e) => setBannerForm({ ...bannerForm, hasButton1: e.target.checked })}
+                          className="rounded text-forest-700 w-3.5 h-3.5"
+                        />
+                        <span className="text-xs font-bold text-forest-800">Primary Button (Button 1)</span>
+                      </label>
+                      {bannerForm.hasButton1 && (
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                          Active
+                        </span>
+                      )}
+                    </div>
+
+                    {bannerForm.hasButton1 && (
+                      <div className="grid grid-cols-2 gap-2.5 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-brandText-secondary mb-1">
+                            Button Text *
+                          </label>
+                          <input
+                            type="text"
+                            value={bannerForm.buttonText || bannerForm.ctaText || ''}
+                            onChange={(e) => setBannerForm({ ...bannerForm, buttonText: e.target.value, ctaText: e.target.value })}
+                            placeholder="e.g. Order Now"
+                            className="w-full px-2.5 py-1.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-brandText-secondary mb-1">
+                            Redirect Link *
+                          </label>
+                          <input
+                            type="text"
+                            value={bannerForm.buttonLink || bannerForm.ctaLink || ''}
+                            onChange={(e) => setBannerForm({ ...bannerForm, buttonLink: e.target.value, ctaLink: e.target.value })}
+                            placeholder="/medicines or /doctors"
+                            className="w-full px-2.5 py-1.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-lg font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Button 2 Configuration (Optional) */}
+                  {bannerForm.hasButton2 && (
+                    <div className="bg-surface-pure rounded-xl p-2.5 border border-brandBorder-subtle space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={bannerForm.hasButton2}
+                            onChange={(e) => setBannerForm({ ...bannerForm, hasButton2: e.target.checked })}
+                            className="rounded text-forest-700 w-3.5 h-3.5"
+                          />
+                          <span className="text-xs font-bold text-forest-800">Secondary Button (Button 2)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setBannerForm({
+                            ...bannerForm,
+                            hasButton2: false,
+                            secondaryButtonText: '',
+                            secondaryCtaText: '',
+                            secondaryButtonLink: '',
+                            secondaryCtaLink: '',
+                          })}
+                          className="text-[11px] text-rose-600 hover:text-rose-800 flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5 pt-1">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-brandText-secondary mb-1">
+                            Button Text
+                          </label>
+                          <input
+                            type="text"
+                            value={bannerForm.secondaryButtonText || bannerForm.secondaryCtaText || ''}
+                            onChange={(e) => setBannerForm({ ...bannerForm, secondaryButtonText: e.target.value, secondaryCtaText: e.target.value })}
+                            placeholder="e.g. Upload Prescription"
+                            className="w-full px-2.5 py-1.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-lg"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-brandText-secondary mb-1">
+                            Redirect Link
+                          </label>
+                          <input
+                            type="text"
+                            value={bannerForm.secondaryButtonLink || bannerForm.secondaryCtaLink || ''}
+                            onChange={(e) => setBannerForm({ ...bannerForm, secondaryButtonLink: e.target.value, secondaryCtaLink: e.target.value })}
+                            placeholder="/prescription or prescription_modal"
+                            className="w-full px-2.5 py-1.5 text-xs bg-surface-warm border border-brandBorder-subtle rounded-lg font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 items-center">
+                  <div>
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">
+                      Placement
+                    </label>
+                    <select
+                      value={bannerForm.placement || 'HOME_TOP'}
+                      onChange={(e) => setBannerForm({ ...bannerForm, placement: e.target.value })}
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl font-medium"
+                    >
+                      <option value="HOME_TOP">Home Page Top (Hero)</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-4">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={bannerForm.isActive !== false}
+                        onChange={(e) => setBannerForm({ ...bannerForm, isActive: e.target.checked })}
+                        className="rounded text-forest-700 w-4 h-4"
+                      />
+                      <span className="text-xs font-semibold text-brandText-main">Active on Patient Home</span>
+                    </label>
                   </div>
                 </div>
 
