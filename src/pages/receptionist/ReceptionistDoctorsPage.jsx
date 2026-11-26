@@ -2028,60 +2028,6 @@ export const ReceptionistDoctorsPage = ({ initialTab = 'roster' }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Consultation Fee (₹) *
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      required
-                      disabled={isSubmitting}
-                      value={addDoctorForm.fee}
-                      onChange={(e) => setAddDoctorForm({ ...addDoctorForm, fee: e.target.value })}
-                      placeholder="500"
-                      className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-bold"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Shift Start Time
-                    </label>
-                    <select
-                      disabled={isSubmitting}
-                      value={addDoctorForm.startTime || '09:30 AM'}
-                      onChange={(e) => setAddDoctorForm({ ...addDoctorForm, startTime: e.target.value })}
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                    >
-                      {STANDARD_TIME_SLOTS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-brandText-main mb-1">
-                      Shift End Time
-                    </label>
-                    <select
-                      disabled={isSubmitting}
-                      value={addDoctorForm.endTime || '01:30 PM'}
-                      onChange={(e) => setAddDoctorForm({ ...addDoctorForm, endTime: e.target.value })}
-                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
-                    >
-                      {STANDARD_TIME_SLOTS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
                 <div className="pt-3 border-t border-brandBorder-subtle flex items-center justify-end gap-2.5">
                   <Button
                     type="button"
