@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   QrCode,
   Scan,
@@ -24,14 +24,93 @@ import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import { pharmacyApi } from '../../services/api/pharmacy.api';
 import { deliveryApi } from '../../services/api/delivery.api';
+import { orderApi } from '../../services/api/order.api';
 import Button from '../../components/common/Button';
 
 export const QRPickupVerificationPage = () => {
   const { orders, handovers, recordHandover, updateOrderStatus } = useWorkspaceStore();
   const { addToast } = useToast();
 
+  const [backendOrders, setBackendOrders] = useState([]);
+  const [isLoadingBackend, setIsLoadingBackend] = useState(false);
+
+  const fetchBackendOrders = async () => {
+    setIsLoadingBackend(true);
+    try {
+      const data = await orderApi.getPharmacyOrders();
+      if (Array.isArray(data)) {
+        setBackendOrders(data);
+      }
+    } catch (err) {
+      console.warn('Backend orders fetch notice in QR page:', err.message);
+    } finally {
+      setIsLoadingBackend(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBackendOrders();
+  }, []);
+
+  const mergedOrders = useMemo(() => {
+    const map = new Map();
+    orders.forEach((o) => {
+      map.set(o.id, o);
+      if (o.backendId) map.set(o.backendId, o);
+      if (o.orderNumber) map.set(o.orderNumber, o);
+    });
+
+    backendOrders.forEach((bo) => {
+      const key = bo.orderNumber || bo.id;
+      const existing = map.get(key) || map.get(bo.id);
+      const isPickup =
+        bo.deliveryAddress?.deliveryType === 'PICKUP' ||
+        bo.paymentMethod === 'IN_STORE_COUNTER' ||
+        bo.deliveryAddress?.area === 'In-Store Counter';
+
+      const formatted = {
+        id: bo.orderNumber || bo.id,
+        backendId: bo.id,
+        orderNumber: bo.orderNumber,
+        customerName:
+          bo.deliveryAddress?.fullName ||
+          bo.patient?.fullName ||
+          existing?.customerName ||
+          'Customer',
+        customerPhone:
+          bo.deliveryAddress?.phone ||
+          bo.patient?.phone ||
+          existing?.customerPhone ||
+          '',
+        deliveryType: bo.deliveryAddress?.deliveryType || (isPickup ? 'PICKUP' : 'DELIVERY'),
+        address: bo.deliveryAddress?.line1 || existing?.address || '',
+        area: bo.deliveryAddress?.area || existing?.area || '',
+        total: bo.totalPaise ? bo.totalPaise / 100 : existing?.total || 0,
+        status: bo.status || existing?.status || 'READY_FOR_PICKUP',
+        assignedRider: bo.delivery?.rider
+          ? {
+              id: bo.delivery.rider.id,
+              name: bo.delivery.rider.name,
+              phone: bo.delivery.rider.phone,
+            }
+          : existing?.assignedRider || null,
+        items: bo.items?.length
+          ? bo.items.map((it) => ({
+              name: it.nameSnapshot,
+              qty: it.quantity,
+              quantity: it.quantity,
+              price: it.unitPricePaise ? it.unitPricePaise / 100 : 0,
+            }))
+          : existing?.items || [],
+      };
+      map.set(key, formatted);
+    });
+
+    return Array.from(map.values());
+  }, [orders, backendOrders]);
+
   // Orders waiting for rider pickup (READY_FOR_PICKUP or RIDER_ASSIGNED)
-  const readyOrders = orders.filter((o) =>
+  const readyOrders = mergedOrders.filter((o) =>
     ['READY_FOR_PICKUP', 'RIDER_ASSIGNED'].includes(o.status)
   );
 
@@ -140,9 +219,24 @@ export const QRPickupVerificationPage = () => {
 
   // Fetch or Generate 15-Minute Pickup QR Code from Backend
   const handleGenerateQR = async (orderId) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
+    const targetOrder = readyOrders.find((o) => o.id === orderId) || mergedOrders.find((o) => o.id === orderId);
     if (!targetOrder) {
       addToast('Please select a valid order ready for pickup.', 'warning');
+      return;
+    }
+
+    const hasRiderAssigned = Boolean(
+      targetOrder.assignedRider ||
+      targetOrder.delivery?.rider ||
+      targetOrder.delivery?.riderId
+    );
+
+    if (!hasRiderAssigned) {
+      setActiveQrData(null);
+      addToast(
+        'Rider Not Assigned: Super Admin has not assigned a delivery rider to this order yet. Authentic QR codes are only available after rider assignment.',
+        'warning'
+      );
       return;
     }
 
@@ -151,8 +245,8 @@ export const QRPickupVerificationPage = () => {
     setAutoVerifiedNotice(null);
 
     try {
-      // 1. Try to fetch active pickup QR from backend
-      const qrPayload = await deliveryApi.getOrderPickupQr(orderId);
+      const lookupId = targetOrder.backendId || targetOrder.id;
+      const qrPayload = await deliveryApi.getOrderPickupQr(lookupId);
       
       const expiresAt = qrPayload.expiresAt
         ? new Date(qrPayload.expiresAt).getTime()
@@ -163,9 +257,9 @@ export const QRPickupVerificationPage = () => {
         token: qrPayload.qrToken || qrPayload.token,
         order: targetOrder,
         expiresAt,
+        isBackendVerified: true,
       });
 
-      // Synchronize order's pickup QR code in store
       if (targetOrder) {
         targetOrder.pickupQrCode = qrPayload.qrToken || qrPayload.token;
       }
@@ -173,23 +267,20 @@ export const QRPickupVerificationPage = () => {
       const diffMs = Math.max(0, expiresAt - Date.now());
       setSecondsRemaining(Math.floor(diffMs / 1000) || 15 * 60);
 
-      addToast(`15-minute pickup QR fetched for Order ${orderId}!`, 'success');
+      addToast(`Authentic 15-minute pickup QR fetched for Order ${orderId}!`, 'success');
     } catch (err) {
       console.warn('Backend pickup QR fetch note:', err);
-      // Fallback local 15-minute token
-      const fallbackToken =
-        targetOrder.pickupQrCode ||
-        `QR-${String(orderId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      setActiveQrData(null);
+      const isAwaitingRider =
+        err.isNoRider ||
+        err.status === 400 ||
+        err.message?.toLowerCase().includes('rider') ||
+        err.message?.toLowerCase().includes('assign');
 
-      setActiveQrData({
-        orderId,
-        token: fallbackToken,
-        order: targetOrder,
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        isBackendVerified: false,
-      });
-      setSecondsRemaining(15 * 60);
-      addToast(`15-minute pickup QR code ready for Order ${orderId}`, 'info');
+      const msg = isAwaitingRider
+        ? 'Admin has not assigned a delivery rider to this order yet. Authentic QR codes are only available after rider assignment.'
+        : (err.message || 'Unable to fetch authentic pickup QR.');
+      addToast(msg, 'error');
     } finally {
       setIsGeneratingQr(false);
     }
@@ -226,12 +317,17 @@ export const QRPickupVerificationPage = () => {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const targetOrder = orders.find((o) => o.id === selectedOrderId);
-  const assignedRider = targetOrder?.assignedRider || {
-    name: 'Courier Fleet (Admin Assigned)',
-    phone: '+91 98300 00000',
+  const targetOrder = readyOrders.find((o) => o.id === selectedOrderId) || readyOrders[0] || null;
+  const hasRiderAssigned = Boolean(
+    targetOrder?.assignedRider ||
+    targetOrder?.delivery?.rider ||
+    targetOrder?.delivery?.riderId
+  );
+  const assignedRider = targetOrder?.assignedRider || (targetOrder?.delivery?.rider ? {
+    name: targetOrder.delivery.rider.name,
+    phone: targetOrder.delivery.rider.phone,
     vehicle: 'Electric Two-Wheeler',
-  };
+  } : null);
 
   // Prepare full QR payload encoding the unique order list details for the rider
   const qrPayloadObject = activeQrData && targetOrder ? {
@@ -241,7 +337,7 @@ export const QRPickupVerificationPage = () => {
     customerName: targetOrder.customerName,
     customerPhone: targetOrder.customerPhone,
     deliveryArea: targetOrder.area || targetOrder.address,
-    riderName: assignedRider.name,
+    riderName: assignedRider?.name || 'Assigned Rider',
     items: (targetOrder.items || []).map((i) => ({
       name: i.name,
       qty: i.qty || i.quantity || 1,
@@ -345,15 +441,29 @@ export const QRPickupVerificationPage = () => {
               <label className="text-xs font-bold text-forest-900">
                 Packed Orders Ready for Rider Pickup ({readyOrders.length} waiting)
               </label>
-              <span className="text-[11px] text-brandText-muted">
-                Click QR button on any order to display
-              </span>
+              <button
+                type="button"
+                onClick={fetchBackendOrders}
+                className="text-[11px] text-forest-700 hover:text-forest-900 font-semibold flex items-center gap-1"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingBackend ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
             </div>
 
             {readyOrders.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {readyOrders.map((order) => {
                   const isSelected = selectedOrderId === order.id;
+                  const orderHasRider = Boolean(
+                    order.assignedRider ||
+                    order.delivery?.rider ||
+                    order.delivery?.riderId
+                  );
+                  const riderName =
+                    order.assignedRider?.name ||
+                    order.delivery?.rider?.name;
+
                   return (
                     <div
                       key={order.id}
@@ -378,10 +488,15 @@ export const QRPickupVerificationPage = () => {
                         <p className="text-[10px] text-brandText-secondary truncate">
                           {order.area || order.address}
                         </p>
-                        {order.assignedRider && (
-                          <p className="text-[10px] text-forest-700 font-semibold mt-1 flex items-center gap-1">
-                            <Bike className="w-3 h-3" />
-                            <span>Rider: {order.assignedRider.name}</span>
+                        {orderHasRider ? (
+                          <p className="text-[10px] text-emerald-800 font-bold mt-1.5 flex items-center gap-1 bg-emerald-100/80 px-2 py-0.5 rounded-md inline-flex">
+                            <Bike className="w-3 h-3 text-emerald-700" />
+                            <span>Rider Assigned: {riderName || 'Dispatched'}</span>
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-amber-800 font-bold mt-1.5 flex items-center gap-1 bg-amber-100/80 px-2 py-0.5 rounded-md inline-flex">
+                            <Clock className="w-3 h-3 text-amber-700" />
+                            <span>Awaiting Rider Assignment</span>
                           </p>
                         )}
                       </div>
@@ -390,19 +505,39 @@ export const QRPickupVerificationPage = () => {
                         <span className="text-[10px] text-brandText-muted">
                           {order.items?.length || 1} medicine items
                         </span>
-                        <Button
-                          type="button"
-                          variant={isSelected && activeQrData ? 'primary' : 'outline'}
-                          size="xs"
-                          leftIcon={QrCode}
-                          onClick={() => {
-                            setSelectedOrderId(order.id);
-                            handleGenerateQR(order.id);
-                          }}
-                          className="text-[11px] font-bold py-1 px-2.5 shadow-2xs"
-                        >
-                          {isSelected && activeQrData ? 'Showing QR' : 'Show Pickup QR'}
-                        </Button>
+                        {orderHasRider ? (
+                          <Button
+                            type="button"
+                            variant={isSelected && activeQrData ? 'primary' : 'outline'}
+                            size="xs"
+                            leftIcon={QrCode}
+                            onClick={() => {
+                              setSelectedOrderId(order.id);
+                              handleGenerateQR(order.id);
+                            }}
+                            className="text-[11px] font-bold py-1 px-2.5 shadow-2xs"
+                          >
+                            {isSelected && activeQrData ? 'Showing QR' : 'Fetch Pickup QR'}
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            leftIcon={Clock}
+                            onClick={() => {
+                              setSelectedOrderId(order.id);
+                              setActiveQrData(null);
+                              addToast(
+                                `Order ${order.id}: Super Admin must assign a delivery rider before an authentic QR code can be generated.`,
+                                'warning'
+                              );
+                            }}
+                            className="text-[11px] font-bold py-1 px-2.5 text-amber-800 border-amber-300 hover:bg-amber-50"
+                          >
+                            Awaiting Rider
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );
@@ -418,6 +553,20 @@ export const QRPickupVerificationPage = () => {
               </div>
             )}
           </div>
+
+          {/* Pending Rider Assignment Notice when unassigned order is selected */}
+          {targetOrder && !hasRiderAssigned && !activeQrData && (
+            <div className="p-4 bg-amber-50/90 rounded-2xl border border-amber-200 text-xs space-y-1.5 animate-fade-in">
+              <div className="flex items-center gap-2 text-amber-900 font-bold">
+                <AlertCircle className="w-4 h-4 text-amber-700" />
+                <span>Rider Assignment Pending by Admin</span>
+              </div>
+              <p className="text-amber-800 text-[11px] leading-relaxed">
+                Super Admin has not assigned a delivery rider to order <strong>{targetOrder.id}</strong>.
+                An authentic, single-use CDSCO pickup QR code will be generated immediately once Admin assigns a rider from the Admin Deliveries panel.
+              </p>
+            </div>
+          )}
 
           {/* Generated QR Display Stage with Unique Order List Details */}
           {activeQrData && targetOrder && (

@@ -58,21 +58,20 @@ export const deliveryApi = {
           isBackendVerified: true,
         };
       }
+      throw new Error(data?.message || 'Authentic pickup QR not available');
     } catch (err) {
-      console.warn('Backend getOrderPickupQr call fallback note:', err);
+      const errMsg =
+        err.response?.data?.message ||
+        err.message ||
+        'No delivery rider has been assigned by Admin to this order yet.';
+      const customError = new Error(errMsg);
+      customError.status = err.response?.status;
+      customError.isNoRider =
+        err.response?.status === 400 ||
+        errMsg.toLowerCase().includes('rider') ||
+        errMsg.toLowerCase().includes('assigned');
+      throw customError;
     }
-
-    const expiresAt = Date.now() + 15 * 60 * 1000;
-    const token = `QR-${String(orderId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    return {
-      orderId,
-      token,
-      qrToken: token,
-      generatedAt: Date.now(),
-      expiresAt,
-      durationMinutes: 15,
-      isBackendVerified: false,
-    };
   },
 
   /**

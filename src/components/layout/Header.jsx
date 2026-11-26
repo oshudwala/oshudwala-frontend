@@ -10,6 +10,7 @@ import NotificationsDropdown from '../common/NotificationsDropdown';
 import UserMenuDropdown from '../common/UserMenuDropdown';
 import LocationModal from './LocationModal';
 import Button from '../common/Button';
+import { notificationApi } from '../../services/api/notification.api';
 
 export const Header = () => {
   const routerLocation = useRouterLocation();
@@ -22,6 +23,25 @@ export const Header = () => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetch initial unread count for current logged-in patient/user
+  React.useEffect(() => {
+    if (user && isAuthenticated) {
+      notificationApi.getUnreadCount(user).then((count) => {
+        setUnreadCount(count);
+      }).catch(() => {});
+    }
+
+    const handleCountUpdate = (e) => {
+      if (typeof e.detail?.count === 'number') {
+        setUnreadCount(e.detail.count);
+      }
+    };
+
+    window.addEventListener('oshud_unread_count_updated', handleCountUpdate);
+    return () => window.removeEventListener('oshud_unread_count_updated', handleCountUpdate);
+  }, [user, isAuthenticated]);
 
   const navLinks = [
     { name: t('nav_home', 'Home'), path: '/' },
@@ -101,13 +121,16 @@ export const Header = () => {
                     aria-label="View notifications"
                   >
                     <Bell className="w-4 h-4 xs:w-5 xs:h-5" />
-                    <span className="absolute top-0.5 right-0.5 xs:top-1 xs:right-1 w-3.5 h-3.5 xs:w-4 xs:h-4 bg-rose-500 text-white text-[9px] xs:text-[10px] font-bold rounded-full flex items-center justify-center ring-1.5 ring-white">
-                      2
-                    </span>
+                    {unreadCount > 0 ? (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] px-1 bg-rose-500 text-white text-[9px] xs:text-[10px] font-extrabold rounded-full flex items-center justify-center ring-1.5 ring-white shadow-2xs animate-pulse">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    ) : null}
                   </button>
                   <NotificationsDropdown
                     isOpen={isNotifOpen}
                     onClose={() => setIsNotifOpen(false)}
+                    onUnreadCountChange={setUnreadCount}
                   />
                 </div>
               )}

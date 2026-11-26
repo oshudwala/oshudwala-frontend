@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
+import { notificationApi } from '../../services/api/notification.api';
 import NotificationsDropdown from '../common/NotificationsDropdown';
 import UserMenuDropdown from '../common/UserMenuDropdown';
 
@@ -26,6 +27,25 @@ export const WorkspaceHeader = ({ roleTitle, onToggleSidebar, isSidebarCollapsed
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetch initial unread count for current logged-in profile
+  React.useEffect(() => {
+    if (user) {
+      notificationApi.getUnreadCount(user).then((count) => {
+        setUnreadCount(count);
+      }).catch(() => {});
+    }
+
+    const handleCountUpdate = (e) => {
+      if (typeof e.detail?.count === 'number') {
+        setUnreadCount(e.detail.count);
+      }
+    };
+
+    window.addEventListener('oshud_unread_count_updated', handleCountUpdate);
+    return () => window.removeEventListener('oshud_unread_count_updated', handleCountUpdate);
+  }, [user]);
 
   // Path segments for breadcrumbs
   const pathParts = location.pathname.split('/').filter(Boolean);
@@ -128,20 +148,26 @@ export const WorkspaceHeader = ({ roleTitle, onToggleSidebar, isSidebarCollapsed
           <span className="sm:hidden">Store</span>
         </Link>
 
-        {/* Notifications Dropdown */}
+        {/* Notifications Dropdown (Role-Dedicated) */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setIsNotifOpen((prev) => !prev)}
             className="p-2 rounded-xl text-brandText-secondary hover:bg-forest-50 hover:text-forest-800 transition-colors relative"
             aria-label="View notifications"
+            title={`${displayRole} Notifications`}
           >
             <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-white animate-pulse" />
+            {unreadCount > 0 ? (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-rose-500 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center ring-2 ring-white shadow-2xs animate-pulse">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            ) : null}
           </button>
           <NotificationsDropdown
             isOpen={isNotifOpen}
             onClose={() => setIsNotifOpen(false)}
+            onUnreadCountChange={setUnreadCount}
           />
         </div>
 

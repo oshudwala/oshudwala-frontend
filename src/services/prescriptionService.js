@@ -1,28 +1,25 @@
-import apiClient from './api';
+import { prescriptionApi } from './api/prescription.api';
 
 export const prescriptionService = {
   /**
    * Upload prescription for licensed pharmacist verification
-   * POST /api/v1/prescriptions/upload
+   * POST /api/v1/prescriptions (auto-routed to Primary Pharmacy)
    */
   async uploadPrescription({ file, patientNotes, preferredPharmacyId, patientName, patientPhone }) {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      if (patientNotes) formData.append('notes', patientNotes);
-      if (preferredPharmacyId) formData.append('pharmacyId', preferredPharmacyId);
-      if (patientName) formData.append('patientName', patientName);
-      if (patientPhone) formData.append('patientPhone', patientPhone);
-
-      const response = await apiClient.post('/prescriptions/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const res = await prescriptionApi.uploadPrescription({
+        file,
+        patientNotes,
+        doctorName: patientName,
+        preferredPharmacyId,
       });
-      return response.data?.data || response.data;
+      return res;
     } catch (err) {
-      // Backend prescription module is in development (Step 5)
-      throw new Error(
-        'Prescription OCR and digital verification is currently in development (Backend Step 5). Please send your prescription directly to our registered pharmacist via WhatsApp for immediate verification and delivery.'
-      );
+      const message =
+        err.response?.data?.message ||
+        err.message ||
+        'Prescription submission failed. Please ensure a valid image or PDF is attached.';
+      throw new Error(message);
     }
   },
 
@@ -32,17 +29,7 @@ export const prescriptionService = {
    */
   async getUserPrescriptions() {
     try {
-      let response;
-      try {
-        response = await apiClient.get('/prescriptions/my');
-      } catch {
-        response = await apiClient.get('/prescriptions');
-      }
-      const data = response?.data?.data || response?.data;
-      if (Array.isArray(data)) return data;
-      if (Array.isArray(data?.prescriptions)) return data.prescriptions;
-      if (Array.isArray(data?.items)) return data.items;
-      return [];
+      return await prescriptionApi.getMyPrescriptions();
     } catch {
       return [];
     }

@@ -43,6 +43,7 @@ import { useToast } from '../../context/ToastContext';
 import adminApi from '../../services/api/admin.api';
 import accountRegistry from '../../services/api/accountRegistry';
 import ImageDropzone from '../../components/common/ImageDropzone';
+import { pharmacyApi } from '../../services/api/pharmacy.api';
 
 
 
@@ -71,6 +72,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [togglingStatusId, setTogglingStatusId] = useState(null);
   const [togglingFeaturedId, setTogglingFeaturedId] = useState(null);
+  const [togglingPrimaryId, setTogglingPrimaryId] = useState(null);
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -617,6 +619,37 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       await loadData(true);
     } finally {
       setTogglingFeaturedId(null);
+    }
+  };
+
+  // Toggle Primary Pharmacy (Exclusive: exactly one pharmacy is primary)
+  const handleTogglePrimaryPharmacy = async (row) => {
+    if (row.isPrimary) {
+      addToast(`${row.name} is already the active Primary Pharmacy. To switch, toggle another pharmacy.`, 'info');
+      return;
+    }
+
+    setTogglingPrimaryId(row.id);
+
+    // Optimistic UI update: Only the clicked pharmacy becomes primary
+    setPharmacies((prev) =>
+      prev.map((p) => ({
+        ...p,
+        isPrimary: p.id === row.id,
+      }))
+    );
+
+    try {
+      await pharmacyApi.adminSetPrimary(row.id);
+      addToast(
+        `🏆 ${row.name} is now the Primary Pharmacy! All shop catalog orders & online prescriptions route exclusively to this store.`,
+        'success'
+      );
+    } catch (err) {
+      addToast(err.message || 'Failed to update Primary Pharmacy.', 'error');
+      await loadData(true);
+    } finally {
+      setTogglingPrimaryId(null);
     }
   };
 
@@ -1393,6 +1426,58 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       header: 'City & State',
       key: 'city',
       render: (row) => <span className="text-xs">{row.city}, {row.state || 'West Bengal'}</span>,
+    },
+    {
+      header: 'Primary Pharmacy',
+      key: 'isPrimary',
+      render: (row) => {
+        const isToggling = togglingPrimaryId === row.id;
+        const isPrim = Boolean(row.isPrimary);
+        return (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={isToggling}
+              onClick={() => handleTogglePrimaryPharmacy(row)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                isPrim ? 'bg-forest-600' : 'bg-gray-300 hover:bg-gray-400'
+              } ${isToggling ? 'opacity-60 cursor-not-allowed' : ''}`}
+              title={
+                isPrim
+                  ? 'Active Primary Store (All online shop orders & prescriptions route here)'
+                  : 'Click to make this the Primary Pharmacy (Turns off others)'
+              }
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  isPrim ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+            <span
+              className={`text-xs font-bold inline-flex items-center gap-1 ${
+                isPrim
+                  ? 'text-forest-800 bg-forest-50 px-2 py-0.5 rounded-md border border-forest-200 shadow-xs'
+                  : 'text-brandText-muted'
+              }`}
+            >
+              {isToggling ? (
+                <>
+                  <RefreshCw className="w-3 h-3 animate-spin text-forest-700" />
+                  <span>Updating…</span>
+                </>
+              ) : isPrim ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-forest-700" />
+                  <span>Primary Hub</span>
+                </>
+              ) : (
+                'Secondary'
+              )}
+            </span>
+          </div>
+        );
+      },
     },
     // {
     //   header: 'Featured on Home',

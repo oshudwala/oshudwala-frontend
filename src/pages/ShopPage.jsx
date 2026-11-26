@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, SlidersHorizontal, FileText, ArrowRight, X } from 'lucide-react';
+import { Search, Filter, SlidersHorizontal, FileText, ArrowRight, X, Building2 } from 'lucide-react';
 import { productService } from '../services/productService';
 import { categoriesData } from '../data/categoriesData';
+import { pharmacyApi } from '../services/api/pharmacy.api';
 import ProductCard from '../components/shop/ProductCard';
 import PrescriptionModal from '../components/home/PrescriptionModal';
 import Button from '../components/common/Button';
@@ -18,6 +19,13 @@ export const ShopPage = () => {
   const [prescriptionFilter, setPrescriptionFilter] = useState('all'); // 'all', 'rx', 'otc'
   const [sortBy, setSortBy] = useState('featured');
   const [isPrescriptionModalOpen, setIsPrescriptionModalOpen] = useState(false);
+  const [primaryPharmacy, setPrimaryPharmacy] = useState(null);
+
+  useEffect(() => {
+    pharmacyApi.getPrimaryPharmacy().then((p) => {
+      if (p) setPrimaryPharmacy(p);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -84,6 +92,22 @@ export const ShopPage = () => {
           Upload Prescription
         </Button>
       </div>
+
+      {/* Primary Pharmacy Hub Badge */}
+      {primaryPharmacy && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-2.5 bg-forest-50 border border-forest-200/80 rounded-2xl text-xs text-forest-900">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-forest-700 flex-shrink-0" />
+            <span>
+              All catalog medicines & prescriptions fulfilled directly by Primary Hub: <strong>{primaryPharmacy.name}</strong>
+              {primaryPharmacy.city ? ` (${primaryPharmacy.city})` : ''}
+            </span>
+          </div>
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-forest-800 bg-forest-100 border border-forest-300 px-2 py-0.5 rounded-full uppercase tracking-wider self-start sm:self-auto">
+            Authorized Main Store
+          </span>
+        </div>
+      )}
 
       {/* Search & Filter Header Bar */}
       <div className="bg-surface-pure p-4 sm:p-5 rounded-2xl border border-brandBorder-subtle shadow-subtle space-y-4">

@@ -31,6 +31,19 @@ export const pharmacyApi = {
   },
 
   /**
+   * Public / Logged-in: Get the current Primary Pharmacy hub
+   * GET /api/v1/pharmacies/primary
+   */
+  async getPrimaryPharmacy() {
+    try {
+      const response = await apiClient.get('/pharmacies/primary');
+      return response.data?.data || response.data;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
    * Pharmacy Role: Retrieve own pharmacy details
    * GET /api/v1/pharmacies/my
    * Note: Handled gracefully if not mounted on active server deployment

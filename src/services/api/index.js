@@ -9,3 +9,8 @@ export { default as promotionApi } from './promotion.api';
 export { default as couponApi } from './coupon.api';
 export { default as adminApi } from './admin.api';
 export { default as deliveryApi } from './delivery.api';
+export { default as categoryApi } from './category.api';
+export { default as productApi } from './product.api';
+export { default as cartApi } from './cart.api';
+export { default as prescriptionApi } from './prescription.api';
+export { default as orderApi } from './order.api';

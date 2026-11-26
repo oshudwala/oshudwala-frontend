@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Wallet,
   DollarSign,
@@ -21,12 +21,13 @@ import {
   Tag,
   CheckCircle2,
   ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
-import { calculateOrderBill } from '../../services/pricingRules';
 import apiClient from '../../services/api/client';
+import { orderApi } from '../../services/api/order.api';
 
 export const PharmacyWalletPage = () => {
   const { orders } = useWorkspaceStore();
@@ -36,11 +37,119 @@ export const PharmacyWalletPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBillOrder, setSelectedBillOrder] = useState(null);
 
+  // Live Backend Orders
+  const [backendOrders, setBackendOrders] = useState([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+
+  const fetchOrders = async () => {
+    setIsLoadingOrders(true);
+    try {
+      const data = await orderApi.getPharmacyOrders();
+      if (Array.isArray(data)) {
+        setBackendOrders(data);
+      }
+    } catch (err) {
+      console.warn('Backend orders fetch notice in wallet:', err.message);
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  // Merge store orders with backend orders
+  const mergedOrders = useMemo(() => {
+    const map = new Map();
+    orders.forEach((o) => {
+      map.set(o.id, o);
+      if (o.backendId) map.set(o.backendId, o);
+      if (o.orderNumber) map.set(o.orderNumber, o);
+    });
+
+    backendOrders.forEach((bo) => {
+      const key = bo.orderNumber || bo.id;
+      const existing = map.get(key) || map.get(bo.id);
+      const isPickup =
+        bo.deliveryAddress?.deliveryType === 'PICKUP' ||
+        bo.paymentMethod === 'IN_STORE_COUNTER' ||
+        bo.deliveryAddress?.area === 'In-Store Counter';
+
+      const subtotal = bo.subtotalPaise
+        ? bo.subtotalPaise / 100
+        : (existing?.subtotal ?? (existing?.totalMrp ?? 0));
+
+      const deliveryFee =
+        bo.deliveryFeePaise !== undefined
+          ? bo.deliveryFeePaise / 100
+          : (existing?.deliveryFee !== undefined
+              ? existing.deliveryFee
+              : (isPickup ? 0 : (subtotal < 499 ? 30 : 0)));
+
+      const discount = bo.couponDiscountPaise
+        ? bo.couponDiscountPaise / 100
+        : (existing?.discount ?? 0);
+
+      const packagingFee = existing?.packagingFee ?? 6;
+      const platformFee = existing?.platformFee ?? 0;
+      const total = bo.totalPaise
+        ? bo.totalPaise / 100
+        : (existing?.total ?? Math.max(0, subtotal - discount + packagingFee + platformFee + deliveryFee));
+
+      const formatted = {
+        id: bo.orderNumber || bo.id,
+        backendId: bo.id,
+        orderNumber: bo.orderNumber,
+        createdAt: bo.placedAt || bo.createdAt || existing?.createdAt || new Date().toISOString(),
+        customerName:
+          bo.deliveryAddress?.fullName ||
+          bo.patient?.fullName ||
+          existing?.customerName ||
+          'Walk-in Customer',
+        customerPhone:
+          bo.deliveryAddress?.phone ||
+          bo.patient?.phone ||
+          existing?.customerPhone ||
+          '',
+        deliveryType: bo.deliveryAddress?.deliveryType || (isPickup ? 'PICKUP' : 'DELIVERY'),
+        address: bo.deliveryAddress?.line1 || existing?.address || '',
+        area: bo.deliveryAddress?.area || existing?.area || '',
+        pincode: bo.deliveryAddress?.pincode || existing?.pincode || '',
+        discountType: bo.deliveryAddress?.discountType || existing?.discountType || 'PERCENT',
+        discountValue: bo.deliveryAddress?.discountValue || existing?.discountValue || 0,
+        subtotal,
+        totalMrp: subtotal,
+        discount,
+        deliveryFee,
+        packagingFee,
+        platformFee,
+        total,
+        status: bo.status || existing?.status || 'READY_FOR_PICKUP',
+        paymentMethod: bo.paymentMethod || existing?.paymentMethod || 'COD',
+        isManualInStore: bo.paymentMethod === 'IN_STORE_COUNTER' || existing?.isManualInStore,
+        items: bo.items?.length
+          ? bo.items.map((it) => ({
+              name: it.nameSnapshot,
+              qty: it.quantity,
+              quantity: it.quantity,
+              price: it.unitPricePaise
+                ? it.unitPricePaise / 100
+                : (it.mrpPaise ? it.mrpPaise / 100 : 0),
+            }))
+          : existing?.items || [],
+      };
+      map.set(key, formatted);
+    });
+
+    return Array.from(map.values());
+  }, [orders, backendOrders]);
+
   // Withdrawal Modal State
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isSubmittingWithdrawal, setIsSubmittingWithdrawal] = useState(false);
-  const [walletBalance, setWalletBalance] = useState(0); // Starts cleanly at 0 (no demo numbers)
+  const [walletBalance, setWalletBalance] = useState(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(true);
 
   // Fetch real wallet balance from backend
@@ -70,13 +179,13 @@ export const PharmacyWalletPage = () => {
     };
   }, []);
 
-  // Filter orders by date
+  // Filter orders by selected date period
   const todayStr = new Date().toDateString();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = yesterday.toDateString();
 
-  const filteredOrders = orders.filter((order) => {
+  const filteredOrders = mergedOrders.filter((order) => {
     const orderDate = new Date(order.createdAt || Date.now()).toDateString();
 
     if (dateFilter === 'today' && orderDate !== todayStr) return false;
@@ -98,15 +207,70 @@ export const PharmacyWalletPage = () => {
     return true;
   });
 
-  // Financial Calculations
-  const todayOrders = orders.filter(
-    (o) => new Date(o.createdAt || Date.now()).toDateString() === todayStr
-  );
-  const todayGrossSales = todayOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-  const todayNetEarnings = Math.round(todayGrossSales * 0.88); // Pharmacy revenue share (88% net)
-  const todayCompletedCount = todayOrders.filter((o) =>
-    ['READY_FOR_PICKUP', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(o.status)
+  // Accurate Financial Calculations for the active filter period
+  const periodGrossBillings = filteredOrders.reduce((sum, o) => {
+    const sub = Number(o.subtotal ?? (o.totalMrp ?? o.total)) || 0;
+    return sum + sub;
+  }, 0);
+
+  const periodDiscounts = filteredOrders.reduce((sum, o) => {
+    return sum + (Number(o.discount) || 0);
+  }, 0);
+
+  const periodPackagingFees = filteredOrders.reduce((sum, o) => {
+    return sum + (Number(o.packagingFee) ?? 6);
+  }, 0);
+
+  // Transparent Pharmacy Net Earnings = Gross Billings - Customer Discounts + Packaging Charges
+  const periodNetEarnings = Math.max(0, periodGrossBillings - periodDiscounts + periodPackagingFees);
+
+  const periodCompletedCount = filteredOrders.filter((o) =>
+    ['READY_FOR_PICKUP', 'OUT_FOR_DELIVERY', 'DELIVERED', 'SHIPPED'].includes(o.status)
   ).length;
+
+  const dateFilterLabels = {
+    today: "Today's",
+    yesterday: "Yesterday's",
+    week: 'Last 7 Days',
+    all: 'All Time',
+  };
+  const activeLabel = dateFilterLabels[dateFilter] || "Today's";
+
+  const resolveOrderBill = (order) => {
+    const isPickup =
+      order.deliveryType === 'PICKUP' ||
+      order.paymentMethod === 'IN_STORE_COUNTER' ||
+      order.area === 'In-Store Counter';
+
+    const subtotal = Number(order.subtotal ?? (order.totalMrp ?? 0));
+    const discount = Number(order.discount ?? 0);
+    const packagingFee = Number(order.packagingFee ?? 6);
+    const platformFee = Number(order.platformFee ?? 0);
+    const deliveryFee = Number(
+      order.deliveryFee !== undefined
+        ? order.deliveryFee
+        : (isPickup ? 0 : (subtotal < 499 ? 30 : 0))
+    );
+    const finalTotal = Number(
+      order.total !== undefined
+        ? order.total
+        : Math.max(0, subtotal - discount + packagingFee + platformFee + deliveryFee)
+    );
+
+    return {
+      isPickup,
+      totalMrp: subtotal,
+      subtotal,
+      discount,
+      discountType: order.discountType || 'PERCENT',
+      discountValue: order.discountValue || 0,
+      packagingFee,
+      platformFee,
+      deliveryFee,
+      cashback: Number(order.cashback || 0),
+      finalTotal,
+    };
+  };
 
   const handleRequestWithdrawal = async (e) => {
     e.preventDefault();
@@ -157,15 +321,27 @@ export const PharmacyWalletPage = () => {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="sm"
-          leftIcon={ArrowUpRight}
-          onClick={() => setIsWithdrawModalOpen(true)}
-          className="text-xs font-bold shadow-sm"
-        >
-          Request Settlement / Withdrawal
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={RefreshCw}
+            isLoading={isLoadingOrders}
+            onClick={fetchOrders}
+            className="text-xs font-bold"
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            leftIcon={ArrowUpRight}
+            onClick={() => setIsWithdrawModalOpen(true)}
+            className="text-xs font-bold shadow-sm"
+          >
+            Request Settlement / Withdrawal
+          </Button>
+        </div>
       </div>
 
       {/* KPI Financial Overview Cards */}
@@ -194,11 +370,11 @@ export const PharmacyWalletPage = () => {
           </p>
         </div>
 
-        {/* Today's Gross Sales */}
+        {/* Period Gross Billings */}
         <div className="p-5 rounded-3xl bg-surface-pure border border-brandBorder-subtle shadow-card space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-brandText-secondary uppercase">
-              Today's Gross Billings
+              {activeLabel} Gross Billings
             </span>
             <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
               <DollarSign className="w-4 h-4" />
@@ -206,19 +382,19 @@ export const PharmacyWalletPage = () => {
           </div>
           <div className="flex items-baseline gap-2">
             <span className="font-heading font-extrabold text-2xl text-forest-900">
-              ₹{todayGrossSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹{periodGrossBillings.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
           </div>
           <p className="text-[10px] text-brandText-secondary">
-            Across {todayOrders.length} customer order bills
+            Medicine MRP billed across {filteredOrders.length} orders
           </p>
         </div>
 
-        {/* Today's Net Pharmacy Payout */}
+        {/* Period Net Pharmacy Earnings */}
         <div className="p-5 rounded-3xl bg-surface-pure border border-brandBorder-subtle shadow-card space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-brandText-secondary uppercase">
-              Today's Net Earnings
+              {activeLabel} Net Earnings
             </span>
             <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
               <TrendingUp className="w-4 h-4" />
@@ -226,11 +402,11 @@ export const PharmacyWalletPage = () => {
           </div>
           <div className="flex items-baseline gap-2">
             <span className="font-heading font-extrabold text-2xl text-forest-900">
-              ₹{todayNetEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              ₹{periodNetEarnings.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
           </div>
           <p className="text-[10px] text-emerald-700 font-semibold">
-            Net pharmacy margin after platform charges
+            Gross (₹{periodGrossBillings.toFixed(0)}) - Disc (₹{periodDiscounts.toFixed(0)}) + Pkg (₹{periodPackagingFees.toFixed(0)})
           </p>
         </div>
 
@@ -238,7 +414,7 @@ export const PharmacyWalletPage = () => {
         <div className="p-5 rounded-3xl bg-surface-pure border border-brandBorder-subtle shadow-card space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-brandText-secondary uppercase">
-              Orders Dispensed Today
+              Orders Dispensed ({activeLabel})
             </span>
             <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
               <ShoppingBag className="w-4 h-4" />
@@ -246,7 +422,7 @@ export const PharmacyWalletPage = () => {
           </div>
           <div className="flex items-baseline gap-2">
             <span className="font-heading font-extrabold text-2xl text-forest-900">
-              {todayCompletedCount} / {todayOrders.length}
+              {periodCompletedCount} / {filteredOrders.length}
             </span>
           </div>
           <p className="text-[10px] text-brandText-secondary">
@@ -297,11 +473,7 @@ export const PharmacyWalletPage = () => {
         <div className="space-y-3">
           {filteredOrders.length > 0 ? (
             filteredOrders.map((order) => {
-              const bill = calculateOrderBill({
-                items: order.items || [],
-                customSubtotal: order.totalMrp || order.subtotal,
-                isPickup: order.isManualInStore || order.area === 'In-Store Counter',
-              });
+              const bill = resolveOrderBill(order);
 
               return (
                 <div
@@ -320,9 +492,13 @@ export const PharmacyWalletPage = () => {
                           minute: '2-digit',
                         })}
                       </span>
-                      {order.isManualInStore && (
+                      {order.deliveryType === 'PICKUP' ? (
                         <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-teal-100 text-teal-800">
-                          In-Store Counter
+                          Counter Pickup
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-blue-100 text-blue-800">
+                          Home Delivery
                         </span>
                       )}
                     </div>
@@ -337,27 +513,31 @@ export const PharmacyWalletPage = () => {
                     </p>
                   </div>
 
-                  {/* Middle: Itemized Bill Breakdown (Rule 6) */}
+                  {/* Middle: Itemized Bill Breakdown */}
                   <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono bg-white p-2.5 rounded-xl border border-brandBorder-subtle">
                     <div>
                       <span className="text-[10px] text-brandText-muted block">Total MRP</span>
                       <strong className="text-slate-800">₹{bill.totalMrp.toFixed(2)}</strong>
                     </div>
                     <div className="text-emerald-700">
-                      <span className="text-[10px] text-emerald-600 block">Disc</span>
+                      <span className="text-[10px] text-emerald-600 block">
+                        {bill.discountType === 'PERCENT' ? `Disc (${bill.discountValue}%)` : 'Disc'}
+                      </span>
                       <strong>-₹{bill.discount.toFixed(2)}</strong>
                     </div>
                     <div>
-                      <span className="text-[10px] text-brandText-muted block">Pack (₹6)</span>
+                      <span className="text-[10px] text-brandText-muted block">Pack</span>
                       <strong>+₹{bill.packagingFee.toFixed(2)}</strong>
                     </div>
                     <div>
-                      <span className="text-[10px] text-brandText-muted block">Platform</span>
-                      <strong>+₹{bill.platformFee.toFixed(2)}</strong>
+                      <span className="text-[10px] text-brandText-muted block">Delivery</span>
+                      <strong className={bill.deliveryFee > 0 ? 'text-amber-800' : 'text-emerald-700'}>
+                        {bill.deliveryFee > 0 ? `+₹${bill.deliveryFee.toFixed(2)}` : 'FREE'}
+                      </strong>
                     </div>
                     <div className="border-l border-slate-200 pl-3">
                       <span className="text-[10px] text-forest-800 font-bold block uppercase">
-                        Net Bill Total
+                        Net Total
                       </span>
                       <strong className="text-sm font-extrabold text-forest-900">
                         ₹{bill.finalTotal.toFixed(2)}
@@ -441,13 +621,9 @@ export const PharmacyWalletPage = () => {
               </div>
             </div>
 
-            {/* Statutory Bill Summary according to Rule 6 */}
+            {/* Bill Summary */}
             {(() => {
-              const bill = calculateOrderBill({
-                items: selectedBillOrder.items || [],
-                customSubtotal: selectedBillOrder.totalMrp || selectedBillOrder.subtotal,
-                isPickup: selectedBillOrder.isManualInStore || selectedBillOrder.area === 'In-Store Counter',
-              });
+              const bill = resolveOrderBill(selectedBillOrder);
 
               return (
                 <div className="p-3.5 bg-forest-50/80 rounded-2xl border border-forest-100 text-xs space-y-1.5 font-mono">
@@ -457,9 +633,9 @@ export const PharmacyWalletPage = () => {
                   </div>
                   <div className="flex justify-between text-emerald-700 font-semibold">
                     <span>
-                      {bill.isHighValueTier
-                        ? 'High-Value Discount (18%):'
-                        : `Platform Discount (${bill.discountPercent}%):`}
+                      {bill.discountType === 'PERCENT'
+                        ? `Discount (${bill.discountValue || 0}%):`
+                        : 'Discount (Flat):'}
                     </span>
                     <span>-₹{bill.discount.toFixed(2)}</span>
                   </div>
@@ -468,15 +644,15 @@ export const PharmacyWalletPage = () => {
                     <span>+₹{bill.packagingFee.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-brandText-secondary">
-                    <span>Platform Fee (Tiered):</span>
-                    <span>+₹{bill.platformFee.toFixed(2)}</span>
+                    <span>Delivery Charges:</span>
+                    <span className="font-bold">
+                      {bill.deliveryFee > 0 ? (
+                        <span className="text-amber-800">+₹{bill.deliveryFee.toFixed(2)}</span>
+                      ) : (
+                        <span className="text-emerald-700">FREE</span>
+                      )}
+                    </span>
                   </div>
-                  {bill.deliveryFee > 0 && (
-                    <div className="flex justify-between text-brandText-secondary">
-                      <span>Delivery Charges:</span>
-                      <span>+₹{bill.deliveryFee.toFixed(2)}</span>
-                    </div>
-                  )}
                   {bill.cashback > 0 && (
                     <div className="flex justify-between text-emerald-800 font-bold bg-emerald-100/70 p-1.5 rounded-lg text-[10px]">
                       <span>Wallet Cashback (2% credited to patient):</span>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShoppingBag,
   Package,
@@ -16,6 +16,7 @@ import {
   Phone,
   Tag,
   Receipt,
+  RefreshCw,
 } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
@@ -23,7 +24,7 @@ import Drawer from '../../components/workspace/Drawer';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
-import { calculateOrderBill } from '../../services/pricingRules';
+import { orderApi } from '../../services/api/order.api';
 
 export const PharmacyOrdersPage = () => {
   const { orders, updateOrderStatus } = useWorkspaceStore();
@@ -31,6 +32,117 @@ export const PharmacyOrdersPage = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isDispensingSlipOpen, setIsDispensingSlipOpen] = useState(false);
   const [slipOrder, setSlipOrder] = useState(null);
+  const [backendOrders, setBackendOrders] = useState([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+
+  const fetchOrders = async () => {
+    setIsLoadingOrders(true);
+    try {
+      const data = await orderApi.getPharmacyOrders();
+      if (Array.isArray(data)) {
+        setBackendOrders(data);
+      }
+    } catch (err) {
+      console.warn('Backend pharmacy orders fetch notice:', err.message);
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const mergedOrders = useMemo(() => {
+    const map = new Map();
+    // 1. Local workspace store orders
+    orders.forEach((o) => {
+      map.set(o.id, o);
+      if (o.backendId) map.set(o.backendId, o);
+      if (o.orderNumber) map.set(o.orderNumber, o);
+    });
+
+    // 2. Real backend orders
+    backendOrders.forEach((bo) => {
+      const key = bo.orderNumber || bo.id;
+      const existing = map.get(key) || map.get(bo.id);
+      const isPickup =
+        bo.deliveryAddress?.deliveryType === 'PICKUP' ||
+        bo.paymentMethod === 'IN_STORE_COUNTER' ||
+        bo.deliveryAddress?.area === 'In-Store Counter';
+
+      const subtotal = bo.subtotalPaise
+        ? bo.subtotalPaise / 100
+        : (existing?.subtotal ?? (existing?.totalMrp ?? 0));
+
+      const deliveryFee =
+        bo.deliveryFeePaise !== undefined
+          ? bo.deliveryFeePaise / 100
+          : (existing?.deliveryFee !== undefined
+              ? existing.deliveryFee
+              : (isPickup ? 0 : (subtotal < 499 ? 30 : 0)));
+
+      const discount = bo.couponDiscountPaise
+        ? bo.couponDiscountPaise / 100
+        : (existing?.discount ?? 0);
+
+      const total = bo.totalPaise
+        ? bo.totalPaise / 100
+        : (existing?.total ?? Math.max(0, subtotal - discount + 6 + deliveryFee));
+
+      const formatted = {
+        id: bo.orderNumber || bo.id,
+        backendId: bo.id,
+        orderNumber: bo.orderNumber,
+        createdAt: bo.placedAt || bo.createdAt || existing?.createdAt || new Date().toISOString(),
+        customerName:
+          bo.deliveryAddress?.fullName ||
+          bo.patient?.fullName ||
+          existing?.customerName ||
+          'Walk-in Customer',
+        customerPhone:
+          bo.deliveryAddress?.phone ||
+          bo.patient?.phone ||
+          existing?.customerPhone ||
+          '',
+        deliveryType: bo.deliveryAddress?.deliveryType || existing?.deliveryType || (isPickup ? 'PICKUP' : 'DELIVERY'),
+        address: bo.deliveryAddress?.line1 || existing?.address || '',
+        area: bo.deliveryAddress?.area || existing?.area || '',
+        pincode: bo.deliveryAddress?.pincode || existing?.pincode || '',
+        discountType: bo.deliveryAddress?.discountType || existing?.discountType || 'PERCENT',
+        discountValue: bo.deliveryAddress?.discountValue || existing?.discountValue || 0,
+        subtotal,
+        totalMrp: subtotal,
+        discount,
+        deliveryFee,
+        packagingFee: existing?.packagingFee ?? 6,
+        platformFee: existing?.platformFee ?? 0,
+        total,
+        status: bo.status || existing?.status || 'READY_FOR_PICKUP',
+        paymentMethod: bo.paymentMethod || existing?.paymentMethod || 'COD',
+        assignedRider: bo.delivery?.rider
+          ? {
+              id: bo.delivery.rider.id,
+              name: bo.delivery.rider.name,
+              phone: bo.delivery.rider.phone,
+            }
+          : existing?.assignedRider || null,
+        items: bo.items?.length
+          ? bo.items.map((it) => ({
+              name: it.nameSnapshot,
+              qty: it.quantity,
+              quantity: it.quantity,
+              price: it.unitPricePaise
+                ? it.unitPricePaise / 100
+                : (it.mrpPaise ? it.mrpPaise / 100 : 0),
+            }))
+          : existing?.items || [],
+      };
+      map.set(key, formatted);
+    });
+
+    return Array.from(map.values());
+  }, [orders, backendOrders]);
 
   const filterOptions = [
     { label: 'Preparing', value: 'PREPARING' },
@@ -39,8 +151,13 @@ export const PharmacyOrdersPage = () => {
     { label: 'Delivered', value: 'DELIVERED' },
   ];
 
-  const handleAdvanceStatus = (order, targetStatus) => {
+  const handleAdvanceStatus = async (order, targetStatus) => {
     updateOrderStatus(order.id, targetStatus);
+    try {
+      if (order.backendId || (order.id && !order.id.startsWith('OW-WALK-'))) {
+        await orderApi.updateOrderStatus(order.backendId || order.id, targetStatus).catch(() => {});
+      }
+    } catch {}
     addToast(`Order ${order.id} status updated to ${targetStatus.replace(/_/g, ' ')}!`, 'success');
     setSelectedOrder(null);
   };
@@ -138,14 +255,46 @@ export const PharmacyOrdersPage = () => {
     },
   ];
 
-  // Resolve bill details for the active slip
-  const slipBill = slipOrder
-    ? calculateOrderBill({
-        items: slipOrder.items || [],
-        customSubtotal: slipOrder.totalMrp || slipOrder.subtotal,
-        isPickup: slipOrder.isManualInStore || slipOrder.area === 'In-Store Counter',
-      })
-    : null;
+  // Resolve bill details for the active slip directly from stored backend / order details
+  const resolveSlipBill = (order) => {
+    if (!order) return null;
+    const isPickup =
+      order.deliveryType === 'PICKUP' ||
+      order.paymentMethod === 'IN_STORE_COUNTER' ||
+      order.area === 'In-Store Counter';
+
+    const subtotal = Number(order.subtotal ?? (order.totalMrp ?? 0));
+    const discount = Number(order.discount ?? 0);
+    const packagingFee = Number(order.packagingFee ?? 6);
+    const platformFee = Number(order.platformFee ?? 0);
+    // Exact delivery fee rule: Pickup is ₹0; Home delivery is ₹30 if subtotal < ₹499, else ₹0
+    const deliveryFee = Number(
+      order.deliveryFee !== undefined
+        ? order.deliveryFee
+        : (isPickup ? 0 : (subtotal < 499 ? 30 : 0))
+    );
+    const finalTotal = Number(
+      order.total !== undefined
+        ? order.total
+        : Math.max(0, subtotal - discount + packagingFee + platformFee + deliveryFee)
+    );
+
+    return {
+      isPickup,
+      totalMrp: subtotal,
+      subtotal,
+      discount,
+      discountType: order.discountType || 'PERCENT',
+      discountValue: order.discountValue || 0,
+      packagingFee,
+      platformFee,
+      deliveryFee,
+      cashback: Number(order.cashback || 0),
+      finalTotal,
+    };
+  };
+
+  const slipBill = resolveSlipBill(slipOrder);
 
   return (
     <div className="space-y-6">
@@ -158,11 +307,22 @@ export const PharmacyOrdersPage = () => {
             Assemble medicines, verify batch expiry, apply tamper-proof packaging, and stage for pickup.
           </p>
         </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          leftIcon={RefreshCw}
+          isLoading={isLoadingOrders}
+          onClick={fetchOrders}
+          className="text-xs font-bold"
+        >
+          Refresh Orders
+        </Button>
       </div>
 
       <DataTable
         columns={columns}
-        data={orders}
+        data={mergedOrders}
         searchKey="customerName"
         searchPlaceholder="Search order by customer or ID..."
         filterOptions={filterOptions}
@@ -353,9 +513,19 @@ export const PharmacyOrdersPage = () => {
                     <span className="text-slate-500 font-medium">Mobile: </span>
                     <strong className="font-mono">{slipOrder.customerPhone}</strong>
                   </p>
+                  <p>
+                    <span className="text-slate-500 font-medium">Fulfillment: </span>
+                    <strong className="text-forest-900">
+                      {slipBill.isPickup ? 'Counter Pickup' : 'Home Delivery'}
+                    </strong>
+                  </p>
                   <p className="truncate">
-                    <span className="text-slate-500 font-medium">Delivery: </span>
-                    <span>{slipOrder.area || slipOrder.address || 'In-Store Counter'}</span>
+                    <span className="text-slate-500 font-medium">Address: </span>
+                    <span>
+                      {slipBill.isPickup
+                        ? 'In-Store Counter'
+                        : `${slipOrder.address || ''}${slipOrder.area ? ', ' + slipOrder.area : ''}${slipOrder.pincode ? ' (PIN: ' + slipOrder.pincode + ')' : ''}`}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -434,9 +604,9 @@ export const PharmacyOrdersPage = () => {
                   </div>
                   <div className="flex justify-between text-emerald-700 font-semibold">
                     <span>
-                      {slipBill.isHighValueTier
-                        ? 'High-Value Disc (18%):'
-                        : `Discount (${slipBill.discountPercent}%):`}
+                      {slipBill.discountType === 'PERCENT'
+                        ? `Discount (${slipBill.discountValue || 0}%):`
+                        : 'Discount (Flat):'}
                     </span>
                     <span>-₹{slipBill.discount.toFixed(2)}</span>
                   </div>
@@ -445,12 +615,14 @@ export const PharmacyOrdersPage = () => {
                     <span>₹{slipBill.packagingFee.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
-                    <span>Platform Fee:</span>
-                    <span>₹{slipBill.platformFee.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-slate-600">
                     <span>Delivery Charges:</span>
-                    <span>{slipBill.deliveryFee > 0 ? `₹${slipBill.deliveryFee.toFixed(2)}` : 'FREE'}</span>
+                    <span className="font-bold">
+                      {slipBill.deliveryFee > 0 ? (
+                        <span className="text-amber-800">₹{slipBill.deliveryFee.toFixed(2)}</span>
+                      ) : (
+                        <span className="text-emerald-700">FREE</span>
+                      )}
+                    </span>
                   </div>
                   {slipBill.cashback > 0 && (
                     <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-100/60 px-1.5 py-0.5 rounded text-[10px]">

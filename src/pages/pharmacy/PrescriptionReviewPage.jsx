@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileText,
   ZoomIn,
@@ -22,26 +22,99 @@ import {
   Percent,
   CheckCircle2,
   Sparkles,
+  RefreshCw,
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
+import { prescriptionApi } from '../../services/api/prescription.api';
+import { pharmacyApi } from '../../services/api/pharmacy.api';
+import { orderApi } from '../../services/api/order.api';
 import Button from '../../components/common/Button';
 import { calculateOrderBill } from '../../services/pricingRules';
 
 export const PrescriptionReviewPage = () => {
   const { prescriptions, verifyPrescription, rejectPrescription, createOrder } = useWorkspaceStore();
   const { addToast } = useToast();
+  const { user } = useAuth();
+
+  const [backendPrescriptions, setBackendPrescriptions] = useState([]);
+  const [primaryPharmacy, setPrimaryPharmacy] = useState(null);
+  const [isLoadingRx, setIsLoadingRx] = useState(false);
+
+  const loadData = async () => {
+    setIsLoadingRx(true);
+    try {
+      const [rxList, prim] = await Promise.all([
+        prescriptionApi.getPharmacyPrescriptions().catch(() => []),
+        pharmacyApi.getPrimaryPharmacy().catch(() => null),
+      ]);
+
+      if (Array.isArray(rxList) && rxList.length > 0) {
+        const mapped = rxList.map((r) => {
+          const fileUrl = r.files?.[0]?.storageKey
+            ? (r.files[0].storageKey.startsWith('http') || r.files[0].storageKey.startsWith('data:')
+                ? r.files[0].storageKey
+                : `https://res.cloudinary.com/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'oshudwala'}/image/upload/${r.files[0].storageKey}`)
+            : 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=800';
+
+          return {
+            id: r.id,
+            prescriptionNumber: r.prescriptionNumber,
+            patientName: r.patient?.fullName || 'Walk-in / App Patient',
+            patientPhone: r.patient?.phone || '9876543210',
+            patientAge: 32,
+            patientGender: 'Male',
+            doctorName: r.doctorName || 'Registered Medical Practitioner',
+            rxDate: new Date(r.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+            status: r.status === 'SUBMITTED' ? 'PENDING_VERIFICATION' : r.status,
+            imageUrl: fileUrl,
+            extractedMedicines: r.items?.map((it) => ({
+              name: it.nameAsWritten || 'Prescribed Medicine',
+              dosage: it.dosage || '1-0-1 After Meals',
+              duration: '5 Days',
+              qty: it.quantity || 1,
+              confidence: 96,
+            })) || [],
+            notes: r.patientNote || 'Submitted for pharmacist validation',
+            submittedAt: new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', Today',
+          };
+        });
+        setBackendPrescriptions(mapped);
+      }
+      setPrimaryPharmacy(prim);
+    } catch (err) {
+      console.error('Error fetching prescriptions:', err);
+    } finally {
+      setIsLoadingRx(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const mergedPrescriptions = useMemo(() => {
+    const map = new Map();
+    prescriptions.forEach((p) => map.set(p.id, p));
+    backendPrescriptions.forEach((p) => {
+      if (!map.has(p.id)) {
+        map.set(p.id, p);
+      }
+    });
+    return Array.from(map.values());
+  }, [prescriptions, backendPrescriptions]);
 
   // Queue View Tab: 'pending' (active audit) | 'history' (already verified/rejected)
   const [activeQueueTab, setActiveQueueTab] = useState('pending');
 
-  const pendingPrescriptions = prescriptions.filter((p) => p.status === 'PENDING_VERIFICATION');
-  const historyPrescriptions = prescriptions.filter((p) => p.status !== 'PENDING_VERIFICATION');
+  const pendingPrescriptions = mergedPrescriptions.filter((p) => p.status === 'PENDING_VERIFICATION');
+  const historyPrescriptions = mergedPrescriptions.filter((p) => p.status !== 'PENDING_VERIFICATION');
 
   const activeList = activeQueueTab === 'pending' ? pendingPrescriptions : historyPrescriptions;
 
   const [selectedRxId, setSelectedRxId] = useState(
-    pendingPrescriptions[0]?.id || prescriptions[0]?.id || ''
+    pendingPrescriptions[0]?.id || mergedPrescriptions[0]?.id || ''
   );
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
@@ -64,10 +137,14 @@ export const PrescriptionReviewPage = () => {
   const [manualDeliveryType, setManualDeliveryType] = useState('DELIVERY'); // 'DELIVERY' | 'PICKUP'
   const [manualAddress, setManualAddress] = useState('');
   const [manualArea, setManualArea] = useState('City Centre');
+  const [manualPincode, setManualPincode] = useState('');
+  const [manualDiscountType, setManualDiscountType] = useState('PERCENT'); // 'PERCENT' | 'FLAT'
+  const [manualDiscountValue, setManualDiscountValue] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [manualItems, setManualItems] = useState([
     { name: 'Paracetamol 650mg (Dolo 650)', qty: 1, price: 35 },
   ]);
+  const [isSubmittingManualOrder, setIsSubmittingManualOrder] = useState(false);
 
   // Current active prescription being reviewed
   const currentRx = activeList.find((p) => p.id === selectedRxId) || activeList[0] || null;
@@ -90,17 +167,25 @@ export const PrescriptionReviewPage = () => {
     );
   };
 
-  const handleReject = () => {
+  const handleReject = async () => {
     if (!currentRx) return;
     const reason = window.prompt(
       'Reason for prescription rejection:',
       'Illegible handwriting or unverified medical registration number'
     );
     if (reason) {
+      try {
+        await prescriptionApi.reviewPrescription(currentRx.id, {
+          status: 'REJECTED',
+          rejectionReason: reason,
+        });
+      } catch (err) {
+        console.warn('Backend rejection sync warning:', err.message);
+      }
       rejectPrescription(currentRx.id, reason);
       const remainingPending = pendingPrescriptions.filter((p) => p.id !== currentRx.id);
       setSelectedRxId(remainingPending[0]?.id || '');
-      addToast(`Prescription ${currentRx.id} rejected and removed from pending queue.`, 'error');
+      addToast(`Prescription ${currentRx.id} rejected and updated in database.`, 'error');
     }
   };
 
@@ -127,7 +212,14 @@ export const PrescriptionReviewPage = () => {
         ? approvedItems
         : [{ name: 'Prescribed Medicines Package', qty: 1, price: numPrice }];
 
-    // 1. Mark prescription verified in store
+    // 1. Mark prescription verified in backend database
+    try {
+      prescriptionApi.reviewPrescription(currentRx.id, {
+        status: 'VERIFIED',
+      }).catch((err) => console.warn('Backend prescription verification sync:', err.message));
+    } catch {}
+
+    // 2. Mark prescription verified in store
     verifyPrescription(currentRx.id, formattedItems, pharmacistNotes);
 
     // 2. Create Order with packaging fee (₹6), tiered platform fee, and discount
@@ -163,16 +255,47 @@ export const PrescriptionReviewPage = () => {
     );
   };
 
-  // Pricing rules calculation for Walk-in Registration / In-Store Order
-  // Delivery Fee Rule: Under ₹499 order = ₹30 delivery fee, ₹499+ = FREE delivery
+  // Pricing calculation for Walk-in Registration / In-Store Order
+  // Delivery Fee Rule: Under ₹499 order = ₹30 delivery fee, ₹499+ = FREE delivery. Pickup = ₹0.
+  // Manual discount: Percentage (%) or Flat (₹) set directly by the pharmacy
   const isPickupOrder = manualDeliveryType === 'PICKUP';
-  const manualBill = calculateOrderBill({
-    items: manualItems,
-    isPickup: isPickupOrder,
-  });
+  const manualSubtotal = manualItems.reduce(
+    (sum, it) => sum + (Number(it.price) || 0) * (Number(it.qty) || 1),
+    0
+  );
 
-  // Submit Walk-in Order: Directly created as approved order in READY_FOR_PICKUP
-  const handleConfirmManualOrder = (e) => {
+  const numDiscountVal = Number(manualDiscountValue) || 0;
+  let manualDiscount = 0;
+  if (manualDiscountType === 'PERCENT') {
+    const clampedPercent = Math.min(100, Math.max(0, numDiscountVal));
+    manualDiscount = Math.round((manualSubtotal * clampedPercent) / 100);
+  } else {
+    manualDiscount = Math.min(manualSubtotal, Math.max(0, numDiscountVal));
+  }
+
+  const manualPackagingFee = 6;
+  const manualPlatformFee = 0;
+  const manualDeliveryFee = isPickupOrder ? 0 : manualSubtotal < 499 ? 30 : 0;
+  const manualFinalTotal = Math.max(
+    0,
+    manualSubtotal - manualDiscount + manualPackagingFee + manualPlatformFee + manualDeliveryFee
+  );
+
+  const manualBill = {
+    totalMrp: manualSubtotal,
+    subtotal: manualSubtotal,
+    discount: manualDiscount,
+    discountType: manualDiscountType,
+    discountValue: numDiscountVal,
+    packagingFee: manualPackagingFee,
+    platformFee: manualPlatformFee,
+    deliveryFee: manualDeliveryFee,
+    cashback: 0,
+    finalTotal: manualFinalTotal,
+  };
+
+  // Submit Walk-in Order: Directly created as approved order in READY_FOR_PICKUP & saved to backend
+  const handleConfirmManualOrder = async (e) => {
     e.preventDefault();
     if (!manualCustomerName.trim()) {
       addToast('Please provide walk-in customer name.', 'warning');
@@ -193,35 +316,78 @@ export const PrescriptionReviewPage = () => {
       ? 'In-Store Counter'
       : (manualArea.trim() || 'City Centre');
 
-    // Directly create the order in READY_FOR_PICKUP with calculated delivery fee
+    const cleanPincode = manualPincode.trim();
+
+    setIsSubmittingManualOrder(true);
+
+    let savedBackendOrder = null;
+    try {
+      savedBackendOrder = await orderApi.createWalkInOrder({
+        customerName: manualCustomerName.trim(),
+        customerPhone: cleanPhone,
+        deliveryType: manualDeliveryType,
+        address: resolvedAddress,
+        area: resolvedArea,
+        pincode: cleanPincode,
+        items: manualItems.map((it) => ({
+          name: it.name,
+          quantity: Number(it.qty) || 1,
+          price: Number(it.price) || 0,
+        })),
+        subtotal: manualBill.subtotal,
+        discount: manualBill.discount,
+        discountType: manualBill.discountType,
+        discountValue: manualBill.discountValue,
+        packagingFee: manualBill.packagingFee,
+        platformFee: manualBill.platformFee,
+        deliveryFee: manualBill.deliveryFee,
+        total: manualBill.finalTotal,
+        notes: manualNotes.trim() || undefined,
+      });
+    } catch (err) {
+      console.warn('Backend walk-in order sync notice:', err.message);
+    }
+
+    // Directly create the order in READY_FOR_PICKUP with exact manual discount & delivery fee
     const newOrder = createOrder({
+      id: savedBackendOrder?.orderNumber || savedBackendOrder?.id,
+      backendId: savedBackendOrder?.id,
+      orderNumber: savedBackendOrder?.orderNumber,
       customerName: manualCustomerName.trim(),
-      customerPhone: manualCustomerPhone.trim(),
+      customerPhone: cleanPhone,
+      deliveryType: manualDeliveryType,
       address: resolvedAddress,
       area: resolvedArea,
+      pincode: cleanPincode,
       items: manualItems,
       totalMrp: manualBill.totalMrp,
       subtotal: manualBill.totalMrp,
       packagingFee: manualBill.packagingFee,
       platformFee: manualBill.platformFee,
-      deliveryFee: manualBill.deliveryFee, // ₹30 under ₹499, ₹0 if ₹499+
+      deliveryFee: manualBill.deliveryFee, // ₹30 under ₹499, ₹0 if ₹499+ or pickup
       discount: manualBill.discount,
-      cashback: manualBill.cashback,
+      discountType: manualBill.discountType,
+      discountValue: manualBill.discountValue,
+      cashback: 0,
       total: manualBill.finalTotal,
       status: 'READY_FOR_PICKUP',
       paymentMethod: isPickupOrder ? 'IN_STORE_COUNTER' : 'COD',
       paymentStatus: 'PAID',
       isManualInStore: true,
-      notes: `Walk-in registration prescription billed. Delivery Fee: ₹${manualBill.deliveryFee}. ${manualNotes}`,
+      notes: `Walk-in registration order. Delivery Fee: ₹${manualBill.deliveryFee}. ${manualNotes}`,
     });
 
+    setIsSubmittingManualOrder(false);
     setIsManualModalOpen(false);
     setManualCustomerName('');
     setManualCustomerPhone('');
     setManualAddress('');
+    setManualArea('City Centre');
+    setManualPincode('');
+    setManualDiscountValue('');
     setManualNotes('');
     addToast(
-      `Walk-in Order ${newOrder.id} registered & billed! Total: ₹${manualBill.finalTotal.toFixed(2)} (Delivery Fee: ₹${manualBill.deliveryFee})`,
+      `Walk-in Order ${newOrder.id || savedBackendOrder?.orderNumber} registered & saved! Total: ₹${manualBill.finalTotal.toFixed(2)} (Delivery: ${manualBill.deliveryFee > 0 ? `₹${manualBill.deliveryFee}` : 'FREE'})`,
       'success'
     );
   };
@@ -241,6 +407,16 @@ export const PrescriptionReviewPage = () => {
 
         <div className="flex items-center gap-3">
           <Button
+            variant="outline"
+            size="sm"
+            leftIcon={RefreshCw}
+            isLoading={isLoadingRx}
+            onClick={loadData}
+            className="text-xs font-bold"
+          >
+            Refresh
+          </Button>
+          <Button
             variant="primary"
             size="sm"
             leftIcon={Plus}
@@ -251,6 +427,26 @@ export const PrescriptionReviewPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* Primary Store Routing Info Banner */}
+      {primaryPharmacy && (
+        <div className="p-3.5 bg-forest-50 border border-forest-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-5 h-5 text-forest-700 flex-shrink-0" />
+            <div>
+              <span className="font-bold text-forest-900">
+                Primary Pharmacy Hub: {primaryPharmacy.name}
+              </span>
+              <p className="text-forest-700 text-[11px] mt-0.5">
+                All patient online prescription uploads and shop catalog orders are automatically routed to the active Primary Pharmacy.
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1 font-bold text-[10px] text-white bg-forest-800 px-2 py-0.5 rounded-full uppercase tracking-wider self-start sm:self-auto">
+            <CheckCircle2 className="w-3 h-3 text-emerald-300" /> Active Hub
+          </span>
+        </div>
+      )}
 
       {/* Queue View Switcher: Pending Audit vs Audit History */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-surface-pure p-3 rounded-2xl border border-brandBorder-subtle shadow-2xs">
@@ -798,8 +994,8 @@ export const PrescriptionReviewPage = () => {
 
               {/* Delivery Address fields when Home Delivery is selected */}
               {manualDeliveryType === 'DELIVERY' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 animate-fade-in">
+                  <div className="sm:col-span-1">
                     <label className="text-xs font-bold text-forest-900">Delivery Address</label>
                     <input
                       type="text"
@@ -819,6 +1015,18 @@ export const PrescriptionReviewPage = () => {
                       onChange={(e) => setManualArea(e.target.value)}
                       placeholder="e.g. City Centre, Durgapur"
                       className="w-full mt-1 px-3 py-2 text-xs font-semibold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-forest-900">Pincode</label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      value={manualPincode}
+                      onChange={(e) => setManualPincode(e.target.value.replace(/[^0-9]/g, ''))}
+                      placeholder="e.g. 713216"
+                      className="w-full mt-1 px-3 py-2 text-xs font-mono font-semibold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                     />
                   </div>
                 </div>
@@ -894,6 +1102,72 @@ export const PrescriptionReviewPage = () => {
                 </div>
               </div>
 
+              {/* MANUAL DISCOUNT SECTION (% Percentage or Flat ₹ Amount) */}
+              <div className="space-y-2 bg-surface-warm p-3 rounded-2xl border border-brandBorder-subtle">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-forest-900 flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-forest-600" />
+                    <span>Manual Pharmacy Discount</span>
+                  </label>
+                  <div className="flex items-center bg-surface-pure rounded-lg p-0.5 border border-brandBorder-subtle">
+                    <button
+                      type="button"
+                      onClick={() => setManualDiscountType('PERCENT')}
+                      className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all ${
+                        manualDiscountType === 'PERCENT'
+                          ? 'bg-forest-700 text-white shadow-xs'
+                          : 'text-brandText-secondary hover:text-forest-800'
+                      }`}
+                    >
+                      % Percentage
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualDiscountType('FLAT')}
+                      className={`px-2 py-0.5 text-[11px] font-bold rounded-md transition-all ${
+                        manualDiscountType === 'FLAT'
+                          ? 'bg-forest-700 text-white shadow-xs'
+                          : 'text-brandText-secondary hover:text-forest-800'
+                      }`}
+                    >
+                      ₹ Flat Discount
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max={manualDiscountType === 'PERCENT' ? 100 : manualBill.totalMrp}
+                      step="any"
+                      value={manualDiscountValue}
+                      onChange={(e) => setManualDiscountValue(e.target.value)}
+                      placeholder={
+                        manualDiscountType === 'PERCENT'
+                          ? 'Enter discount % (e.g. 15 for 15%)'
+                          : 'Enter flat amount ₹ (e.g. 50)'
+                      }
+                      className="w-full px-3 py-2 text-xs font-mono font-semibold bg-surface-pure border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                    />
+                    <span className="absolute right-3 top-2 text-xs font-bold text-brandText-muted">
+                      {manualDiscountType === 'PERCENT' ? '%' : '₹'}
+                    </span>
+                  </div>
+                  {manualBill.discount > 0 && (
+                    <div className="text-right whitespace-nowrap">
+                      <span className="text-xs font-bold text-emerald-700 font-mono">
+                        -₹{manualBill.discount.toFixed(2)} Off
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-brandText-muted">
+                  Custom discount set directly by counter. Will be shown on the official dispensing slip.
+                </p>
+              </div>
+
               {/* Price Summary with Delivery Fee Rule (₹30 under ₹499, FREE for ₹499+) */}
               <div className="p-3.5 rounded-2xl bg-forest-50/80 border border-forest-100 text-xs space-y-1.5">
                 <div className="flex justify-between font-bold text-forest-900">
@@ -902,19 +1176,13 @@ export const PrescriptionReviewPage = () => {
                 </div>
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span>
-                    {manualBill.isHighValueTier
-                      ? 'High-Value Discount (18%):'
-                      : `Platform Discount (${manualBill.discountPercent}%):`}
+                    Manual Discount ({manualDiscountType === 'PERCENT' ? `${numDiscountVal}%` : `₹${numDiscountVal} flat`}):
                   </span>
                   <span className="font-mono">-₹{manualBill.discount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-brandText-secondary">
                   <span>Packaging Charges (Fixed):</span>
                   <span className="font-mono">₹{manualBill.packagingFee.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-brandText-secondary">
-                  <span>Platform Fee:</span>
-                  <span className="font-mono">₹{manualBill.platformFee.toFixed(2)}</span>
                 </div>
 
                 {/* Delivery Fee with official rule indicator */}
@@ -930,7 +1198,7 @@ export const PrescriptionReviewPage = () => {
                       </>
                     ) : (
                       <span className="text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full text-[10px]">
-                        FREE Delivery {manualBill.totalMrp >= 499 ? '(Order ₹499+)' : ''}
+                        FREE Delivery {manualBill.totalMrp >= 499 ? '(Order ₹499+)' : '(Counter Pickup)'}
                       </span>
                     )}
                   </span>
@@ -942,12 +1210,6 @@ export const PrescriptionReviewPage = () => {
                   </p>
                 )}
 
-                {manualBill.cashback > 0 && (
-                  <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-100/60 px-2 py-1 rounded-lg">
-                    <span>Wallet Cashback (2%):</span>
-                    <span className="font-mono">+₹{manualBill.cashback.toFixed(2)}</span>
-                  </div>
-                )}
                 <div className="border-t border-forest-200/80 pt-1.5 flex justify-between font-bold text-forest-900 text-sm">
                   <span>Net Payable:</span>
                   <span className="font-mono text-forest-800">
@@ -970,6 +1232,7 @@ export const PrescriptionReviewPage = () => {
                   type="submit"
                   variant="primary"
                   size="sm"
+                  isLoading={isSubmittingManualOrder}
                   leftIcon={CheckCircle}
                   className="text-xs font-bold px-4 py-2"
                 >

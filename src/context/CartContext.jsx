@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { calculateOrderBill } from '../services/pricingRules';
 import couponApi from '../services/api/coupon.api';
+import cartApi from '../services/api/cart.api';
+import { tokenStorage } from '../services/api/client';
 
 const CartContext = createContext(null);
 
@@ -26,6 +28,28 @@ export const CartProvider = ({ children }) => {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState('');
 
+  // Sync with backend cart if authenticated patient
+  useEffect(() => {
+    const token = tokenStorage.getAccessToken();
+    if (token) {
+      cartApi.getCart().then((res) => {
+        if (res?.items && Array.isArray(res.items) && res.items.length > 0) {
+          const mapped = res.items.map((i) => ({
+            id: i.productId || i.product?.id,
+            productId: i.productId || i.product?.id,
+            name: i.product?.name,
+            price: (i.product?.mrpPaise || 0) / 100,
+            mrp: (i.product?.mrpPaise || 0) / 100,
+            quantity: i.quantity,
+            image: (i.product?.imageUrls && i.product.imageUrls[0]) || 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=500',
+            prescriptionRequired: Boolean(i.product?.requiresPrescription),
+          }));
+          setCartItems(mapped);
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('oshud_cart', JSON.stringify(cartItems));
   }, [cartItems]);
@@ -44,6 +68,10 @@ export const CartProvider = ({ children }) => {
         return [...prev, { ...product, quantity }];
       }
     });
+
+    if (tokenStorage.getAccessToken()) {
+      cartApi.addItem(product.id, quantity).catch(() => {});
+    }
   };
 
   const updateQuantity = (productId, newQuantity) => {
@@ -54,15 +82,27 @@ export const CartProvider = ({ children }) => {
     setCartItems((prev) =>
       prev.map((item) => (item.id === productId ? { ...item, quantity: newQuantity } : item))
     );
+
+    if (tokenStorage.getAccessToken()) {
+      cartApi.updateItemQuantity(productId, newQuantity).catch(() => {});
+    }
   };
 
   const removeFromCart = (productId) => {
     setCartItems((prev) => prev.filter((item) => item.id !== productId));
+
+    if (tokenStorage.getAccessToken()) {
+      cartApi.removeItem(productId).catch(() => {});
+    }
   };
 
   const clearCart = () => {
     setCartItems([]);
     setAppliedCoupon(null);
+
+    if (tokenStorage.getAccessToken()) {
+      cartApi.clearCart().catch(() => {});
+    }
   };
 
   const applyCoupon = async (code) => {
