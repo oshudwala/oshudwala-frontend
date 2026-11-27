@@ -415,7 +415,7 @@ export const RiderDashboardPage = () => {
         <MetricCard
           title="Total Earnings (Today)"
           value={`₹${metrics.earningsToday.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
-          change="₹80 Base + Delivery Incentive"
+          change={`${metrics.deliveriesToday} completed today (₹30.00 / order)`}
           trend="up"
           icon={TrendingUp}
           colorScheme="forest"

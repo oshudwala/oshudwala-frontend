@@ -1021,7 +1021,7 @@ export const RiderProfilePage = () => {
                   Daily Earnings Breakdown
                 </h2>
                 <p className="text-xs text-brandText-secondary mt-0.5">
-                  Calculated automatically per delivered package (₹80 base + ₹20 COD bonus).
+                  Calculated automatically per delivered package (₹30.00 per delivery).
                 </p>
               </div>
             </div>
@@ -1032,16 +1032,12 @@ export const RiderProfilePage = () => {
                 <span>{metrics.deliveriesToday} Completed</span>
               </div>
               <div className="flex justify-between text-brandText-secondary">
-                <span>Base Delivery Remuneration:</span>
-                <span>₹{(metrics.deliveriesToday * 80).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-emerald-700 font-semibold">
-                <span>COD Handling Incentives:</span>
-                <span>₹{(metrics.deliveriesToday * 20).toFixed(2)}</span>
+                <span>Delivery Remuneration (₹30 / order):</span>
+                <span>₹{(metrics.deliveriesToday * 30).toFixed(2)}</span>
               </div>
               <div className="border-t border-brandBorder-subtle pt-2 flex justify-between font-bold text-sm text-forest-900">
-                <span>Total Calculated Payout:</span>
-                <span className="text-forest-800">₹{metrics.earningsToday.toFixed(2)}</span>
+                <span>Total Calculated Today's Earnings:</span>
+                <span className="text-forest-800">₹{(metrics.deliveriesToday * 30).toFixed(2)}</span>
               </div>
             </div>
           </div>

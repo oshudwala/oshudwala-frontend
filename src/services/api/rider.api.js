@@ -167,34 +167,26 @@ export const riderApi = {
     const deliveriesToday = todayCompleted.length;
     const totalAmountDeliveredToday = todayCompleted.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
 
-    // Earning per delivery: ₹80 base + COD handling incentive
-    const earningsToday = todayCompleted.reduce((sum, o) => {
-      const baseFee = 80;
-      const incentive = o.paymentMethod === 'COD' ? 20 : 10;
-      return sum + baseFee + incentive;
-    }, 0);
+    // Earning per delivery: Exactly ₹30 per delivered order
+    const earningsToday = deliveriesToday * 30;
 
-    // Monthly figures
+    // Monthly figures: adding everyday earnings (₹30 per delivered order)
     const monthCompleted = completedOrders;
     const totalDeliveriesMonth = monthCompleted.length;
     const monthlyTotalAmount = monthCompleted.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-    const monthlyTotalEarnings = monthCompleted.reduce((sum, o) => {
-      const baseFee = 80;
-      const incentive = o.paymentMethod === 'COD' ? 20 : 10;
-      return sum + baseFee + incentive;
-    }, 0);
+    const monthlyTotalEarnings = totalDeliveriesMonth * 30;
 
     // Finance store for cash & withdrawals
     const financeStore = loadFinanceStore();
     const riderFinance = financeStore.riders[targetId] || {
       cashInHand: 0,
       cashDeposited: 0,
-      withdrawableBalance: Math.max(0, monthlyTotalEarnings),
+      withdrawableBalance: monthlyTotalEarnings,
       totalWithdrawn: 0,
     };
 
-    // Calculate actual COD cash in hand from completed COD orders not yet deposited
-    const completedCodOrders = completedOrders.filter((o) => o.paymentMethod === 'COD');
+    // Calculate actual COD cash in hand from completed COD orders not yet deposited (strictly COD, excluding UPI)
+    const completedCodOrders = completedOrders.filter((o) => (o.paymentMethod || 'COD').toUpperCase() === 'COD');
     const totalCodCollected = completedCodOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
     const actualCashInHand = Math.max(0, totalCodCollected - (riderFinance.cashDeposited || 0));
 
@@ -226,13 +218,269 @@ export const riderApi = {
       withdrawals: riderWithdrawals,
       codTransactions: completedCodOrders.map((o) => ({
         id: `COD-${o.id}`,
-        orderId: o.id,
-        customerName: o.customerName,
-        amount: o.total,
-        time: o.timeline?.find((t) => t.status.toLowerCase().includes('delivered'))?.time || 'Today',
+        orderId: o.orderNumber || o.id,
+        customerName: o.customerName || 'Registered Patient',
+        amount: Number(o.total || 0),
+        time: o.timeline?.find((t) => t.status.toLowerCase().includes('delivered'))?.time || new Date(o.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: new Date(o.createdAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
         status: 'COLLECTED',
       })),
     };
+  },
+
+  /**
+   * Fetch live cash-in-hand and COD collections summary from backend
+   */
+  async fetchCashSummary(riderId, fallbackUser = null) {
+    try {
+      const res = await apiClient.get('/cash/my');
+      const data = res.data?.data || res.data;
+      if (data && typeof data.cashInHand === 'number') {
+        return {
+          cashInHand: data.cashInHand,
+          cashInHandPaise: data.cashInHandPaise,
+          totalCollectedPaise: data.totalCollectedPaise,
+          totalDepositedPaise: data.totalDepositedPaise,
+          collections: (data.collections || []).map((c) => ({
+            id: c.id,
+            orderId: c.orderId,
+            customerName: c.customerName,
+            amount: c.amount,
+            time: new Date(c.collectedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(c.collectedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+            collectedAt: c.collectedAt,
+            status: c.status,
+          })),
+          deposits: (data.deposits || []).map((d) => ({
+            id: d.id,
+            depositId: d.depositId,
+            amount: d.amount,
+            status: d.status,
+            method: d.method,
+            time: new Date(d.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(d.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          })),
+        };
+      }
+    } catch (err) {
+      console.warn('Backend fetchCashSummary fallback note:', err.message);
+    }
+
+    // Client-side fallback matching local metrics
+    const local = this.getRiderMetrics(riderId, fallbackUser);
+    const finance = loadFinanceStore();
+    return {
+      cashInHand: local.cashInHand,
+      cashInHandPaise: Math.round(local.cashInHand * 100),
+      totalCollectedPaise: Math.round(local.cashInHand * 100),
+      totalDepositedPaise: Math.round((local.cashDeposited || 0) * 100),
+      collections: local.codTransactions,
+      deposits: (finance.withdrawals || []).filter((w) => w.disbursedBy === 'HUB_REMITTANCE'),
+    };
+  },
+
+  /**
+   * Submit cash deposit at Central Hub Depot (reducing physical cash in hand)
+   */
+  async submitCashDeposit(riderId, amount, method = 'CASH_HANDOVER', note = '') {
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) {
+      throw new Error('Please enter a valid deposit amount greater than ₹0.');
+    }
+
+    let depositSlip = null;
+    try {
+      const res = await apiClient.post('/cash/deposits', {
+        amount: numAmount,
+        method: method || 'CASH_HANDOVER',
+        referenceNo: `DEP-${Date.now().toString().slice(-6)}`,
+      });
+      const data = res.data?.data || res.data;
+      if (data) {
+        depositSlip = {
+          depositId: data.referenceNo || `DEP-${data.id?.slice(0, 8)?.toUpperCase() || Date.now().toString().slice(-6)}`,
+          amount: (data.amountPaise ? data.amountPaise / 100 : numAmount),
+          date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          note: note || 'Sector V Hub Cash Counter Remittance',
+        };
+      }
+    } catch (err) {
+      console.warn('Backend submitCashDeposit fallback note:', err.message);
+    }
+
+    if (!depositSlip) {
+      depositSlip = this.depositCash(riderId, numAmount, note);
+    } else {
+      // Also sync local store
+      const financeStore = loadFinanceStore();
+      const targetId = riderId || 'usr-rider-01';
+      if (!financeStore.riders[targetId]) {
+        financeStore.riders[targetId] = { cashInHand: 0, cashDeposited: 0, withdrawableBalance: 0, totalWithdrawn: 0 };
+      }
+      financeStore.riders[targetId].cashDeposited = (financeStore.riders[targetId].cashDeposited || 0) + numAmount;
+      saveFinanceStore(financeStore);
+      workspaceStore.reconcileCash(targetId, numAmount);
+    }
+
+    window.dispatchEvent(new CustomEvent('oshud_rider_finance_updated'));
+    return depositSlip;
+  },
+
+  /**
+   * Fetch live earnings, wallet balance, and withdrawals history from backend
+   */
+  async fetchEarningsAndWallet(riderId, fallbackUser = null) {
+    let walletBalance = null;
+    let withdrawals = [];
+    let completedDeliveries = [];
+
+    try {
+      const [walletRes, withdrawalsRes, deliveriesRes] = await Promise.all([
+        apiClient.get('/wallet/my').catch(() => null),
+        apiClient.get('/wallet/withdrawals').catch(() => null),
+        apiClient.get('/deliveries/my').catch(() => null),
+      ]);
+
+      if (walletRes?.data?.data) {
+        walletBalance = Number(walletRes.data.data.balancePaise || 0) / 100;
+      }
+      if (withdrawalsRes?.data?.data) {
+        withdrawals = (withdrawalsRes.data.data || []).map((w) => ({
+          id: w.id,
+          amount: Number(w.amountPaise || 0) / 100,
+          paymentMethod: w.payoutDetails?.method === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : 'Instant UPI',
+          rawMethod: w.payoutDetails?.method || 'UPI',
+          upiId: w.payoutDetails?.upiId || '',
+          note: w.payoutDetails?.note || '',
+          date: new Date(w.requestedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          time: new Date(w.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: w.status === 'PAID' ? 'COMPLETED' : w.status,
+          disbursedBy: w.reviewedById ? 'SUPER_ADMIN' : 'RIDER_PORTAL',
+        }));
+      }
+      if (deliveriesRes?.data?.data) {
+        completedDeliveries = (deliveriesRes.data.data || []).filter(
+          (d) => d.status === 'DELIVERED' || d.order?.status === 'DELIVERED'
+        );
+      }
+    } catch (err) {
+      console.warn('Backend fetchEarningsAndWallet fallback note:', err.message);
+    }
+
+    // Local workspace orders fallback
+    const local = this.getRiderMetrics(riderId, fallbackUser);
+
+    // Merge backend deliveries count if available
+    const todayDateStr = new Date().toDateString();
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    const effectiveDeliveries = completedDeliveries.length > 0
+      ? completedDeliveries
+      : local.completedOrders;
+
+    const todayOrders = effectiveDeliveries.filter((d) => {
+      const dt = d.deliveredAt || d.createdAt || d.order?.placedAt;
+      return dt && new Date(dt).toDateString() === todayDateStr;
+    });
+
+    const monthOrders = effectiveDeliveries.filter((d) => {
+      const dt = d.deliveredAt || d.createdAt || d.order?.placedAt;
+      return dt && new Date(dt).getMonth() === currentMonth && new Date(dt).getFullYear() === currentYear;
+    });
+
+    const deliveriesToday = todayOrders.length > 0 ? todayOrders.length : local.deliveriesToday;
+    const totalDeliveriesMonth = monthOrders.length > 0 ? monthOrders.length : local.totalDeliveriesMonth;
+
+    // ₹30 per order delivered
+    const earningsToday = deliveriesToday * 30;
+    const monthlyTotalEarnings = totalDeliveriesMonth * 30;
+
+    const effectiveWithdrawals = withdrawals.length > 0 ? withdrawals : local.withdrawals;
+    const totalWithdrawn = effectiveWithdrawals.reduce((sum, w) => sum + Number(w.amount || 0), 0);
+
+    const withdrawableBalance = walletBalance !== null
+      ? walletBalance
+      : Math.max(0, monthlyTotalEarnings - totalWithdrawn);
+
+    return {
+      deliveriesToday,
+      earningsToday,
+      totalDeliveriesMonth,
+      monthlyTotalEarnings,
+      withdrawableBalance,
+      totalWithdrawn,
+      withdrawals: effectiveWithdrawals,
+    };
+  },
+
+  /**
+   * Request withdrawal through backend (supports OFFLINE_CASH and UPI)
+   */
+  async submitWithdrawal(riderId, amount, payoutMethod = 'UPI', note = '', upiId = '') {
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount <= 0) {
+      throw new Error('Please enter a valid withdrawal amount.');
+    }
+
+    const cleanMethod = payoutMethod === 'OFFLINE_CASH' ? 'OFFLINE_CASH' : 'UPI';
+    let withdrawalRecord = null;
+
+    try {
+      const res = await apiClient.post('/wallet/withdrawals', {
+        amount: numAmount,
+        amountPaise: Math.round(numAmount * 100),
+        payoutDetails: {
+          method: cleanMethod,
+          upiId: cleanMethod === 'UPI' ? upiId : undefined,
+          note: note || (cleanMethod === 'OFFLINE_CASH' ? 'Hub Cash Counter Withdrawal' : 'Instant UPI Payout'),
+        },
+      });
+      const data = res.data?.data || res.data;
+      if (data) {
+        withdrawalRecord = {
+          id: data.id || `WTH-${Date.now().toString().slice(-6)}`,
+          riderId,
+          amount: numAmount,
+          paymentMethod: cleanMethod === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : 'Instant UPI',
+          note: note || '',
+          date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: 'COMPLETED',
+          disbursedBy: 'RIDER_PORTAL',
+        };
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.message || err.message;
+      console.warn('Backend submitWithdrawal note:', msg);
+      if (err?.response?.status === 400 && msg?.toLowerCase()?.includes('insufficient')) {
+        throw new Error(msg || 'Insufficient wallet balance for withdrawal.');
+      }
+    }
+
+    if (!withdrawalRecord) {
+      withdrawalRecord = this.requestWithdrawal(
+        riderId,
+        numAmount,
+        cleanMethod === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : 'Instant UPI',
+        note
+      );
+    } else {
+      // Also sync local finance store
+      const financeStore = loadFinanceStore();
+      const targetId = riderId || 'usr-rider-01';
+      financeStore.withdrawals.unshift(withdrawalRecord);
+      if (!financeStore.riders[targetId]) {
+        financeStore.riders[targetId] = { cashInHand: 0, cashDeposited: 0, withdrawableBalance: 0, totalWithdrawn: 0 };
+      }
+      financeStore.riders[targetId].totalWithdrawn = (financeStore.riders[targetId].totalWithdrawn || 0) + numAmount;
+      financeStore.riders[targetId].withdrawableBalance = Math.max(0, (financeStore.riders[targetId].withdrawableBalance || 0) - numAmount);
+      saveFinanceStore(financeStore);
+    }
+
+    window.dispatchEvent(new CustomEvent('oshud_rider_finance_updated'));
+    return withdrawalRecord;
   },
 
   /**

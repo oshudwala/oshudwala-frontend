@@ -163,7 +163,7 @@ export const RiderHistoryPage = () => {
   }, [completedDeliveries]);
 
   const totalEarnings = useMemo(() => {
-    return completedDeliveries.length * 40; // ₹40 per delivered parcel
+    return completedDeliveries.length * 30;
   }, [completedDeliveries]);
 
   return (
@@ -315,7 +315,7 @@ export const RiderHistoryPage = () => {
                   <p className="font-bold text-forest-900 pl-5">{order.pharmacyName}</p>
                   <p className="text-[11px] text-brandText-muted pl-5 flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-purple-700 flex-shrink-0" />
-                    <span>Pickup completed &bull; Pharmacy address & contact hidden for privacy</span>
+                    <span>Pickup completed</span>
                   </p>
                 </div>
 
@@ -333,7 +333,7 @@ export const RiderHistoryPage = () => {
                   <p className="font-bold text-forest-900 pl-5">{order.customerName}</p>
                   <p className="text-[11px] text-brandText-muted pl-5 flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                    <span>Delivery completed &bull; Patient address & contact hidden for privacy</span>
+                    <span>Delivery completed</span>
                   </p>
                 </div>
               </div>
