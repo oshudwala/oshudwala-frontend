@@ -11,8 +11,10 @@ import {
   Upload,
   CheckCircle2,
   VideoOff,
+  Loader2,
 } from 'lucide-react';
 import Button from '../common/Button';
+import { deliveryApi } from '../../services/api/delivery.api';
 
 export const PharmacyPickupModal = ({ order, isOpen, onClose, onVerifySuccess }) => {
   const [activeTab, setActiveTab] = useState('camera'); // 'camera' | 'manual'
@@ -135,41 +137,55 @@ export const PharmacyPickupModal = ({ order, isOpen, onClose, onVerifySuccess })
     startCamera(nextMode);
   };
 
-  // Evaluate the code (from camera scan, image upload, or manual entry)
-  const handleCodeEvaluation = (rawCode) => {
-    if (!rawCode || !order) return;
-    let token = rawCode.trim();
-    let parsedItems = order.items || [];
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Evaluate the code with Backend Authentication
+  const handleCodeEvaluation = async (rawCode) => {
+    if (!rawCode || !order || isValidating) return;
+    let token = String(rawCode).trim();
     try {
       const parsed = JSON.parse(rawCode);
-      if (parsed.qrToken) token = parsed.qrToken.trim();
-      else if (parsed.token) token = parsed.token.trim();
-      if (parsed.items && Array.isArray(parsed.items)) parsedItems = parsed.items;
+      if (parsed.qrToken) token = String(parsed.qrToken).trim();
+      else if (parsed.token) token = String(parsed.token).trim();
     } catch (e) {}
 
-    const clean = token.toUpperCase();
-    setEnteredCode(clean);
+    setEnteredCode(token);
+    setIsValidating(true);
+    setVerificationError('');
 
-    const expected = (order.pickupQrCode || '').trim().toUpperCase();
-    if (clean === expected || clean.includes(expected) || expected.includes(clean)) {
+    try {
+      // Authenticate with backend: strictly verifies rider identity & order assignment
+      const result = await deliveryApi.scanPickupQr(token);
+
+      const verifiedOrders = result?.orders || [];
+      const verifiedItems = verifiedOrders[0]?.items || order.items || [];
+
       setIsVerified(true);
       setVerificationError('');
-      setScannedItems(parsedItems);
+      setScannedItems(verifiedItems);
       stopCamera();
 
-      // Automatically complete verification without requiring manual button clicks
+      // Automatically complete verification
       setTimeout(() => {
-        onVerifySuccess(order.id, token);
-      }, 700);
-    } else {
-      setVerificationError('Scanned QR code does not match this parcel. Please scan the QR code generated on the pharmacy screen.');
+        onVerifySuccess(order.id, token, result);
+      }, 1000);
+    } catch (err) {
+      console.warn('Pickup QR verification rejected:', err);
       setIsVerified(false);
+      setScannedItems(null);
+      const errMsg =
+        err.response?.data?.message ||
+        err.message ||
+        'Verification Denied: This pickup QR code is assigned to a different delivery partner. You do not have permission to verify or view this parcel.';
+      setVerificationError(errMsg);
+    } finally {
+      setIsValidating(false);
     }
   };
 
   // Scan current video snapshot
   const handleCaptureFrame = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || isValidating) return;
     try {
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth || 640;
@@ -183,13 +199,11 @@ export const PharmacyPickupModal = ({ order, isOpen, onClose, onVerifySuccess })
           if (barcodes.length > 0) {
             handleCodeEvaluation(barcodes[0].rawValue);
           } else {
-            setVerificationError('No QR code detected in the frame. Hold the pharmacy bag steady and align with the reticle.');
+            setVerificationError('No QR code detected in the camera frame. Align pharmacy pickup seal with the reticle.');
           }
         });
       } else {
-        // Fallback: If BarcodeDetector is not natively available in browser,
-        // we prompt rider to use the printed code or confirm package scan
-        handleCodeEvaluation(order.pickupQrCode);
+        setVerificationError('Automatic camera barcode reader is not available in this browser. Please enter the pickup code in the Manual Code Entry tab.');
       }
     } catch (err) {
       setVerificationError('Unable to capture camera frame. Please enter the pickup code manually.');
@@ -199,7 +213,7 @@ export const PharmacyPickupModal = ({ order, isOpen, onClose, onVerifySuccess })
   // Handle image upload from file or camera roll
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || isValidating) return;
 
     if ('BarcodeDetector' in window) {
       const img = new Image();
@@ -209,21 +223,20 @@ export const PharmacyPickupModal = ({ order, isOpen, onClose, onVerifySuccess })
           if (barcodes.length > 0) {
             handleCodeEvaluation(barcodes[0].rawValue);
           } else {
-            setVerificationError('No QR code recognized in the uploaded photo. Please try another angle.');
+            setVerificationError('No QR code recognized in the uploaded photo. Please try a clearer picture.');
           }
         });
       };
       img.src = URL.createObjectURL(file);
     } else {
-      // Direct file match fallback
-      handleCodeEvaluation(order.pickupQrCode);
+      setVerificationError('Image scanner is not supported on this device. Please use manual code entry.');
     }
   };
 
   const handleManualSubmit = (e) => {
     e.preventDefault();
-    if (!enteredCode.trim()) {
-      setVerificationError('Please enter the pickup code from the package seal.');
+    if (!enteredCode.trim() || isValidating) {
+      setVerificationError('Please enter the pickup code from the pharmacy package seal.');
       return;
     }
     handleCodeEvaluation(enteredCode);
@@ -430,10 +443,11 @@ export const PharmacyPickupModal = ({ order, isOpen, onClose, onVerifySuccess })
               type="submit"
               variant="primary"
               size="sm"
-              disabled={!enteredCode.trim()}
+              disabled={!enteredCode.trim() || isValidating}
+              isLoading={isValidating}
               className="w-full text-xs font-bold py-2.5 bg-purple-700 hover:bg-purple-800"
             >
-              Verify Code
+              {isValidating ? 'Authenticating Rider with Server...' : 'Verify Code'}
             </Button>
           </form>
         )}

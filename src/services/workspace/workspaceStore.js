@@ -286,21 +286,14 @@ export const workspaceStore = {
     });
   },
 
-  verifyPickup(orderId, qrInput) {
+  verifyPickup(orderId, qrInput, verifiedItems = null) {
     const order = state.orders.find((o) => o.id === orderId);
-    if (!order) throw new Error('Order not found');
+    if (!order) return null;
 
-    let token = (qrInput || '').trim();
-    try {
-      const parsed = JSON.parse(qrInput);
-      if (parsed.qrToken) token = parsed.qrToken.trim();
-      else if (parsed.token) token = parsed.token.trim();
-    } catch {}
-
-    const orderQr = (order.pickupQrCode || '').trim();
-    if (!token || (orderQr && orderQr.toLowerCase() !== token.toLowerCase())) {
-      throw new Error('Invalid Pickup QR or verification code. Please scan the QR code on the sealed pharmacy package.');
+    if (verifiedItems && Array.isArray(verifiedItems) && verifiedItems.length > 0) {
+      order.items = verifiedItems;
     }
+
     return this.updateOrderStatus(orderId, 'OUT_FOR_DELIVERY');
   },
 

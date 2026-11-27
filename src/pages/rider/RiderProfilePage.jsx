@@ -16,20 +16,35 @@ import {
   DollarSign,
   Award,
   Sparkles,
+  QrCode,
+  KeyRound,
+  Package,
+  Building2,
+  AlertCircle,
+  RefreshCw,
+  Clock,
+  ChevronRight,
+  Receipt,
 } from 'lucide-react';
 import Button from '../../components/common/Button';
 import MetricCard from '../../components/workspace/MetricCard';
+import StatusBadge from '../../components/workspace/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { riderApi, getRiderAvatar } from '../../services/api/rider.api';
+import { deliveryApi } from '../../services/api/delivery.api';
+import PharmacyPickupModal from '../../components/rider/PharmacyPickupModal';
+import DeliveryOtpModal from '../../components/rider/DeliveryOtpModal';
 
 export const RiderProfilePage = () => {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { orders, verifyPickup, completeDelivery } = useWorkspaceStore();
   const fileInputRef = useRef(null);
 
-  // Active Tab: 'profile' | 'earnings'
-  const [activeTab, setActiveTab] = useState('profile');
+  // Active Tab: 'assigned' | 'profile' | 'earnings'
+  const [activeTab, setActiveTab] = useState('assigned');
 
   // Rider Profile Form state
   const [profileData, setProfileData] = useState(() => riderApi.getRiderProfile(user?.id, user));
@@ -39,6 +54,118 @@ export const RiderProfilePage = () => {
   // Metrics state
   const [metrics, setMetrics] = useState(() => riderApi.getRiderMetrics(user?.id, user));
 
+  // Assigned Deliveries state
+  const [backendDeliveries, setBackendDeliveries] = useState([]);
+  const [isLoadingDeliveries, setIsLoadingDeliveries] = useState(false);
+
+  // Modal triggers
+  const [pickupModalOrder, setPickupModalOrder] = useState(null);
+  const [deliveryOtpModalOrder, setDeliveryOtpModalOrder] = useState(null);
+
+  // Fetch real backend deliveries assigned to this rider
+  const fetchMyDeliveries = async () => {
+    setIsLoadingDeliveries(true);
+    try {
+      const res = await deliveryApi.getMyDeliveries();
+      const raw = Array.isArray(res) ? res : res?.deliveries || [];
+      const mapped = raw.map((d) => {
+        const ord = d.order || {};
+        const addr = ord.deliveryAddress || {};
+        const fullAddress = [addr.line1, addr.area, addr.city, addr.pincode]
+          .filter(Boolean)
+          .join(', ');
+
+        return {
+          id: ord.orderNumber || ord.id,
+          backendId: ord.id,
+          deliveryId: d.id,
+          status: ord.status, // READY_FOR_PICKUP, OUT_FOR_DELIVERY, DELIVERED
+          deliveryStatus: d.status,
+          total: (ord.totalPaise || 0) / 100,
+          subtotal: (ord.subtotalPaise || 0) / 100,
+          paymentMethod: ord.paymentMethod || 'COD',
+          paymentStatus: ord.paymentStatus || 'PENDING',
+          customerName: addr.fullName || 'Registered Patient',
+          customerPhone: addr.phone || '9876543210',
+          address: fullAddress || 'Direct Patient Delivery Address',
+          area: addr.area || 'Kolkata Metropolitan Area',
+          landmark: addr.landmark || '',
+          pharmacyName: ord.pharmacy?.name || 'Primary Pharmacy Hub',
+          pharmacyAddress: ord.pharmacy?.line1 || 'Dispensary Hub',
+          pharmacyPhone: ord.pharmacy?.phone || '',
+          pickupQrCode: ord.id,
+          deliveryOtp: 'Verified at Doorstep',
+          items: (ord.items || []).map((it) => ({
+            id: it.id,
+            name: it.nameSnapshot || it.name || 'Prescription Medicine',
+            quantity: it.quantity || 1,
+            price: (it.unitPricePaise || it.mrpPaise || 0) / 100,
+            lineTotal: (it.lineTotalPaise || 0) / 100,
+            requiresPrescription: it.requiresPrescription,
+          })),
+        };
+      });
+      setBackendDeliveries(mapped);
+    } catch (err) {
+      console.warn('Backend getMyDeliveries notice:', err.message);
+    } finally {
+      setIsLoadingDeliveries(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMyDeliveries();
+  }, [user]);
+
+  // Merge backend deliveries with local workspace store orders assigned to this rider
+  const allAssignedOrders = React.useMemo(() => {
+    const cleanUserPhone = (user?.phone || profileData.phone || '').replace(/[^0-9]/g, '');
+    const cleanUserId = user?.id || profileData.id;
+
+    const matchedWorkspace = (orders || []).filter((o) => {
+      const riderPhone = (o.assignedRider?.phone || '').replace(/[^0-9]/g, '');
+      const riderId = o.assignedRider?.id;
+      return (
+        riderId === cleanUserId ||
+        (cleanUserPhone && riderPhone && riderPhone.slice(-10) === cleanUserPhone.slice(-10))
+      );
+    });
+
+    const map = new Map();
+    // Prefer backend delivery records first
+    backendDeliveries.forEach((d) => map.set(d.backendId || d.id, d));
+
+    matchedWorkspace.forEach((o) => {
+      if (!map.has(o.backendId || o.id)) {
+        map.set(o.backendId || o.id, {
+          id: o.id,
+          backendId: o.backendId || o.id,
+          status: o.status,
+          total: o.total || 0,
+          paymentMethod: o.paymentMethod || 'COD',
+          customerName: o.customerName || 'Registered Patient',
+          customerPhone: o.customerPhone || '',
+          address: o.address || 'Kolkata Delivery Address',
+          area: o.area || 'Kolkata Metropolitan Area',
+          landmark: o.landmark || '',
+          pharmacyName: o.pharmacyName || 'Fulfillment Pharmacy',
+          pharmacyAddress: o.pharmacyAddress || 'Hub Counter',
+          pharmacyPhone: o.pharmacyPhone || '',
+          pickupQrCode: o.pickupQrCode || o.id,
+          deliveryOtp: o.deliveryOtp || '9876',
+          items: o.items || [],
+        });
+      }
+    });
+
+    return Array.from(map.values());
+  }, [backendDeliveries, orders, user, profileData]);
+
+  const activeDeliveries = allAssignedOrders.filter((o) =>
+    ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY'].includes(o.status)
+  );
+
+  // Sync profile & metrics updates
   useEffect(() => {
     const handleUpdate = () => {
       setProfileData(riderApi.getRiderProfile(user?.id, user));
@@ -117,56 +244,99 @@ export const RiderProfilePage = () => {
     }
   };
 
-  // Generate real daily earnings breakdown records
-  const todayStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-  const dailyEarningsHistory = [
-    {
-      date: todayStr,
-      deliveries: metrics.deliveriesToday,
-      totalGmv: metrics.totalAmountDeliveredToday,
-      baseEarnings: metrics.deliveriesToday * 80,
-      codBonus: metrics.deliveriesToday * 20,
-      totalEarnings: metrics.earningsToday,
-      status: 'CALCULATED_LIVE',
-    },
-    {
-      date: 'Yesterday',
-      deliveries: 6,
-      totalGmv: 4200.0,
-      baseEarnings: 480.0,
-      codBonus: 120.0,
-      totalEarnings: 600.0,
-      status: 'SETTLED',
-    },
-    {
-      date: '2 days ago',
-      deliveries: 8,
-      totalGmv: 6150.0,
-      baseEarnings: 640.0,
-      codBonus: 160.0,
-      totalEarnings: 800.0,
-      status: 'SETTLED',
-    },
-  ];
+  // Pickup verified by authenticated scanner
+  const handlePickupVerified = (orderId, pickupCode, verifiedResult) => {
+    const verifiedOrders = verifiedResult?.orders || [];
+    const verifiedItems = verifiedOrders[0]?.items || [];
+
+    // 1. Update local workspace store with verified medicine list
+    verifyPickup(orderId, pickupCode, verifiedItems);
+
+    // 2. Update local state
+    setBackendDeliveries((prev) =>
+      prev.map((d) =>
+        d.id === orderId || d.backendId === orderId
+          ? {
+              ...d,
+              status: 'OUT_FOR_DELIVERY',
+              items: verifiedItems.length > 0 ? verifiedItems : d.items,
+            }
+          : d
+      )
+    );
+
+    addToast(
+      `Handover authenticated! Parcel for Order ${orderId} unlocked. Medicine list verified.`,
+      'success'
+    );
+    setPickupModalOrder(null);
+  };
+
+  // Handover completed with customer OTP
+  const handleDeliveryConfirmed = (orderId, otp, amount) => {
+    try {
+      completeDelivery(orderId, otp, amount);
+      setBackendDeliveries((prev) =>
+        prev.map((d) =>
+          d.id === orderId || d.backendId === orderId ? { ...d, status: 'DELIVERED' } : d
+        )
+      );
+      addToast(`Order ${orderId} delivered successfully! COD cash collected & reconciled.`, 'success');
+      setDeliveryOtpModalOrder(null);
+    } catch (err) {
+      addToast(err.message, 'error');
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto animate-fade-in">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-heading font-extrabold text-forest-900">
-          Rider Fleet Profile & Records
-        </h1>
-        <p className="text-xs text-brandText-secondary mt-0.5">
-          Manage your personal details, vehicle registrations, gender icon avatar, and view daily/monthly earnings history.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-heading font-extrabold text-forest-900">
+            Rider Operations & Fleet Profile
+          </h1>
+          <p className="text-xs text-brandText-secondary mt-0.5">
+            Active order dispatches, authenticated pickup QR scanner, vehicle records, and earnings ledger.
+          </p>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={fetchMyDeliveries}
+          isLoading={isLoadingDeliveries}
+          className="text-xs flex items-center gap-1.5"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDeliveries ? 'animate-spin' : ''}`} />
+          <span>Sync Assigned Orders</span>
+        </Button>
       </div>
 
-      {/* Profile & Earnings Tabs */}
-      <div className="flex border-b border-brandBorder-subtle gap-2 text-sm font-bold">
+      {/* Profile, Assignments & Earnings Tabs */}
+      <div className="flex border-b border-brandBorder-subtle gap-2 text-sm font-bold overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab('assigned')}
+          className={`pb-3 px-4 flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            activeTab === 'assigned'
+              ? 'border-forest-700 text-forest-900'
+              : 'border-transparent text-brandText-secondary hover:text-forest-800'
+          }`}
+        >
+          <Package className="w-4 h-4 text-forest-700" />
+          <span>Active Assignments & Scanner</span>
+          {activeDeliveries.length > 0 && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold animate-pulse">
+              {activeDeliveries.length} Active
+            </span>
+          )}
+        </button>
+
         <button
           type="button"
           onClick={() => setActiveTab('profile')}
-          className={`pb-3 px-4 flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-3 px-4 flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             activeTab === 'profile'
               ? 'border-forest-700 text-forest-900'
               : 'border-transparent text-brandText-secondary hover:text-forest-800'
@@ -175,10 +345,11 @@ export const RiderProfilePage = () => {
           <User className="w-4 h-4" />
           <span>Courier Identity & Vehicle</span>
         </button>
+
         <button
           type="button"
           onClick={() => setActiveTab('earnings')}
-          className={`pb-3 px-4 flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-3 px-4 flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             activeTab === 'earnings'
               ? 'border-forest-700 text-forest-900'
               : 'border-transparent text-brandText-secondary hover:text-forest-800'
@@ -189,7 +360,253 @@ export const RiderProfilePage = () => {
         </button>
       </div>
 
-      {/* TAB 1: RIDER IDENTITY & VEHICLE */}
+      {/* TAB 1: ASSIGNED DELIVERIES & VERIFY SCANNER */}
+      {activeTab === 'assigned' && (
+        <div className="space-y-5 animate-fade-in">
+          {/* Security Banner */}
+          <div className="p-4 bg-purple-50/80 border border-purple-200 rounded-2xl flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-purple-700 flex-shrink-0 mt-0.5" />
+            <div className="text-xs space-y-0.5">
+              <p className="font-bold text-purple-950">
+                Authenticated Pickup Scanner Protocol Active
+              </p>
+              <p className="text-purple-800">
+                When you arrive at the fulfillment pharmacy, scan the pickup QR generated for your assigned order.
+                <strong>
+                  {' '}Only your registered scanner can authenticate this parcel.
+                </strong>{' '}
+                If any other rider scans it, verification is blocked and no contents are disclosed.
+              </p>
+            </div>
+          </div>
+
+          {activeDeliveries.length === 0 ? (
+            <div className="bg-surface-pure rounded-3xl p-8 border border-brandBorder-subtle shadow-card text-center space-y-3">
+              <div className="w-14 h-14 bg-forest-50 text-forest-600 rounded-3xl flex items-center justify-center mx-auto">
+                <Bike className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="font-heading font-extrabold text-forest-900 text-base">
+                  No Active Orders Assigned
+                </h3>
+                <p className="text-xs text-brandText-secondary max-w-md mx-auto mt-1">
+                  You are online and ready for dispatch. As soon as Admin or Pharmacy assigns a package to your account,
+                  it will appear here with pickup instructions.
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchMyDeliveries}
+                  className="text-xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  <span>Check for New Assignments</span>
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {activeDeliveries.map((order) => {
+                const isReadyForPickup =
+                  order.status === 'READY_FOR_PICKUP' || order.status === 'RIDER_ASSIGNED';
+                const isOutForDelivery = order.status === 'OUT_FOR_DELIVERY';
+
+                return (
+                  <div
+                    key={order.id}
+                    className="bg-surface-pure rounded-3xl border border-brandBorder-subtle shadow-card p-5 sm:p-6 space-y-4 transition-all"
+                  >
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brandBorder-subtle pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-mono font-extrabold text-xs text-forest-900 bg-surface-warm px-2.5 py-1 rounded-xl border border-brandBorder-subtle">
+                          {order.id}
+                        </span>
+                        <StatusBadge status={order.status} />
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono font-extrabold text-base text-forest-900">
+                          ₹{Number(order.total || 0).toFixed(2)}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold block uppercase tracking-wider ${
+                            order.paymentMethod === 'COD'
+                              ? 'text-amber-800 font-extrabold'
+                              : 'text-emerald-700'
+                          }`}
+                        >
+                          {order.paymentMethod === 'COD' ? '• Collect Cash (COD)' : '• Paid Online'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Routing Cards (Pharmacy Pickup & Customer Delivery) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Pharmacy Pickup */}
+                      <div
+                        className={`p-4 rounded-2xl border transition-all ${
+                          isReadyForPickup
+                            ? 'bg-purple-50/70 border-purple-300 ring-2 ring-purple-400/20'
+                            : 'bg-surface-warm/40 border-brandBorder-subtle'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-forest-900">
+                              <Building2 className="w-4 h-4 text-purple-700" />
+                              <span>Fulfillment Pharmacy</span>
+                            </div>
+                            <p className="text-xs font-bold text-purple-950 pl-5">
+                              {order.pharmacyName}
+                            </p>
+                            <p className="text-xs text-brandText-secondary pl-5">
+                              {order.pharmacyAddress}
+                            </p>
+                          </div>
+                          {order.pharmacyPhone && (
+                            <a
+                              href={`tel:${order.pharmacyPhone}`}
+                              className="p-2 rounded-xl bg-purple-100 text-purple-800 hover:bg-purple-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Call</span>
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Scanner Action if ready for pickup */}
+                        {isReadyForPickup && (
+                          <div className="mt-4 pt-3 border-t border-purple-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <span className="text-[11px] font-semibold text-purple-900">
+                              Scan QR code at pharmacy counter:
+                            </span>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              leftIcon={QrCode}
+                              onClick={() => setPickupModalOrder(order)}
+                              className="text-xs font-bold px-4 bg-purple-700 hover:bg-purple-800 shadow-md"
+                            >
+                              Open Verify Scanner
+                            </Button>
+                          </div>
+                        )}
+
+                        {!isReadyForPickup && (
+                          <div className="mt-3 pt-2 border-t border-brandBorder-subtle text-[11px] text-emerald-700 font-bold flex items-center gap-1 pl-5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Handover Authenticated & Picked Up</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Patient Drop-off */}
+                      <div
+                        className={`p-4 rounded-2xl border transition-all ${
+                          isOutForDelivery
+                            ? 'bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-400/20'
+                            : 'bg-surface-warm/40 border-brandBorder-subtle'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-forest-900">
+                              <MapPin className="w-4 h-4 text-emerald-700" />
+                              <span>Deliver to Patient</span>
+                            </div>
+                            <p className="text-xs font-bold text-emerald-950 pl-5">
+                              {order.customerName}
+                            </p>
+                            <p className="text-xs text-brandText-secondary pl-5">
+                              {order.address}
+                            </p>
+                          </div>
+                          {order.customerPhone && (
+                            <a
+                              href={`tel:${order.customerPhone}`}
+                              className="p-2 rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Call</span>
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Customer Delivery Handover Action */}
+                        {isOutForDelivery && (
+                          <div className="mt-4 pt-3 border-t border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-emerald-900">
+                              {order.paymentMethod === 'COD' ? (
+                                <span className="text-amber-800 font-extrabold">
+                                  Collect ₹{Number(order.total || 0).toFixed(2)}
+                                </span>
+                              ) : (
+                                'Prepaid Delivery'
+                              )}
+                            </span>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              leftIcon={KeyRound}
+                              onClick={() => setDeliveryOtpModalOrder(order)}
+                              className="text-xs font-bold px-4 bg-emerald-700 hover:bg-emerald-800 shadow-md"
+                            >
+                              Verify Customer OTP
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Verified Medicine List (Disclosed only after pickup verification) */}
+                    {isOutForDelivery && (
+                      <div className="p-4 rounded-2xl bg-forest-50/70 border border-forest-100 space-y-3 animate-fade-in">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-heading font-bold text-xs text-forest-900 flex items-center gap-1.5 uppercase tracking-wider">
+                            <Receipt className="w-3.5 h-3.5 text-forest-700" />
+                            <span>Verified Package Contents ({order.items?.length || 0} Medicines)</span>
+                          </h4>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                            Authenticated Parcel
+                          </span>
+                        </div>
+
+                        <div className="border border-brandBorder-subtle rounded-xl overflow-hidden divide-y divide-brandBorder-subtle bg-surface-pure text-xs">
+                          {order.items && order.items.length > 0 ? (
+                            order.items.map((it, idx) => (
+                              <div key={idx} className="p-2.5 flex items-center justify-between">
+                                <div>
+                                  <p className="font-bold text-forest-900">{it.name}</p>
+                                  <p className="text-[10px] text-brandText-muted">
+                                    Qty: <strong className="text-forest-800">{it.quantity}</strong>{' '}
+                                    {it.requiresPrescription ? '• Prescription Drug' : '• OTC Item'}
+                                  </p>
+                                </div>
+                                <span className="font-bold text-forest-800">
+                                  ₹{(Number(it.price || it.unitPrice || 0) * Number(it.quantity || 1)).toFixed(2)}
+                                </span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="p-3 text-center text-xs text-brandText-muted">
+                              Package contents verified by fulfillment pharmacist.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 2: RIDER IDENTITY & VEHICLE */}
       {activeTab === 'profile' && (
         <form onSubmit={handleSaveProfile} className="space-y-6">
           {/* Avatar & Gender Icon Selector Section */}
@@ -410,7 +827,7 @@ export const RiderProfilePage = () => {
         </form>
       )}
 
-      {/* TAB 2: EARNINGS (DAILY & MONTHLY) */}
+      {/* TAB 3: EARNINGS (DAILY & MONTHLY) */}
       {activeTab === 'earnings' && (
         <div className="space-y-6 animate-fade-in">
           {/* Summary Metric Cards */}
@@ -448,79 +865,52 @@ export const RiderProfilePage = () => {
                 <h2 className="font-heading font-bold text-base text-forest-900">
                   Daily Earnings Breakdown
                 </h2>
-                <p className="text-xs text-brandText-secondary">
-                  Base fare: ₹80 per delivery &bull; Express / COD bonus: ₹20 per delivery
+                <p className="text-xs text-brandText-secondary mt-0.5">
+                  Calculated automatically per delivered package (₹80 base + ₹20 COD bonus).
                 </p>
               </div>
-              <span className="text-xs font-bold text-forest-800 bg-forest-50 px-3 py-1 rounded-xl border border-brandBorder-subtle">
-                Fleet Rate Card v2.4
-              </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-brandBorder-subtle text-brandText-muted uppercase tracking-wider font-bold">
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3 text-right">Orders</th>
-                    <th className="py-2.5 px-3 text-right">Gross GMV</th>
-                    <th className="py-2.5 px-3 text-right">Base Pay (₹80)</th>
-                    <th className="py-2.5 px-3 text-right">Incentive</th>
-                    <th className="py-2.5 px-3 text-right">Total Earned</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brandBorder-light font-semibold">
-                  {dailyEarningsHistory.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-forest-50/40 transition-colors">
-                      <td className="py-3 px-3 text-forest-900 font-bold flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5 text-forest-600" />
-                        <span>{row.date}</span>
-                      </td>
-                      <td className="py-3 px-3 text-right">{row.deliveries} trips</td>
-                      <td className="py-3 px-3 text-right font-mono">₹{row.totalGmv.toFixed(2)}</td>
-                      <td className="py-3 px-3 text-right font-mono">₹{row.baseEarnings.toFixed(2)}</td>
-                      <td className="py-3 px-3 text-right font-mono text-emerald-700">+₹{row.codBonus.toFixed(2)}</td>
-                      <td className="py-3 px-3 text-right font-mono font-extrabold text-forest-950 text-sm">
-                        ₹{row.totalEarnings.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Performance & Recognition Badges */}
-          <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle shadow-card p-6 space-y-3">
-            <h3 className="font-heading font-bold text-sm text-forest-900 flex items-center gap-2">
-              <Award className="w-4 h-4 text-amber-600" />
-              <span>Courier Performance & Fleet Tier</span>
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-              <div className="p-3 rounded-2xl bg-forest-50/70 border border-brandBorder-subtle flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-forest-700" />
-                <div>
-                  <p className="text-xs font-bold text-forest-900">99.4% On-Time</p>
-                  <p className="text-[10px] text-brandText-secondary">Delivery punctuality SLA</p>
-                </div>
+            <div className="p-4 bg-surface-warm rounded-2xl border border-brandBorder-subtle space-y-2 text-xs">
+              <div className="flex justify-between font-bold text-forest-900">
+                <span>Today's Deliveries:</span>
+                <span>{metrics.deliveriesToday} Completed</span>
               </div>
-              <div className="p-3 rounded-2xl bg-amber-50/70 border border-amber-200 flex items-center gap-3">
-                <Sparkles className="w-5 h-5 text-amber-700" />
-                <div>
-                  <p className="text-xs font-bold text-amber-950">4.9 Star Rating</p>
-                  <p className="text-[10px] text-amber-800">From patient feedbacks</p>
-                </div>
+              <div className="flex justify-between text-brandText-secondary">
+                <span>Base Delivery Remuneration:</span>
+                <span>₹{(metrics.deliveriesToday * 80).toFixed(2)}</span>
               </div>
-              <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex items-center gap-3">
-                <ShieldCheck className="w-5 h-5 text-emerald-700" />
-                <div>
-                  <p className="text-xs font-bold text-emerald-950">Zero Tamper Record</p>
-                  <p className="text-[10px] text-emerald-800">Cold chain & seal compliant</p>
-                </div>
+              <div className="flex justify-between text-emerald-700 font-semibold">
+                <span>COD Handling Incentives:</span>
+                <span>₹{(metrics.deliveriesToday * 20).toFixed(2)}</span>
+              </div>
+              <div className="border-t border-brandBorder-subtle pt-2 flex justify-between font-bold text-sm text-forest-900">
+                <span>Total Calculated Payout:</span>
+                <span className="text-forest-800">₹{metrics.earningsToday.toFixed(2)}</span>
               </div>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Authenticated Pharmacy Pickup Scanner Modal */}
+      {pickupModalOrder && (
+        <PharmacyPickupModal
+          order={pickupModalOrder}
+          isOpen={Boolean(pickupModalOrder)}
+          onClose={() => setPickupModalOrder(null)}
+          onVerifySuccess={handlePickupVerified}
+        />
+      )}
+
+      {/* Customer Delivery OTP Modal */}
+      {deliveryOtpModalOrder && (
+        <DeliveryOtpModal
+          order={deliveryOtpModalOrder}
+          isOpen={Boolean(deliveryOtpModalOrder)}
+          onClose={() => setDeliveryOtpModalOrder(null)}
+          onConfirmDelivery={handleDeliveryConfirmed}
+        />
       )}
     </div>
   );

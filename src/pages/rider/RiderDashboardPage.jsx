@@ -71,12 +71,11 @@ export const RiderDashboardPage = () => {
     }
   };
 
-  const handlePickupVerified = (orderId, pickupCode) => {
+  const handlePickupVerified = (orderId, pickupCode, verifiedResult) => {
     try {
-      verifyPickup(orderId, pickupCode);
-      // Synchronize pickup verification with backend
-      apiClient.post('/deliveries/pickup-qr/scan', { qrToken: pickupCode }).catch(() => {});
-      addToast(`Pickup confirmed for Order ${orderId}! Package contents verified.`, 'success');
+      const verifiedItems = verifiedResult?.orders?.[0]?.items || [];
+      verifyPickup(orderId, pickupCode, verifiedItems);
+      addToast(`Pickup confirmed for Order ${orderId}! Package contents & medicine list verified.`, 'success');
       setPickupModalOrder(null);
     } catch (err) {
       addToast(err.message, 'error');

@@ -75,18 +75,22 @@ export const deliveryApi = {
   },
 
   /**
-   * Rider scans pickup QR to verify handover and mark order as SHIPPED
+   * Rider fetches their active assigned deliveries
+   * GET /deliveries/my
+   */
+  async getMyDeliveries() {
+    const res = await apiClient.get('/deliveries/my');
+    return res.data?.data || res.data || [];
+  },
+
+  /**
+   * Rider scans pickup QR to verify handover and mark order as OUT_FOR_DELIVERY
    * POST /deliveries/pickup-qr/scan
    * @param {string} qrToken
    */
   async scanPickupQr(qrToken) {
-    try {
-      const res = await apiClient.post('/deliveries/pickup-qr/scan', { qrToken });
-      return res.data?.data || res.data;
-    } catch (err) {
-      console.warn('Backend scanPickupQr call fallback note:', err);
-      return { success: true, verified: true, status: 'SHIPPED' };
-    }
+    const res = await apiClient.post('/deliveries/pickup-qr/scan', { qrToken });
+    return res.data?.data || res.data;
   },
 };
 

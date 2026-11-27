@@ -7,6 +7,7 @@ import {
   QrCode,
   KeyRound,
   CheckCircle2,
+  Receipt,
 } from 'lucide-react';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -56,12 +57,11 @@ export const RiderDeliveriesPage = () => {
     }
   };
 
-  const handlePickupVerified = (orderId, pickupCode) => {
+  const handlePickupVerified = (orderId, pickupCode, verifiedResult) => {
     try {
-      verifyPickup(orderId, pickupCode);
-      // Synchronize pickup verification with backend
-      apiClient.post('/deliveries/pickup-qr/scan', { qrToken: pickupCode }).catch(() => {});
-      addToast(`Pickup confirmed for Order ${orderId}! Package contents verified.`, 'success');
+      const verifiedItems = verifiedResult?.orders?.[0]?.items || [];
+      verifyPickup(orderId, pickupCode, verifiedItems);
+      addToast(`Pickup confirmed for Order ${orderId}! Package contents & medicine list verified.`, 'success');
       setPickupModalOrder(null);
     } catch (err) {
       addToast(err.message, 'error');
@@ -276,6 +276,44 @@ export const RiderDeliveriesPage = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Verified Medicine Contents List */}
+                {isOutForDelivery && (
+                  <div className="p-4 rounded-2xl bg-forest-50/70 border border-forest-100 space-y-3 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-heading font-bold text-xs text-forest-900 flex items-center gap-1.5 uppercase tracking-wider">
+                        <Receipt className="w-3.5 h-3.5 text-forest-700" />
+                        <span>Verified Package Contents ({order.items?.length || 0} Medicines)</span>
+                      </h4>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                        Authenticated Parcel
+                      </span>
+                    </div>
+
+                    <div className="border border-brandBorder-subtle rounded-xl overflow-hidden divide-y divide-brandBorder-subtle bg-surface-pure text-xs">
+                      {order.items && order.items.length > 0 ? (
+                        order.items.map((it, idx) => (
+                          <div key={idx} className="p-2.5 flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-forest-900">{it.name}</p>
+                              <p className="text-[10px] text-brandText-muted">
+                                Qty: <strong className="text-forest-800">{it.quantity || it.qty || 1}</strong>{' '}
+                                {it.requiresPrescription ? '• Prescription Drug' : '• OTC Item'}
+                              </p>
+                            </div>
+                            <span className="font-bold text-forest-800">
+                              ₹{(Number(it.price || it.unitPrice || 0) * Number(it.quantity || it.qty || 1)).toFixed(2)}
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="p-3 text-center text-xs text-brandText-muted">
+                          Package contents verified by fulfillment pharmacist.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
