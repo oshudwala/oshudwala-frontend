@@ -7,6 +7,7 @@ import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import NotificationsDropdown from '../common/NotificationsDropdown';
+import AnnouncementsDropdown from '../common/AnnouncementsDropdown';
 import UserMenuDropdown from '../common/UserMenuDropdown';
 import LocationModal from './LocationModal';
 import Button from '../common/Button';
@@ -21,6 +22,7 @@ export const Header = () => {
   const { language, setLanguage, t, isBengali } = useLanguage();
 
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isAnnouncementOpen, setIsAnnouncementOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -109,14 +111,29 @@ export const Header = () => {
               })}
             </nav>
 
-            {/* Right: Actions (Cart, Notification, Profile, Hamburger) */}
-            <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-3.5">
+            {/* Right: Actions (Announcements, Notification, Cart, Profile, Hamburger) */}
+            <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-3">
+              {/* Platform Announcements Button (Megaphone + Arrow, Separate from Notifications) */}
+              <AnnouncementsDropdown
+                isOpen={isAnnouncementOpen}
+                onToggle={() => {
+                  setIsAnnouncementOpen((prev) => !prev);
+                  setIsNotifOpen(false);
+                  setIsUserMenuOpen(false);
+                }}
+                onClose={() => setIsAnnouncementOpen(false)}
+              />
+
               {/* Notification Bell (Only visible when logged in) */}
               {isAuthenticated && (
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setIsNotifOpen((prev) => !prev)}
+                    onClick={() => {
+                      setIsNotifOpen((prev) => !prev);
+                      setIsAnnouncementOpen(false);
+                      setIsUserMenuOpen(false);
+                    }}
                     className="p-1.5 xs:p-2 sm:p-2.5 rounded-full hover:bg-forest-50 text-brandText-secondary hover:text-forest-700 transition-colors relative"
                     aria-label="View notifications"
                   >
@@ -175,7 +192,11 @@ export const Header = () => {
                   <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setIsUserMenuOpen((prev) => !prev)}
+                      onClick={() => {
+                        setIsUserMenuOpen((prev) => !prev);
+                        setIsNotifOpen(false);
+                        setIsAnnouncementOpen(false);
+                      }}
                       className="flex items-center gap-1.5 sm:gap-2 p-1 pl-1.5 pr-2 rounded-full hover:bg-forest-50 border border-brandBorder-subtle transition-all bg-surface-pure shadow-2xs hover:shadow-xs group"
                       aria-label="User account"
                       title="My Profile & Settings"

@@ -30,6 +30,7 @@ import {
   DollarSign,
   CalendarPlus,
   MapPin,
+  Megaphone,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -75,6 +76,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
             items: [
               { label: 'Patient Home Controls', path: '/admin/homepage-controls', icon: Sliders },
               { label: 'Booking Rules', path: '/admin/booking-rules', icon: ShieldCheck },
+              { label: 'Announcements', path: '/admin/announcements', icon: Megaphone },
             ],
           },
           {
@@ -210,7 +212,7 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
         {/* Brand Header */}
         <div className="h-16 border-b border-brandBorder-subtle px-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 overflow-hidden">
-            <img src="/logo-light.png" alt="Oshud Wala Logo" className="h-8 w-auto flex-shrink-0" />  
+            <img src="/logo-light.png" alt="Oshud Wala Logo" className="h-8 w-auto flex-shrink-0" />
           </Link>
         </div>
 

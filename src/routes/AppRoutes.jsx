@@ -32,6 +32,7 @@ import AdminAppointmentsPage from '../pages/admin/AdminAppointmentsPage';
 import AdminHomepageControlsPage from '../pages/admin/AdminHomepageControlsPage';
 import AdminBookingRulesPage from '../pages/admin/AdminBookingRulesPage';
 import AdminAssignDoctorsPage from '../pages/admin/AdminAssignDoctorsPage';
+import AdminAnnouncementsPage from '../pages/admin/AdminAnnouncementsPage';
 
 // Doctor Workspace Pages
 import DoctorOverview from '../pages/doctor/DoctorOverview';
@@ -132,7 +133,7 @@ export const AppRoutes = () => {
         <Route path="orders" element={<AdminOrdersPage />} />
         <Route path="prescriptions" element={<AdminPrescriptionsPage />} />
         <Route path="appointments" element={<AdminAppointmentsPage />} />
-        
+
         {/* Dedicated Staff & Entity Management Pages & Tabs */}
         <Route path="staff" element={<AdminEntitiesPage initialTab="clinics" />} />
         <Route path="staff-management" element={<AdminEntitiesPage initialTab="clinics" />} />
@@ -147,6 +148,7 @@ export const AppRoutes = () => {
         <Route path="assign-doctors" element={<AdminAssignDoctorsPage />} />
         <Route path="homepage-controls" element={<AdminHomepageControlsPage />} />
         <Route path="booking-rules" element={<AdminBookingRulesPage />} />
+        <Route path="announcements" element={<AdminAnnouncementsPage />} />
 
         {/* Commerce & Stock: Only Inventory */}
         <Route path="inventory" element={<AdminProductsPage />} />
