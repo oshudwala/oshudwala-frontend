@@ -28,18 +28,38 @@ export const notificationApi = {
 
       if (data && Array.isArray(data.items)) {
         // Cache original items locally for instant offline display
-        const mapped = data.items.map((item) => ({
-          id: item.id,
-          title: item.title,
-          desc: item.body,
-          body: item.body,
-          category: item.category,
-          priority: item.priority || 'NORMAL',
-          link: item.data?.link || '/profile',
-          readAt: item.readAt,
-          isRead: Boolean(item.readAt),
-          createdAt: item.createdAt,
-        }));
+        const mapped = data.items.map((item) => {
+          let link = item.data?.link;
+          if (!link) {
+            const cat = String(item.category || '').toUpperCase();
+            const userRole = String(currentUser?.role?.name || currentUser?.role || '').toUpperCase();
+            if (userRole.includes('PHARMAC')) {
+              if (cat === 'PRESCRIPTION') link = '/pharmacy/prescriptions';
+              else if (cat === 'ORDER') link = '/pharmacy/orders';
+              else if (cat === 'DELIVERY') link = '/pharmacy/pickup';
+              else link = '/pharmacy';
+            } else if (userRole.includes('RIDER')) {
+              link = '/rider/deliveries';
+            } else if (userRole.includes('ADMIN')) {
+              link = '/admin/orders';
+            } else {
+              link = cat === 'ORDER' || cat === 'DELIVERY' ? '/orders' : '/profile';
+            }
+          }
+
+          return {
+            id: item.id,
+            title: item.title,
+            desc: item.body,
+            body: item.body,
+            category: item.category,
+            priority: item.priority || 'NORMAL',
+            link,
+            readAt: item.readAt,
+            isRead: Boolean(item.readAt),
+            createdAt: item.createdAt,
+          };
+        });
 
         try {
           localStorage.setItem(getStorageKey(userId), JSON.stringify(mapped));

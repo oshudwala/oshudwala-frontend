@@ -302,7 +302,15 @@ export const OrdersPage = () => {
                       <div className="p-4 rounded-2xl bg-surface-warm border border-brandBorder-subtle space-y-1">
                         <h5 className="font-heading font-bold text-xs text-forest-800">Delivery Status</h5>
                         <p className="text-xs text-forest-700 font-bold">
-                          {order.status === 'DELIVERED' ? 'Successfully Delivered' : 'Pharmacy Preparing Package'}
+                          {order.status === 'DELIVERED'
+                            ? 'Successfully Delivered'
+                            : order.status === 'OUT_FOR_DELIVERY' || order.status === 'SHIPPED'
+                            ? 'Out for Express Delivery'
+                            : order.status === 'RIDER_ASSIGNED'
+                            ? 'Delivery Rider Assigned'
+                            : order.status === 'READY_FOR_PICKUP'
+                            ? 'Approved & Prepared (Ready for Dispatch)'
+                            : 'Approved & Preparing Package'}
                         </p>
                         <p className="text-xs text-brandText-secondary">
                           Delivering to: {order.address || 'Your saved delivery address'}

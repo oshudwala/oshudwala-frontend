@@ -87,6 +87,24 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
     if (isOpen) {
       loadNotifications();
     }
+
+    const handleSync = () => {
+      loadNotifications();
+    };
+
+    window.addEventListener('oshud_order_created', handleSync);
+    window.addEventListener('oshud_order_status_updated', handleSync);
+    window.addEventListener('oshud_prescription_created', handleSync);
+    window.addEventListener('oshud_prescription_verified', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('oshud_order_created', handleSync);
+      window.removeEventListener('oshud_order_status_updated', handleSync);
+      window.removeEventListener('oshud_prescription_created', handleSync);
+      window.removeEventListener('oshud_prescription_verified', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [isOpen, user]);
 
   // Listen for outside click

@@ -146,8 +146,8 @@ export const PharmacyOrdersPage = () => {
   }, [orders, backendOrders]);
 
   const filterOptions = [
-    { label: 'Preparing', value: 'PREPARING' },
-    { label: 'Ready for Pickup', value: 'READY_FOR_PICKUP' },
+    { label: 'Approved & Preparing', value: 'PREPARING' },
+    { label: 'Approved & Prepared', value: 'READY_FOR_PICKUP' },
     { label: 'Out for Delivery', value: 'OUT_FOR_DELIVERY' },
     { label: 'Delivered', value: 'DELIVERED' },
   ];
@@ -159,7 +159,25 @@ export const PharmacyOrdersPage = () => {
         await orderApi.updateOrderStatus(order.backendId || order.id, targetStatus).catch(() => {});
       }
     } catch {}
-    addToast(`Order ${order.id} status updated to ${targetStatus.replace(/_/g, ' ')}!`, 'success');
+
+    window.dispatchEvent(
+      new CustomEvent('oshud_order_status_updated', {
+        detail: { orderId: order.id, status: targetStatus },
+      })
+    );
+    try {
+      localStorage.setItem(
+        'oshud_last_status_event',
+        JSON.stringify({ orderId: order.id, status: targetStatus, time: Date.now() })
+      );
+    } catch (e) {}
+
+    await fetchOrders();
+    const msg =
+      targetStatus === 'READY_FOR_PICKUP'
+        ? `Order ${order.id} marked Approved & Prepared! Admin will now assign a delivery partner.`
+        : `Order ${order.id} status updated to ${targetStatus.replace(/_/g, ' ')}!`;
+    addToast(msg, 'success');
     setSelectedOrder(null);
   };
 
@@ -240,18 +258,35 @@ export const PharmacyOrdersPage = () => {
       key: 'actions',
       align: 'right',
       render: (row) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleOpenSlip(row);
-          }}
-          className="p-1.5 rounded-lg border border-brandBorder-subtle hover:bg-forest-50 text-forest-700 hover:text-forest-900 transition-colors inline-flex items-center gap-1 text-[11px] font-bold"
-          title="Print Dispensing Slip"
-        >
-          <Printer className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Slip</span>
-        </button>
+        <div className="flex items-center justify-end gap-1.5">
+          {(row.status === 'PREPARING' || row.status === 'APPROVED_PREPARING') && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAdvanceStatus(row, 'READY_FOR_PICKUP');
+              }}
+              className="text-[11px] font-bold bg-forest-800 hover:bg-forest-900 py-1 px-2.5 shadow-xs flex items-center gap-1"
+              title="Change status to Approved & Prepared"
+            >
+              <CheckCircle className="w-3 h-3 text-emerald-300" />
+              <span>Prepared</span>
+            </Button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenSlip(row);
+            }}
+            className="p-1.5 rounded-lg border border-brandBorder-subtle hover:bg-forest-50 text-forest-700 hover:text-forest-900 transition-colors inline-flex items-center gap-1 text-[11px] font-bold"
+            title="Print Dispensing Slip"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Slip</span>
+          </button>
+        </div>
       ),
     },
   ];
@@ -353,14 +388,15 @@ export const PharmacyOrdersPage = () => {
                 <span>Print Dispensing Slip</span>
               </button>
 
-              {selectedOrder.status === 'PREPARING' && (
+              {(selectedOrder.status === 'PREPARING' || selectedOrder.status === 'APPROVED_PREPARING') && (
                 <Button
                   variant="primary"
                   size="sm"
                   onClick={() => handleAdvanceStatus(selectedOrder, 'READY_FOR_PICKUP')}
-                  className="text-xs font-bold px-4"
+                  className="text-xs font-bold px-4 bg-forest-800 hover:bg-forest-900 flex items-center gap-1.5"
                 >
-                  Mark Packed & Ready
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>Mark as Prepared</span>
                 </Button>
               )}
             </div>

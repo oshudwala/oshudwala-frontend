@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Building2,
@@ -23,6 +23,8 @@ import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { pharmacyApi } from '../../services/api/pharmacy.api';
+import { prescriptionApi } from '../../services/api/prescription.api';
+import { orderApi } from '../../services/api/order.api';
 import { accountRegistry } from '../../services/api/accountRegistry';
 import Button from '../../components/common/Button';
 
@@ -32,44 +34,41 @@ export const PharmacyOverview = () => {
   const { addToast } = useToast();
 
   const [pharmacyDetails, setPharmacyDetails] = useState(null);
+  const [backendPrescriptions, setBackendPrescriptions] = useState([]);
+  const [backendOrders, setBackendOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [storeStatus, setStoreStatus] = useState(() =>
     pharmacyApi.getPharmacyStatus(user?.pharmacyId || user?.id)
   );
 
-  // Load real pharmacy data from backend & account registry
+  // Load real pharmacy data, prescriptions & orders from backend
   const loadPharmacyData = async () => {
     setIsLoading(true);
     try {
-      // 1. Try backend /pharmacies/my or /pharmacies
+      // 1. Fetch real pharmacy info, prescriptions, and orders in parallel
+      const [myRes, rxRes, ordersRes] = await Promise.allSettled([
+        pharmacyApi.getMyPharmacy().catch(() => null),
+        prescriptionApi.getPharmacyPrescriptions().catch(() => []),
+        orderApi.getPharmacyOrders().catch(() => []),
+      ]);
+
       let realPharm = null;
-      try {
-        const myRes = await pharmacyApi.getMyPharmacy();
-        if (myRes && !myRes.unmounted && myRes.id) {
-          realPharm = myRes;
-        }
-      } catch (err) {
-        console.warn('Backend /pharmacies/my note:', err);
+      if (myRes.status === 'fulfilled' && myRes.value && !myRes.value.unmounted && myRes.value.id) {
+        realPharm = myRes.value;
       }
 
-      // 2. Check registered pharmacies in account registry
+      // Check registered pharmacies in account registry if not found
       if (!realPharm) {
         const registeredPharmacies = accountRegistry.getEntities().pharmacies || [];
-        // Match by user email, phone, or owner ID
         const matched = registeredPharmacies.find(
           (p) =>
             p.id === user?.id ||
             p.email?.toLowerCase() === user?.email?.toLowerCase() ||
             (user?.phone && p.phone && p.phone.replace(/[^0-9]/g, '') === user.phone.replace(/[^0-9]/g, ''))
         );
-        if (matched) {
-          realPharm = matched;
-        } else if (registeredPharmacies.length > 0) {
-          realPharm = registeredPharmacies[0];
-        }
+        realPharm = matched || registeredPharmacies[0] || null;
       }
 
-      // 3. Fallback to user context or primary partner pharmacy info
       if (!realPharm) {
         realPharm = {
           id: user?.id || 'pharma-01',
@@ -86,6 +85,29 @@ export const PharmacyOverview = () => {
       setPharmacyDetails(realPharm);
       const currentStatus = pharmacyApi.getPharmacyStatus(realPharm.id);
       setStoreStatus(currentStatus);
+
+      // Map backend prescriptions
+      if (rxRes.status === 'fulfilled' && Array.isArray(rxRes.value)) {
+        const mappedRx = rxRes.value.map((r) => ({
+          id: r.id,
+          prescriptionNumber: r.prescriptionNumber || r.id,
+          patientName: r.patient?.fullName || 'Walk-in / App Patient',
+          patientPhone: r.patient?.phone || '',
+          doctorName: r.doctorName || 'Registered Medical Practitioner',
+          status: r.status === 'SUBMITTED' ? 'PENDING_VERIFICATION' : r.status,
+          extractedMedicines: r.items?.map((it) => ({
+            name: it.nameAsWritten || 'Prescribed Medicine',
+            qty: it.quantity || 1,
+          })) || [],
+          createdAt: r.createdAt || new Date().toISOString(),
+        }));
+        setBackendPrescriptions(mappedRx);
+      }
+
+      // Map backend orders
+      if (ordersRes.status === 'fulfilled' && Array.isArray(ordersRes.value)) {
+        setBackendOrders(ordersRes.value);
+      }
     } catch (e) {
       console.warn('Error loading pharmacy data:', e);
     } finally {
@@ -96,6 +118,27 @@ export const PharmacyOverview = () => {
   useEffect(() => {
     loadPharmacyData();
   }, [user]);
+
+  // Real-time synchronization on events & storage
+  useEffect(() => {
+    const handleSync = () => {
+      loadPharmacyData();
+    };
+
+    window.addEventListener('oshud_order_created', handleSync);
+    window.addEventListener('oshud_order_status_updated', handleSync);
+    window.addEventListener('oshud_prescription_created', handleSync);
+    window.addEventListener('oshud_prescription_verified', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('oshud_order_created', handleSync);
+      window.removeEventListener('oshud_order_status_updated', handleSync);
+      window.removeEventListener('oshud_prescription_created', handleSync);
+      window.removeEventListener('oshud_prescription_verified', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
 
   const handleStatusChange = async (newStatus) => {
     const pharmId = pharmacyDetails?.id || user?.id || 'pharma-01';
@@ -109,11 +152,111 @@ export const PharmacyOverview = () => {
     addToast(messages[newStatus] || `Status updated to ${newStatus}`, newStatus === 'CLOSED' ? 'info' : 'success');
   };
 
-  const myOrders = orders;
-  const pendingRx = prescriptions.filter((p) => p.status === 'PENDING_VERIFICATION');
-  const preparingOrders = myOrders.filter((o) => o.status === 'PREPARING');
-  const readyPickupOrders = myOrders.filter((o) => o.status === 'READY_FOR_PICKUP');
-  const expiringStock = inventory.filter((i) => i.status === 'EXPIRING_SOON');
+  // Merge real backend prescriptions with workspace store
+  const allPrescriptions = useMemo(() => {
+    const map = new Map();
+    // 1. Real backend records first
+    backendPrescriptions.forEach((rx) => {
+      map.set(rx.id, rx);
+      if (rx.prescriptionNumber) map.set(rx.prescriptionNumber, rx);
+    });
+
+    // 2. Overlay workspace store records
+    (prescriptions || []).forEach((rx) => {
+      const key = rx.prescriptionNumber || rx.id;
+      if (!map.has(key) && !map.has(rx.id)) {
+        map.set(key, rx);
+      }
+    });
+
+    return Array.from(new Set(map.values()));
+  }, [backendPrescriptions, prescriptions]);
+
+  const pendingRx = useMemo(() => {
+    return allPrescriptions.filter(
+      (p) => p.status === 'SUBMITTED' || p.status === 'PENDING_VERIFICATION' || p.status === 'PENDING'
+    );
+  }, [allPrescriptions]);
+
+  // Merge real backend orders with workspace store
+  const myOrders = useMemo(() => {
+    const map = new Map();
+
+    backendOrders.forEach((bo) => {
+      const key = bo.orderNumber || bo.id;
+      const subtotal = bo.subtotalPaise ? bo.subtotalPaise / 100 : 0;
+      const total = bo.totalPaise ? bo.totalPaise / 100 : subtotal;
+
+      map.set(key, {
+        id: bo.orderNumber || bo.id,
+        backendId: bo.id,
+        orderNumber: bo.orderNumber,
+        status: bo.status,
+        customerName: bo.deliveryAddress?.fullName || bo.patient?.fullName || 'Walk-in Customer',
+        customerPhone: bo.deliveryAddress?.phone || bo.patient?.phone || '',
+        address: bo.deliveryAddress?.line1 || '',
+        area: bo.deliveryAddress?.area || '',
+        total,
+        subtotal,
+        paymentMethod: bo.paymentMethod || 'COD',
+        items: (bo.items || []).map((it) => ({
+          name: it.nameSnapshot || it.name || 'Prescription Medicine',
+          qty: it.quantity || 1,
+          quantity: it.quantity || 1,
+          price: (it.unitPricePaise || it.mrpPaise || 0) / 100,
+        })),
+        createdAt: bo.placedAt || bo.createdAt || new Date().toISOString(),
+      });
+    });
+
+    (orders || []).forEach((o) => {
+      const key = o.orderNumber || o.id;
+      if (!map.has(key) && !map.has(o.backendId || o.id)) {
+        map.set(key, o);
+      }
+    });
+
+    return Array.from(new Set(map.values()));
+  }, [backendOrders, orders]);
+
+  const preparingOrders = useMemo(() => {
+    return myOrders.filter((o) => o.status === 'PREPARING' || o.status === 'APPROVED_PREPARING');
+  }, [myOrders]);
+
+  const readyPickupOrders = useMemo(() => {
+    return myOrders.filter((o) => o.status === 'READY_FOR_PICKUP' || o.status === 'APPROVED_PREPARED');
+  }, [myOrders]);
+
+  const expiringStock = useMemo(() => {
+    return (inventory || []).filter((i) => i.status === 'EXPIRING_SOON');
+  }, [inventory]);
+
+  const handleMarkPrepared = async (order) => {
+    updateOrderStatus(order.id, 'READY_FOR_PICKUP');
+    try {
+      if (order.backendId || (order.id && !order.id.startsWith('OW-WALK-'))) {
+        await orderApi.updateOrderStatus(order.backendId || order.id, 'READY_FOR_PICKUP').catch(() => {});
+      }
+    } catch {}
+
+    window.dispatchEvent(
+      new CustomEvent('oshud_order_status_updated', {
+        detail: { orderId: order.id, status: 'READY_FOR_PICKUP' },
+      })
+    );
+    try {
+      localStorage.setItem(
+        'oshud_last_status_event',
+        JSON.stringify({ orderId: order.id, status: 'READY_FOR_PICKUP', time: Date.now() })
+      );
+    } catch (e) {}
+
+    loadPharmacyData();
+    addToast(
+      `Order ${order.id} marked Approved & Prepared! Admin will now assign a delivery rider.`,
+      'success'
+    );
+  };
 
   const pharmacyDisplayName =
     pharmacyDetails?.name || user?.pharmacyName || user?.fullName || 'Oshud Wala Partner Pharmacy';
@@ -303,28 +446,26 @@ export const PharmacyOverview = () => {
                       </div>
                       <p className="text-xs font-bold text-forest-900">{order.customerName}</p>
                       <p className="text-[11px] text-brandText-secondary">
-                        {order.items.map((i) => `${i.name} (x${i.qty})`).join(', ')}
+                        {order.items?.map((i) => `${i.name} (x${i.qty || i.quantity || 1})`).join(', ') || 'Prescription Items'}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      {order.status === 'PREPARING' && (
+                      {(order.status === 'PREPARING' || order.status === 'APPROVED_PREPARING') && (
                         <Button
                           variant="primary"
                           size="sm"
-                          onClick={() => {
-                            updateOrderStatus(order.id, 'READY_FOR_PICKUP');
-                            addToast(`Order ${order.id} marked Packed & Ready for Pickup!`, 'success');
-                          }}
-                          className="text-xs font-bold"
+                          onClick={() => handleMarkPrepared(order)}
+                          className="text-xs font-bold bg-forest-800 hover:bg-forest-900 flex items-center gap-1.5"
                         >
-                          Mark Ready for Pickup
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>Prepared</span>
                         </Button>
                       )}
-                      {order.status === 'READY_FOR_PICKUP' && (
+                      {(order.status === 'READY_FOR_PICKUP' || order.status === 'APPROVED_PREPARED') && (
                         <Link
                           to="/pharmacy/pickup"
-                          className="px-3 py-1.5 bg-forest-800 hover:bg-forest-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+                          className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
                         >
                           <QrCode className="w-3.5 h-3.5" />
                           <span>Handover to Rider</span>
@@ -333,6 +474,11 @@ export const PharmacyOverview = () => {
                     </div>
                   </div>
                 ))}
+              {myOrders.filter((o) => ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.status)).length === 0 && (
+                <div className="py-8 text-center text-xs text-brandText-muted">
+                  No orders currently waiting for preparation or pickup.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -343,7 +489,7 @@ export const PharmacyOverview = () => {
             <div className="flex items-center justify-between">
               <h3 className="font-heading font-bold text-sm text-forest-900 flex items-center gap-2">
                 <FileText className="w-4 h-4 text-forest-600" />
-                <span>Pending Prescriptions</span>
+                <span>Pending Prescriptions ({pendingRx.length})</span>
               </h3>
               <Link
                 to="/pharmacy/prescriptions"
@@ -357,25 +503,33 @@ export const PharmacyOverview = () => {
               {pendingRx.map((rx) => (
                 <div key={rx.id} className="py-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-forest-800">{rx.id}</span>
-                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                    <span className="font-mono text-xs font-bold text-forest-800">
+                      {rx.prescriptionNumber || rx.id}
+                    </span>
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                       Needs Sign-off
                     </span>
                   </div>
                   <div>
                     <p className="font-bold text-xs text-forest-900">{rx.patientName}</p>
                     <p className="text-[11px] text-brandText-secondary">{rx.doctorName}</p>
+                    {rx.extractedMedicines && rx.extractedMedicines.length > 0 && (
+                      <p className="text-[10px] text-brandText-muted mt-0.5">
+                        {rx.extractedMedicines.map((m) => m.name).slice(0, 2).join(', ')}
+                        {rx.extractedMedicines.length > 2 ? ` +${rx.extractedMedicines.length - 2} more` : ''}
+                      </p>
+                    )}
                   </div>
                   <Link
                     to="/pharmacy/prescriptions"
-                    className="block text-center py-1.5 bg-forest-50 hover:bg-forest-100 text-forest-800 text-xs font-bold rounded-xl border border-forest-100 transition-colors"
+                    className="block text-center py-1.5 bg-forest-800 hover:bg-forest-900 text-white text-xs font-bold rounded-xl transition-colors shadow-xs"
                   >
                     Open Verification Deck
                   </Link>
                 </div>
               ))}
               {pendingRx.length === 0 && (
-                <p className="text-xs text-brandText-muted py-4 text-center">
+                <p className="text-xs text-brandText-muted py-6 text-center">
                   All prescriptions audited and verified!
                 </p>
               )}

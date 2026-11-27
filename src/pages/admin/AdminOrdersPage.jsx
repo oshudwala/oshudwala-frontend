@@ -53,8 +53,8 @@ export const AdminOrdersPage = () => {
   const filterOptions = [
     { label: 'Pending Review', value: 'PENDING_PHARMACY_REVIEW' },
     { label: 'Accepted', value: 'ACCEPTED' },
-    { label: 'Preparing', value: 'PREPARING' },
-    { label: 'Ready for Pickup', value: 'READY_FOR_PICKUP' },
+    { label: 'Approved & Preparing', value: 'PREPARING' },
+    { label: 'Approved & Prepared', value: 'READY_FOR_PICKUP' },
     { label: 'Rider Assigned', value: 'RIDER_ASSIGNED' },
     { label: 'Out for Delivery', value: 'OUT_FOR_DELIVERY' },
     { label: 'Delivered', value: 'DELIVERED' },
