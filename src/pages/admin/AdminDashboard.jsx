@@ -28,6 +28,7 @@ import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
 import adminApi from '../../services/api/admin.api';
 import accountRegistry from '../../services/api/accountRegistry';
+import SmsBalanceCard from '../../components/admin/SmsBalanceCard';
 
 export const AdminDashboard = () => {
   const { orders, tokens, prescriptions, inventory, riders, updateOrderStatus } = useWorkspaceStore();
@@ -205,6 +206,9 @@ export const AdminDashboard = () => {
           </Link>
         </div>
       </div>
+
+      {/* Live APITxT SMS Balance Checker */}
+      <SmsBalanceCard />
 
       {/* KPI Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
