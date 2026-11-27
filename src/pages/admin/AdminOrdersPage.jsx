@@ -269,7 +269,7 @@ export const AdminOrdersPage = () => {
       );
 
       // Also sync workspace store
-      storeAssignRider(selectedOrder.id, rider, backendQr);
+      storeAssignRider(selectedOrder.id, rider, backendQr, selectedOrder);
 
       addToast(
         `Order ${selectedOrder.id} successfully assigned to ${rider.name}! Pickup QR token created & saved in DB.`,

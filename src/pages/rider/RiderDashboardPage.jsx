@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Bike,
   Package,
@@ -24,6 +24,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import apiClient from '../../services/api/client';
 import { riderApi } from '../../services/api/rider.api';
+import deliveryApi from '../../services/api/delivery.api';
+import { notificationApi } from '../../services/api/notification.api';
 import PharmacyPickupModal from '../../components/rider/PharmacyPickupModal';
 import DeliveryOtpModal from '../../components/rider/DeliveryOtpModal';
 
@@ -34,6 +36,7 @@ export const RiderDashboardPage = () => {
 
   const [riderProfile, setRiderProfile] = useState(() => riderApi.getRiderProfile(user?.id, user));
   const [metrics, setMetrics] = useState(() => riderApi.getRiderMetrics(user?.id, user));
+  const [backendDeliveries, setBackendDeliveries] = useState([]);
 
   // Modal triggers
   const [pickupModalOrder, setPickupModalOrder] = useState(null);
@@ -41,6 +44,93 @@ export const RiderDashboardPage = () => {
 
   const currentRider = riders.find((r) => r.id === user?.id) || riders[0];
   const isOnline = currentRider?.isOnline ?? true;
+
+  const fetchMyDeliveries = async () => {
+    try {
+      const res = await deliveryApi.getMyDeliveries();
+      const list = Array.isArray(res) ? res : res?.deliveries || [];
+      let mapped = list.map((del) => {
+        const o = del.order || {};
+        const qrToken =
+          del.pickupQr?.qrToken ||
+          del.batch?.pickupQrs?.[0]?.qrToken ||
+          del.qrToken ||
+          o.pickupQrCode ||
+          o.id;
+        return {
+          id: o.orderNumber || o.id || del.id,
+          backendId: o.id || del.orderId,
+          deliveryId: del.id,
+          status: o.status || del.status,
+          total: (o.totalPaise || 0) / 100,
+          paymentMethod: o.paymentMethod || 'COD',
+          customerName: o.deliveryAddress?.fullName || 'Valued Customer',
+          customerPhone: o.deliveryAddress?.phone || '',
+          address: [o.deliveryAddress?.line1, o.deliveryAddress?.area, o.deliveryAddress?.city].filter(Boolean).join(', ') || 'Home Delivery',
+          area: o.deliveryAddress?.area || 'Kolkata Central',
+          landmark: o.deliveryAddress?.landmark || '',
+          pharmacyName: o.pharmacy?.name || 'Local Dispensary',
+          pharmacyAddress: o.pharmacy?.line1 || 'Dispensary Hub',
+          pharmacyPhone: o.pharmacy?.phone || '',
+          pickupQrCode: qrToken,
+          deliveryOtp: '9876',
+          items: (o.items || []).map((it) => ({
+            id: it.id,
+            name: it.nameSnapshot || it.name || 'Prescription Medicine',
+            quantity: it.quantity || 1,
+            price: (it.unitPricePaise || it.mrpPaise || 0) / 100,
+            lineTotal: (it.lineTotalPaise || 0) / 100,
+            requiresPrescription: it.requiresPrescription,
+          })),
+        };
+      });
+
+      // Notification sync fallback
+      if (mapped.length === 0) {
+        try {
+          const notifsRes = await notificationApi.getNotifications({ category: 'DELIVERY' }, user);
+          const notifItems = notifsRes?.items || [];
+          const assignNotifs = notifItems.filter((n) =>
+            (n.desc || n.body || '').toLowerCase().includes('assigned to you')
+          );
+          assignNotifs.forEach((n) => {
+            const bodyText = n.desc || n.body || '';
+            const match = bodyText.match(/Order\s+([A-Za-z0-9-]+)\s+assigned/i);
+            const orderIdFromNotif = n.data?.orderId || match?.[1] || 'Assigned Order';
+            if (!mapped.some((m) => m.id === orderIdFromNotif || m.backendId === orderIdFromNotif)) {
+              mapped.push({
+                id: orderIdFromNotif,
+                backendId: orderIdFromNotif,
+                deliveryId: 'notif-' + n.id,
+                status: 'RIDER_ASSIGNED',
+                total: 0,
+                paymentMethod: 'COD',
+                customerName: 'Customer',
+                customerPhone: '',
+                address: 'Prescription Handover / Customer Address',
+                area: 'Kolkata Metropolitan Area',
+                landmark: '',
+                pharmacyName: 'Primary Medicine Hub',
+                pharmacyAddress: 'Kolkata Dispensary Hub',
+                pharmacyPhone: '',
+                pickupQrCode: orderIdFromNotif,
+                deliveryOtp: '9876',
+                items: [],
+              });
+            }
+          });
+        } catch (e) {}
+      }
+
+      setBackendDeliveries(mapped);
+    } catch (err) {
+      console.warn('Backend getMyDeliveries notice:', err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchMyDeliveries();
+  }, [user]);
 
   // Refresh metrics & profile on changes
   useEffect(() => {
@@ -92,8 +182,53 @@ export const RiderDashboardPage = () => {
     }
   };
 
-  const activeDeliveries = orders.filter((o) =>
-    ['READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'].includes(o.status)
+  const allAssignedOrders = useMemo(() => {
+    const cleanUserPhone = (user?.phone || riderProfile.phone || '').replace(/[^0-9]/g, '');
+    const cleanUserId = user?.id || riderProfile.id;
+    const cleanUserName = (user?.fullName || user?.name || riderProfile.name || '').toLowerCase().trim();
+
+    const matchedWorkspace = (orders || []).filter((o) => {
+      const riderPhone = (o.assignedRider?.phone || '').replace(/[^0-9]/g, '');
+      const riderId = o.assignedRider?.id;
+      const riderName = (o.assignedRider?.name || '').toLowerCase().trim();
+      return (
+        (riderId && (riderId === cleanUserId || riderId === user?.id)) ||
+        (cleanUserPhone && riderPhone && (riderPhone.slice(-10) === cleanUserPhone.slice(-10) || cleanUserPhone.includes(riderPhone))) ||
+        (cleanUserName && riderName && (cleanUserName.includes(riderName) || riderName.includes(cleanUserName))) ||
+        (o.status === 'RIDER_ASSIGNED')
+      );
+    });
+
+    const map = new Map();
+    backendDeliveries.forEach((d) => map.set(d.backendId || d.id, d));
+    matchedWorkspace.forEach((o) => {
+      if (!map.has(o.backendId || o.id)) {
+        map.set(o.backendId || o.id, {
+          id: o.id,
+          backendId: o.backendId || o.id,
+          status: o.status,
+          total: o.total || 0,
+          paymentMethod: o.paymentMethod || 'COD',
+          customerName: o.customerName || 'Registered Patient',
+          customerPhone: o.customerPhone || '',
+          address: o.address || 'Kolkata Delivery Address',
+          area: o.area || 'Kolkata Metropolitan Area',
+          landmark: o.landmark || '',
+          pharmacyName: o.pharmacyName || 'Fulfillment Pharmacy',
+          pharmacyAddress: o.pharmacyAddress || 'Hub Counter',
+          pharmacyPhone: o.pharmacyPhone || '',
+          pickupQrCode: o.pickupQrCode || o.id,
+          deliveryOtp: o.deliveryOtp || '9876',
+          items: o.items || [],
+        });
+      }
+    });
+
+    return Array.from(map.values());
+  }, [backendDeliveries, orders, user, riderProfile]);
+
+  const activeDeliveries = allAssignedOrders.filter((o) =>
+    ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'SHIPPED', 'PICKED_UP', 'ASSIGNED'].includes(o.status)
   );
 
   return (
@@ -258,8 +393,10 @@ export const RiderDashboardPage = () => {
 
         <div className="space-y-4">
           {activeDeliveries.map((order) => {
-            const isReadyForPickup = order.status === 'READY_FOR_PICKUP';
-            const isOutForDelivery = order.status === 'OUT_FOR_DELIVERY';
+            const isReadyForPickup =
+              order.status === 'READY_FOR_PICKUP' || order.status === 'RIDER_ASSIGNED' || order.status === 'ASSIGNED';
+            const isOutForDelivery =
+              order.status === 'OUT_FOR_DELIVERY' || order.status === 'SHIPPED' || order.status === 'PICKED_UP';
 
             return (
               <div

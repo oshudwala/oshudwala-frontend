@@ -244,7 +244,7 @@ export const workspaceStore = {
 
   // === ORDERS ACTIONS ===
   updateOrderStatus(orderId, newStatus, extraData = {}) {
-    const orderIndex = state.orders.findIndex((o) => o.id === orderId);
+    const orderIndex = state.orders.findIndex((o) => o.id === orderId || o.backendId === orderId);
     if (orderIndex === -1) return null;
 
     const currentOrder = state.orders[orderIndex];
@@ -269,25 +269,62 @@ export const workspaceStore = {
     return updatedOrder;
   },
 
-  assignRider(orderId, rider, qrToken = null) {
+  assignRider(orderId, rider, qrToken = null, orderData = null) {
     const generatedToken =
       qrToken ||
       `QR-${String(orderId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const expiresAt = Date.now() + 15 * 60 * 1000;
-    return this.updateOrderStatus(orderId, 'READY_FOR_PICKUP', {
-      assignedRider: {
-        id: rider.id || rider.userId,
-        name: rider.name || rider.fullName,
-        phone: rider.phone,
-        vehicle: rider.vehicle || 'Hero Electric (WB-02-AZ-4921)',
-      },
+    const riderObj = {
+      id: rider.id || rider.userId,
+      name: rider.name || rider.fullName,
+      phone: rider.phone,
+      vehicle: rider.vehicle || 'Hero Electric (WB-02-AZ-4921)',
+      zone: rider.zone || 'Kolkata Central & South',
+    };
+
+    const orderIndex = state.orders.findIndex((o) => o.id === orderId || o.backendId === orderId);
+    if (orderIndex === -1 && orderData) {
+      const newOrder = {
+        id: orderId,
+        backendId: orderData.backendId || orderId,
+        status: 'RIDER_ASSIGNED',
+        total: orderData.total || 0,
+        paymentMethod: orderData.paymentMethod || 'COD',
+        customerName: orderData.customerName || 'Registered Patient',
+        customerPhone: orderData.customerPhone || '',
+        address: orderData.address || 'Kolkata Delivery Address',
+        area: orderData.area || 'Kolkata Metropolitan Area',
+        landmark: orderData.landmark || '',
+        pharmacyName: orderData.pharmacyName || 'Fulfillment Pharmacy',
+        pharmacyAddress: orderData.pharmacyAddress || 'Hub Counter',
+        pharmacyPhone: orderData.pharmacyPhone || '',
+        pickupQrCode: generatedToken,
+        pickupQrToken: generatedToken,
+        pickupQrExpiresAt: expiresAt,
+        deliveryOtp: orderData.deliveryOtp || '9876',
+        items: orderData.items || [],
+        assignedRider: riderObj,
+        timeline: [
+          { status: 'Order Created', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), completed: true },
+          { status: 'Rider Assigned', time: `Assigned to ${riderObj.name}`, completed: true },
+        ],
+        createdAt: new Date().toISOString(),
+      };
+      state = { ...state, orders: [newOrder, ...state.orders], lastUpdated: Date.now() };
+      persistAndNotify();
+      return newOrder;
+    }
+
+    return this.updateOrderStatus(orderId, 'RIDER_ASSIGNED', {
+      assignedRider: riderObj,
       pickupQrCode: generatedToken,
+      pickupQrToken: generatedToken,
       pickupQrExpiresAt: expiresAt,
     });
   },
 
   verifyPickup(orderId, qrInput, verifiedItems = null) {
-    const order = state.orders.find((o) => o.id === orderId);
+    const order = state.orders.find((o) => o.id === orderId || o.backendId === orderId);
     if (!order) return null;
 
     if (verifiedItems && Array.isArray(verifiedItems) && verifiedItems.length > 0) {
@@ -298,7 +335,7 @@ export const workspaceStore = {
   },
 
   completeDelivery(orderId, otpInput, codAmountCollected = 0) {
-    const order = state.orders.find((o) => o.id === orderId);
+    const order = state.orders.find((o) => o.id === orderId || o.backendId === orderId);
     if (!order) throw new Error('Order not found');
     if (!otpInput || order.deliveryOtp.trim() !== otpInput.trim()) {
       throw new Error('Invalid 4-digit Delivery OTP. Please verify the code with the customer.');

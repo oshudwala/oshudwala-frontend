@@ -142,7 +142,11 @@ export const WorkspaceSidebar = ({ isCollapsed, onToggleCollapse, isMobileOpen, 
                 label: 'Active Deliveries',
                 path: '/rider/deliveries',
                 icon: Bike,
-                badge: orders.filter((o) => ['READY_FOR_PICKUP', 'OUT_FOR_DELIVERY'].includes(o.status)).length,
+                badge: orders.filter((o) =>
+                  ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'SHIPPED', 'PICKED_UP', 'ASSIGNED'].includes(
+                    o.status
+                  )
+                ).length,
                 highlight: true,
               },
               { label: 'Completed Deliveries', path: '/rider/history', icon: History },

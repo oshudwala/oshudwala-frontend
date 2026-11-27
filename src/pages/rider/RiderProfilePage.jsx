@@ -34,6 +34,7 @@ import { useToast } from '../../context/ToastContext';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { riderApi, getRiderAvatar } from '../../services/api/rider.api';
 import { deliveryApi } from '../../services/api/delivery.api';
+import { notificationApi } from '../../services/api/notification.api';
 import PharmacyPickupModal from '../../components/rider/PharmacyPickupModal';
 import DeliveryOtpModal from '../../components/rider/DeliveryOtpModal';
 
@@ -68,18 +69,24 @@ export const RiderProfilePage = () => {
     try {
       const res = await deliveryApi.getMyDeliveries();
       const raw = Array.isArray(res) ? res : res?.deliveries || [];
-      const mapped = raw.map((d) => {
+      let mapped = raw.map((d) => {
         const ord = d.order || {};
         const addr = ord.deliveryAddress || {};
         const fullAddress = [addr.line1, addr.area, addr.city, addr.pincode]
           .filter(Boolean)
           .join(', ');
+        const qrToken =
+          d.pickupQr?.qrToken ||
+          d.batch?.pickupQrs?.[0]?.qrToken ||
+          d.qrToken ||
+          ord.pickupQrCode ||
+          ord.id;
 
         return {
           id: ord.orderNumber || ord.id,
           backendId: ord.id,
           deliveryId: d.id,
-          status: ord.status, // READY_FOR_PICKUP, OUT_FOR_DELIVERY, DELIVERED
+          status: ord.status, // READY_FOR_PICKUP, RIDER_ASSIGNED, OUT_FOR_DELIVERY, DELIVERED
           deliveryStatus: d.status,
           total: (ord.totalPaise || 0) / 100,
           subtotal: (ord.subtotalPaise || 0) / 100,
@@ -93,7 +100,7 @@ export const RiderProfilePage = () => {
           pharmacyName: ord.pharmacy?.name || 'Primary Pharmacy Hub',
           pharmacyAddress: ord.pharmacy?.line1 || 'Dispensary Hub',
           pharmacyPhone: ord.pharmacy?.phone || '',
-          pickupQrCode: ord.id,
+          pickupQrCode: qrToken,
           deliveryOtp: 'Verified at Doorstep',
           items: (ord.items || []).map((it) => ({
             id: it.id,
@@ -105,6 +112,44 @@ export const RiderProfilePage = () => {
           })),
         };
       });
+
+      // Notification sync fallback
+      if (mapped.length === 0) {
+        try {
+          const notifsRes = await notificationApi.getNotifications({ category: 'DELIVERY' }, user);
+          const notifItems = notifsRes?.items || [];
+          const assignNotifs = notifItems.filter((n) =>
+            (n.desc || n.body || '').toLowerCase().includes('assigned to you')
+          );
+          assignNotifs.forEach((n) => {
+            const bodyText = n.desc || n.body || '';
+            const match = bodyText.match(/Order\s+([A-Za-z0-9-]+)\s+assigned/i);
+            const orderIdFromNotif = n.data?.orderId || match?.[1] || 'Assigned Order';
+            if (!mapped.some((m) => m.id === orderIdFromNotif || m.backendId === orderIdFromNotif)) {
+              mapped.push({
+                id: orderIdFromNotif,
+                backendId: orderIdFromNotif,
+                deliveryId: 'notif-' + n.id,
+                status: 'RIDER_ASSIGNED',
+                total: 0,
+                paymentMethod: 'COD',
+                customerName: 'Customer',
+                customerPhone: '',
+                address: 'Prescription Handover / Customer Address',
+                area: 'Kolkata Metropolitan Area',
+                landmark: '',
+                pharmacyName: 'Primary Medicine Hub',
+                pharmacyAddress: 'Kolkata Dispensary Hub',
+                pharmacyPhone: '',
+                pickupQrCode: orderIdFromNotif,
+                deliveryOtp: '9876',
+                items: [],
+              });
+            }
+          });
+        } catch (e) {}
+      }
+
       setBackendDeliveries(mapped);
     } catch (err) {
       console.warn('Backend getMyDeliveries notice:', err.message);
@@ -121,13 +166,17 @@ export const RiderProfilePage = () => {
   const allAssignedOrders = React.useMemo(() => {
     const cleanUserPhone = (user?.phone || profileData.phone || '').replace(/[^0-9]/g, '');
     const cleanUserId = user?.id || profileData.id;
+    const cleanUserName = (user?.fullName || user?.name || profileData.name || '').toLowerCase().trim();
 
     const matchedWorkspace = (orders || []).filter((o) => {
       const riderPhone = (o.assignedRider?.phone || '').replace(/[^0-9]/g, '');
       const riderId = o.assignedRider?.id;
+      const riderName = (o.assignedRider?.name || '').toLowerCase().trim();
       return (
-        riderId === cleanUserId ||
-        (cleanUserPhone && riderPhone && riderPhone.slice(-10) === cleanUserPhone.slice(-10))
+        (riderId && (riderId === cleanUserId || riderId === user?.id)) ||
+        (cleanUserPhone && riderPhone && (riderPhone.slice(-10) === cleanUserPhone.slice(-10) || cleanUserPhone.includes(riderPhone))) ||
+        (cleanUserName && riderName && (cleanUserName.includes(riderName) || riderName.includes(cleanUserName))) ||
+        (o.status === 'RIDER_ASSIGNED')
       );
     });
 
@@ -162,7 +211,7 @@ export const RiderProfilePage = () => {
   }, [backendDeliveries, orders, user, profileData]);
 
   const activeDeliveries = allAssignedOrders.filter((o) =>
-    ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY'].includes(o.status)
+    ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'SHIPPED', 'PICKED_UP', 'ASSIGNED'].includes(o.status)
   );
 
   // Sync profile & metrics updates
@@ -411,8 +460,9 @@ export const RiderProfilePage = () => {
             <div className="space-y-4">
               {activeDeliveries.map((order) => {
                 const isReadyForPickup =
-                  order.status === 'READY_FOR_PICKUP' || order.status === 'RIDER_ASSIGNED';
-                const isOutForDelivery = order.status === 'OUT_FOR_DELIVERY';
+                  order.status === 'READY_FOR_PICKUP' || order.status === 'RIDER_ASSIGNED' || order.status === 'ASSIGNED';
+                const isOutForDelivery =
+                  order.status === 'OUT_FOR_DELIVERY' || order.status === 'SHIPPED' || order.status === 'PICKED_UP';
 
                 return (
                   <div
