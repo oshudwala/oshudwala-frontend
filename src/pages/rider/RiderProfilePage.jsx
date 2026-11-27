@@ -375,23 +375,23 @@ export const RiderProfilePage = () => {
   };
 
   // Handover completed with customer OTP
-  const handleDeliveryConfirmed = async (orderId, otp, amount) => {
+  const handleDeliveryConfirmed = async (orderId, otp, amount, paymentMethod = 'COD') => {
     try {
       // 1. Call backend to mark delivery & order as DELIVERED in the database
       const targetOrder = allAssignedOrders.find(
         (o) => o.id === orderId || o.backendId === orderId || o.orderNumber === orderId
       );
       const deliveryLookupId = targetOrder?.deliveryId || targetOrder?.backendId || orderId;
-      await deliveryApi.completeDelivery(deliveryLookupId, otp);
+      await deliveryApi.completeDelivery(deliveryLookupId, otp, paymentMethod);
 
       // 2. Update workspace store
-      completeDelivery(orderId, otp, amount);
+      completeDelivery(orderId, otp, amount, paymentMethod);
 
       // 3. Update local deliveries state
       setBackendDeliveries((prev) =>
         prev.map((d) =>
           d.id === orderId || d.backendId === orderId || d.orderNumber === orderId || d.deliveryId === deliveryLookupId
-            ? { ...d, status: 'DELIVERED' }
+            ? { ...d, status: 'DELIVERED', paymentMethod }
             : d
         )
       );
@@ -399,19 +399,22 @@ export const RiderProfilePage = () => {
       // 4. Broadcast status event across all windows & tabs
       window.dispatchEvent(
         new CustomEvent('oshud_order_status_updated', {
-          detail: { orderId, backendId: targetOrder?.backendId, orderNumber: targetOrder?.orderNumber, status: 'DELIVERED', otp },
+          detail: { orderId, backendId: targetOrder?.backendId, orderNumber: targetOrder?.orderNumber, status: 'DELIVERED', otp, paymentMethod },
         })
       );
       try {
         localStorage.setItem(
           'oshud_last_status_event',
-          JSON.stringify({ orderId, status: 'DELIVERED', time: Date.now() })
+          JSON.stringify({ orderId, status: 'DELIVERED', paymentMethod, time: Date.now() })
         );
       } catch (e) {}
 
       setDeliveryOtpModalOrder(null);
       await fetchMyDeliveries();
-      addToast(`Order ${orderId} delivered successfully! COD cash collected & reconciled.`, 'success');
+      addToast(
+        `Order ${orderId} delivered successfully! Payment method verified (${paymentMethod === 'UPI' ? 'UPI / QR' : 'Cash on Delivery'}).`,
+        'success'
+      );
     } catch (err) {
       addToast(err.message || 'Failed to complete delivery', 'error');
       throw err;
@@ -602,11 +605,17 @@ export const RiderProfilePage = () => {
                             <p className="text-xs font-bold text-purple-950 pl-5">
                               {order.pharmacyName}
                             </p>
-                            <p className="text-xs text-brandText-secondary pl-5">
-                              {order.pharmacyAddress}
-                            </p>
+                            {order.status !== 'DELIVERED' ? (
+                              <p className="text-xs text-brandText-secondary pl-5">
+                                {order.pharmacyAddress}
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-brandText-muted pl-5">
+                                Address protected after delivery
+                              </p>
+                            )}
                           </div>
-                          {order.pharmacyPhone && (
+                          {order.status !== 'DELIVERED' && order.pharmacyPhone && (
                             <a
                               href={`tel:${order.pharmacyPhone}`}
                               className="p-2 rounded-xl bg-purple-100 text-purple-800 hover:bg-purple-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"
@@ -660,11 +669,17 @@ export const RiderProfilePage = () => {
                             <p className="text-xs font-bold text-emerald-950 pl-5">
                               {order.customerName}
                             </p>
-                            <p className="text-xs text-brandText-secondary pl-5">
-                              {order.address}
-                            </p>
+                            {order.status !== 'DELIVERED' ? (
+                              <p className="text-xs text-brandText-secondary pl-5">
+                                {order.address}
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-brandText-muted pl-5">
+                                Address protected after delivery
+                              </p>
+                            )}
                           </div>
-                          {order.customerPhone && (
+                          {order.status !== 'DELIVERED' && order.customerPhone && (
                             <a
                               href={`tel:${order.customerPhone}`}
                               className="p-2 rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"

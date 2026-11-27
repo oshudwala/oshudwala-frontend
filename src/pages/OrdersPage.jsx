@@ -283,19 +283,25 @@ export const OrdersPage = () => {
                             <Truck className="w-4 h-4" />
                             <h5 className="font-heading font-bold text-xs">Assigned Delivery Rider</h5>
                           </div>
-                          {riderInfo.phone && (
+                          {riderInfo.phone && order.status !== 'DELIVERED' ? (
                             <a
                               href={`tel:${riderInfo.phone}`}
                               className="text-xs font-bold text-forest-700 hover:text-forest-900 flex items-center gap-1"
                             >
                               <Phone className="w-3.5 h-3.5" /> Call Rider
                             </a>
-                          )}
+                          ) : order.status === 'DELIVERED' ? (
+                            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md">
+                              Completed
+                            </span>
+                          ) : null}
                         </div>
                         <p className="text-xs font-bold text-forest-900">{riderInfo.name}</p>
                         <p className="text-xs text-brandText-secondary">{riderInfo.vehicle}</p>
                         <p className="text-[11px] text-emerald-800 font-medium">
-                          📍 Express Delivery Partner &bull; Active on Route
+                          {order.status === 'DELIVERED'
+                            ? '📍 Express Delivery Partner \u2022 Delivery Completed'
+                            : '📍 Express Delivery Partner \u2022 Active on Route'}
                         </p>
                       </div>
                     ) : (

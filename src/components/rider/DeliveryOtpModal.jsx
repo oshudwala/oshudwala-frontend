@@ -5,18 +5,21 @@ import {
   X,
   AlertCircle,
   Coins,
+  QrCode,
   CheckCircle2,
 } from 'lucide-react';
 import Button from '../common/Button';
 
 export const DeliveryOtpModal = ({ order, isOpen, onClose, onConfirmDelivery }) => {
   const [enteredOtp, setEnteredOtp] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('COD');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setEnteredOtp('');
+      setPaymentMethod(order?.paymentMethod === 'ONLINE' ? 'UPI' : 'COD');
       setError('');
       setIsSubmitting(false);
     }
@@ -33,11 +36,16 @@ export const DeliveryOtpModal = ({ order, isOpen, onClose, onConfirmDelivery }) 
       return;
     }
 
+    if (!paymentMethod) {
+      setError('Please select the payment method (COD or UPI).');
+      return;
+    }
+
     setIsSubmitting(true);
     setError('');
 
     try {
-      await onConfirmDelivery(order.id, cleanOtp, order.total);
+      await onConfirmDelivery(order.id, cleanOtp, order.total, paymentMethod);
       onClose();
     } catch (err) {
       setError(err?.message || 'Invalid Delivery OTP. Please double-check with the patient and re-enter.');
@@ -72,21 +80,61 @@ export const DeliveryOtpModal = ({ order, isOpen, onClose, onConfirmDelivery }) 
           </button>
         </div>
 
-        {/* COD Cash Collection Warning */}
-        {order.paymentMethod === 'COD' && (
-          <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-950 flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-2">
-              <Coins className="w-4 h-4 text-amber-700 flex-shrink-0" />
-              <div>
-                <p className="font-bold">Collect Cash on Delivery:</p>
-                <p className="text-[10px] text-amber-800">Ensure exact cash is collected</p>
-              </div>
-            </div>
-            <span className="font-mono font-extrabold text-lg text-amber-900">
+        {/* Payment Collection Method Selector (COD or UPI) */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-forest-900">Payment Collection Method</span>
+            <span className="font-mono font-extrabold text-forest-900 text-sm">
               ₹{Number(order.total || 0).toFixed(2)}
             </span>
           </div>
-        )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('COD')}
+              className={`p-3 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1.5 ${
+                paymentMethod === 'COD'
+                  ? 'border-forest-700 bg-forest-800 text-white shadow-xs'
+                  : 'border-brandBorder-subtle bg-surface-warm/60 text-forest-900 hover:bg-forest-50'
+              }`}
+            >
+              <Coins className={`w-4 h-4 ${paymentMethod === 'COD' ? 'text-amber-300' : 'text-amber-700'}`} />
+              <span>Cash (COD)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('UPI')}
+              className={`p-3 rounded-2xl border text-xs font-bold transition-all flex flex-col items-center justify-center gap-1.5 ${
+                paymentMethod === 'UPI'
+                  ? 'border-forest-700 bg-forest-800 text-white shadow-xs'
+                  : 'border-brandBorder-subtle bg-surface-warm/60 text-forest-900 hover:bg-forest-50'
+              }`}
+            >
+              <QrCode className={`w-4 h-4 ${paymentMethod === 'UPI' ? 'text-emerald-300' : 'text-emerald-700'}`} />
+              <span>UPI / QR</span>
+            </button>
+          </div>
+
+          <div
+            className={`p-2.5 rounded-xl text-[11px] font-semibold border ${
+              paymentMethod === 'COD'
+                ? 'bg-amber-50 text-amber-900 border-amber-200'
+                : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+            }`}
+          >
+            {paymentMethod === 'COD' ? (
+              <span>
+                💵 Collect <strong>₹{Number(order.total || 0).toFixed(2)}</strong> in physical cash from patient at doorstep.
+              </span>
+            ) : (
+              <span>
+                📲 Confirm digital payment of <strong>₹{Number(order.total || 0).toFixed(2)}</strong> received via UPI QR scan.
+              </span>
+            )}
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

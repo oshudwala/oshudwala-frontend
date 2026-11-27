@@ -550,15 +550,21 @@ export const RiderDashboardPage = () => {
                           <span>Pharmacy Pickup & Package Verification</span>
                         </div>
                         <p className="text-xs font-semibold text-purple-950 pl-6">{order.pharmacyName}</p>
-                        <p className="text-xs text-brandText-secondary pl-6">{order.pharmacyAddress}</p>
+                        {order.status !== 'DELIVERED' ? (
+                          <p className="text-xs text-brandText-secondary pl-6">{order.pharmacyAddress}</p>
+                        ) : (
+                          <p className="text-[11px] text-brandText-muted pl-6">Address protected after delivery</p>
+                        )}
                       </div>
-                      <a
-                        href={`tel:${order.pharmacyPhone}`}
-                        className="p-2 rounded-xl bg-purple-100 text-purple-800 hover:bg-purple-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Call</span>
-                      </a>
+                      {order.status !== 'DELIVERED' && order.pharmacyPhone && (
+                        <a
+                          href={`tel:${order.pharmacyPhone}`}
+                          className="p-2 rounded-xl bg-purple-100 text-purple-800 hover:bg-purple-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Call</span>
+                        </a>
+                      )}
                     </div>
 
                     {isReadyForPickup && (
@@ -594,20 +600,28 @@ export const RiderDashboardPage = () => {
                           <span>Patient Handover & Verification</span>
                         </div>
                         <p className="text-xs font-semibold text-emerald-950 pl-6">{order.customerName}</p>
-                        <p className="text-xs text-brandText-secondary pl-6">{order.address}</p>
-                        {order.landmark && (
-                          <p className="text-[11px] text-brandText-muted pl-6">
-                            Landmark: <strong>{order.landmark}</strong>
-                          </p>
+                        {order.status !== 'DELIVERED' ? (
+                          <>
+                            <p className="text-xs text-brandText-secondary pl-6">{order.address}</p>
+                            {order.landmark && (
+                              <p className="text-[11px] text-brandText-muted pl-6">
+                                Landmark: <strong>{order.landmark}</strong>
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-[11px] text-brandText-muted pl-6">Address protected after delivery</p>
                         )}
                       </div>
-                      <a
-                        href={`tel:${order.customerPhone}`}
-                        className="p-2 rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Call</span>
-                      </a>
+                      {order.status !== 'DELIVERED' && order.customerPhone && (
+                        <a
+                          href={`tel:${order.customerPhone}`}
+                          className="p-2 rounded-xl bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-xs font-bold flex items-center gap-1 flex-shrink-0"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Call</span>
+                        </a>
+                      )}
                     </div>
 
                     {isOutForDelivery && (

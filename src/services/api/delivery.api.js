@@ -154,10 +154,14 @@ export const deliveryApi = {
    * POST /deliveries/:deliveryId/complete
    * @param {string} deliveryIdOrOrderId
    * @param {string} otp
+   * @param {string} [paymentMethod='COD'] - 'COD' or 'UPI'
    */
-  async completeDelivery(deliveryIdOrOrderId, otp) {
+  async completeDelivery(deliveryIdOrOrderId, otp, paymentMethod = 'COD') {
     try {
-      const res = await apiClient.post(`/deliveries/${deliveryIdOrOrderId}/complete`, { otp });
+      const res = await apiClient.post(`/deliveries/${deliveryIdOrOrderId}/complete`, {
+        otp,
+        paymentMethod: (paymentMethod || 'COD').toUpperCase(),
+      });
       return res.data?.data || res.data;
     } catch (err) {
       const msg = err?.response?.data?.message || err.message;
@@ -169,6 +173,7 @@ export const deliveryApi = {
         success: true,
         orderId: deliveryIdOrOrderId,
         status: 'DELIVERED',
+        paymentMethod: (paymentMethod || 'COD').toUpperCase(),
       };
     }
   },

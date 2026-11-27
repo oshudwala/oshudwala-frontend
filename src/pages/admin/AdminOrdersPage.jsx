@@ -229,6 +229,11 @@ export const AdminOrdersPage = () => {
 
   const handleAssignRiderSubmit = async () => {
     if (!selectedRiderId || !selectedOrder) return;
+    if (selectedOrder.status === 'DELIVERED') {
+      addToast('Delivered orders are already fulfilled and cannot be reassigned.', 'warning');
+      setIsAssignModalOpen(false);
+      return;
+    }
     const rider = riders.find((r) => r.id === selectedRiderId);
     if (!rider) return;
 
@@ -482,17 +487,27 @@ export const AdminOrdersPage = () => {
               <span>Download PDF Invoice</span>
             </button>
             <div className="flex items-center gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setIsAssignModalOpen(true)}
-                className="text-xs px-4"
-              >
-                <Bike className="w-3.5 h-3.5 mr-1.5" />
-                <span>
-                  {selectedOrder?.assignedRider ? 'Reassign Rider' : 'Assign Delivery Rider'}
+              {selectedOrder?.status !== 'DELIVERED' &&
+                selectedOrder?.status !== 'CANCELLED' &&
+                selectedOrder?.status !== 'REJECTED' && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setIsAssignModalOpen(true)}
+                    className="text-xs px-4"
+                  >
+                    <Bike className="w-3.5 h-3.5 mr-1.5" />
+                    <span>
+                      {selectedOrder?.assignedRider ? 'Reassign Rider' : 'Assign Delivery Rider'}
+                    </span>
+                  </Button>
+                )}
+              {selectedOrder?.status === 'DELIVERED' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200">
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Delivered to Customer</span>
                 </span>
-              </Button>
+              )}
             </div>
           </div>
         }

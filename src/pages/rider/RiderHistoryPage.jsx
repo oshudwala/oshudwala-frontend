@@ -152,10 +152,9 @@ export const RiderHistoryPage = () => {
     return completedDeliveries.filter(
       (o) =>
         o.id?.toLowerCase().includes(q) ||
+        o.orderNumber?.toLowerCase().includes(q) ||
         o.customerName?.toLowerCase().includes(q) ||
-        o.customerPhone?.includes(q) ||
-        o.pharmacyName?.toLowerCase().includes(q) ||
-        o.address?.toLowerCase().includes(q)
+        o.pharmacyName?.toLowerCase().includes(q)
     );
   }, [completedDeliveries, searchQuery]);
 
@@ -301,47 +300,41 @@ export const RiderHistoryPage = () => {
                 </span>
                 <span className="px-3 py-1 rounded-xl bg-forest-50 text-forest-900 border border-forest-200 font-bold flex items-center gap-1.5">
                   <Coins className="w-3.5 h-3.5 text-forest-700" />
-                  <span>₹40.00 Delivery Fee Credited to Rider Wallet</span>
+                  <span>₹30.00 Delivery Fee Credited to Rider Wallet</span>
                 </span>
               </div>
 
               {/* Routing Information (Pharmacy & Customer) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 {/* Pharmacy Information */}
-                <div className="p-3.5 rounded-2xl bg-surface-warm/40 border border-brandBorder-subtle space-y-1">
+                <div className="p-3.5 rounded-2xl bg-surface-warm/40 border border-brandBorder-subtle space-y-1.5">
                   <div className="flex items-center gap-1.5 font-bold text-forest-900">
                     <Building2 className="w-4 h-4 text-purple-700" />
                     <span>Fulfillment Pharmacy</span>
                   </div>
                   <p className="font-bold text-forest-900 pl-5">{order.pharmacyName}</p>
-                  <p className="text-brandText-secondary pl-5">{order.pharmacyAddress}</p>
-                  {order.pharmacyPhone && (
-                    <p className="text-brandText-muted pl-5 text-[11px]">Tel: {order.pharmacyPhone}</p>
-                  )}
+                  <p className="text-[11px] text-brandText-muted pl-5 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-700 flex-shrink-0" />
+                    <span>Pickup completed &bull; Pharmacy address & contact hidden for privacy</span>
+                  </p>
                 </div>
 
                 {/* Customer Information */}
-                <div className="p-3.5 rounded-2xl bg-surface-warm/40 border border-brandBorder-subtle space-y-1">
+                <div className="p-3.5 rounded-2xl bg-surface-warm/40 border border-brandBorder-subtle space-y-1.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 font-bold text-forest-900">
                       <MapPin className="w-4 h-4 text-emerald-700" />
                       <span>Delivered to Patient</span>
                     </div>
-                    {order.customerPhone && (
-                      <a
-                        href={`tel:${order.customerPhone}`}
-                        className="p-1 rounded-lg bg-emerald-100 text-emerald-800 hover:bg-emerald-200 text-[10px] font-bold flex items-center gap-1"
-                      >
-                        <Phone className="w-3 h-3" />
-                        <span>Call</span>
-                      </a>
-                    )}
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                      Delivered
+                    </span>
                   </div>
                   <p className="font-bold text-forest-900 pl-5">{order.customerName}</p>
-                  <p className="text-brandText-secondary pl-5">{order.address}</p>
-                  {order.customerPhone && (
-                    <p className="text-brandText-muted pl-5 text-[11px]">Contact: {order.customerPhone}</p>
-                  )}
+                  <p className="text-[11px] text-brandText-muted pl-5 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    <span>Delivery completed &bull; Patient address & contact hidden for privacy</span>
+                  </p>
                 </div>
               </div>
 
