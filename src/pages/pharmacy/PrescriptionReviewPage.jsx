@@ -443,13 +443,30 @@ export const PrescriptionReviewPage = () => {
 
       // 3. Update local workspace store for instant UI response
       verifyPrescription(currentRx.id, approvedItems, pharmacistNotes);
-      createOrder({
+      const deliveryOtpVal =
+        savedBackendOrder?.deliveryOtp ||
+        savedBackendOrder?.deliveryAddress?.deliveryOtp ||
+        String(Math.floor(1000 + Math.random() * 9000));
+
+      const newCreatedOrder = createOrder({
         id: savedBackendOrder?.orderNumber || savedBackendOrder?.id,
-        customerName: currentRx.patientName,
+        backendId: savedBackendOrder?.id,
+        orderNumber: savedBackendOrder?.orderNumber,
+        customerName: currentRx.patientName || 'Registered Patient',
         customerPhone: currentRx.patientPhone,
-        address: 'Home Delivery Address (Provided by Patient)',
+        address: currentRx.address || 'Home Delivery Address (Provided by Patient)',
         area: 'Kolkata Central & Suburban',
-        items: approvedItems,
+        items: approvedItems.map((it) => ({
+          id: it.id || it.productId,
+          name: it.name,
+          quantity: Number(it.qty || it.quantity || 1),
+          qty: Number(it.qty || it.quantity || 1),
+          price: Number(it.price || 0),
+          unitPrice: Number(it.price || 0),
+          lineTotal: Number(it.price || 0) * Number(it.qty || it.quantity || 1),
+          requiresPrescription: true,
+          form: it.form || it.packaging || 'Pack',
+        })),
         totalMrp: approvalSubtotal,
         subtotal: approvalSubtotal,
         packagingFee: approvalPackagingFee,
@@ -460,8 +477,18 @@ export const PrescriptionReviewPage = () => {
         total: approvalFinalTotal,
         status: 'READY_FOR_PICKUP',
         paymentMethod: 'COD',
+        deliveryOtp: deliveryOtpVal,
         prescriptionId: currentRx.id,
       });
+
+      // Broadcast order creation across windows & tabs so patient's OrdersPage updates instantly
+      window.dispatchEvent(new CustomEvent('oshud_order_created', { detail: { order: newCreatedOrder } }));
+      try {
+        localStorage.setItem(
+          'oshud_last_order_created',
+          JSON.stringify({ orderId: newCreatedOrder.id, time: Date.now() })
+        );
+      } catch (e) {}
 
       // 4. Update prescription lists and close modal
       setBackendPrescriptions((prev) =>

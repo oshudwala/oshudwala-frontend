@@ -4,6 +4,66 @@ const isUuid = (val) =>
   typeof val === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
 
+const normalizeOrder = (o) => {
+  if (!o) return null;
+  const subtotal = o.subtotal !== undefined ? Number(o.subtotal) : Number(o.subtotalPaise || 0) / 100;
+  const total = o.total !== undefined ? Number(o.total) : Number(o.totalPaise || 0) / 100;
+  const deliveryFee = o.deliveryFee !== undefined ? Number(o.deliveryFee) : Number(o.deliveryFeePaise || 0) / 100;
+  const addr = o.deliveryAddress || {};
+  const fullAddress =
+    o.address ||
+    [addr.line1, addr.area, addr.city, addr.pincode].filter(Boolean).join(', ') ||
+    addr.line1 ||
+    'Home Delivery Address';
+
+  const rawItems = o.items || [];
+  const normalizedItems = rawItems.map((it) => {
+    const qty = Number(it.qty || it.quantity || 1);
+    const price =
+      it.price !== undefined
+        ? Number(it.price)
+        : Number(it.unitPricePaise || it.mrpPaise || 0) / 100;
+    return {
+      id: it.id,
+      name: it.name || it.nameSnapshot || it.product?.name || 'Prescription Medicine',
+      qty,
+      quantity: qty,
+      price,
+      unitPrice: price,
+      lineTotal: Number(it.lineTotal || (it.lineTotalPaise ? it.lineTotalPaise / 100 : price * qty)),
+      requiresPrescription: Boolean(it.requiresPrescription),
+      form: it.form || it.packaging || 'Pack',
+    };
+  });
+
+  const otp = o.deliveryOtp || addr.deliveryOtp || '9876';
+
+  return {
+    ...o,
+    id: o.orderNumber || o.id,
+    backendId: o.id,
+    orderNumber: o.orderNumber || o.id,
+    status: o.status,
+    total,
+    subtotal,
+    deliveryFee,
+    deliveryOtp: otp,
+    address: fullAddress,
+    customerName: o.customerName || addr.fullName || 'Customer',
+    customerPhone: o.customerPhone || addr.phone || '',
+    pharmacyName: o.pharmacyName || o.pharmacy?.name || 'Licensed Partner Pharmacy',
+    pharmacyAddress: o.pharmacyAddress || [o.pharmacy?.line1, o.pharmacy?.city].filter(Boolean).join(', ') || '',
+    pharmacyPhone: o.pharmacyPhone || o.pharmacy?.phone || '',
+    items: normalizedItems,
+    timeline: o.timeline || [
+      { status: 'Order Placed & Confirmed', time: new Date(o.placedAt || o.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), completed: true },
+      { status: 'Pharmacy Approved & Packed', time: o.status !== 'PENDING_PHARMACY_REVIEW' ? 'Completed' : 'In Review', completed: o.status !== 'PENDING_PHARMACY_REVIEW' },
+      { status: 'Rider Out For Delivery', time: ['OUT_FOR_DELIVERY', 'SHIPPED', 'PICKED_UP', 'DELIVERED'].includes(o.status) ? 'Dispatched' : 'Pending', completed: ['OUT_FOR_DELIVERY', 'SHIPPED', 'PICKED_UP', 'DELIVERED'].includes(o.status) },
+      { status: 'Delivered to Doorstep', time: o.status === 'DELIVERED' ? 'Delivered' : 'Pending', completed: o.status === 'DELIVERED' },
+    ],
+  };
+};
+
 export const orderService = {
   /**
    * Place an order with verified pharmacy
@@ -86,9 +146,11 @@ export const orderService = {
       } catch {
         response = await apiClient.get('/orders');
       }
-      const data = response?.data?.data || response?.data || [];
-      return Array.isArray(data) ? data : [];
+      const raw = response?.data?.data || response?.data || [];
+      const list = Array.isArray(raw) ? raw : [];
+      return list.map(normalizeOrder).filter(Boolean);
     } catch (err) {
+      console.warn('orderService.getUserOrders notice:', err.message);
       return [];
     }
   },
@@ -99,7 +161,8 @@ export const orderService = {
    */
   async getOrderById(id) {
     const response = await apiClient.get(`/orders/${id}`);
-    return response.data?.data || response.data;
+    const data = response.data?.data || response.data;
+    return normalizeOrder(data);
   },
 };
 

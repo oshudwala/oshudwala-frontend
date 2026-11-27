@@ -11,7 +11,10 @@ import {
   RotateCcw,
   ArrowRight,
   MapPin,
-  Ticket
+  Ticket,
+  KeyRound,
+  Receipt,
+  Sparkles,
 } from 'lucide-react';
 import { orderService } from '../services/orderService';
 import { useWorkspaceStore } from '../services/workspace/useWorkspaceStore';
@@ -34,25 +37,56 @@ export const OrdersPage = () => {
 
   useEffect(() => {
     let isMounted = true;
-    (async () => {
+
+    const syncOrders = async () => {
       try {
         const data = await orderService.getUserOrders();
+        const map = new Map();
+
+        // 1. Add workspace store orders first
+        (storeOrders || []).forEach((so) => {
+          map.set(so.id, so);
+          if (so.backendId) map.set(so.backendId, so);
+          if (so.orderNumber) map.set(so.orderNumber, so);
+        });
+
+        // 2. Overlay backend orders
+        (data || []).forEach((bo) => {
+          const key = bo.orderNumber || bo.id;
+          const existing = map.get(key) || (bo.backendId && map.get(bo.backendId)) || map.get(bo.id);
+          map.set(key, { ...existing, ...bo });
+        });
+
         if (isMounted) {
-          if (Array.isArray(data) && data.length > 0) {
-            setOrders(data);
+          const mergedList = Array.from(map.values());
+          if (mergedList.length > 0) {
+            setOrders(mergedList);
           } else {
-            // Fallback to real-time synchronized workspace orders
-            setOrders(storeOrders);
+            setOrders(storeOrders || []);
           }
         }
-      } catch {
-        if (isMounted) setOrders(storeOrders);
+      } catch (err) {
+        if (isMounted) setOrders(storeOrders || []);
       } finally {
         if (isMounted) setIsLoading(false);
       }
-    })();
+    };
+
+    syncOrders();
+
+    const handleSyncEvent = () => {
+      syncOrders();
+    };
+
+    window.addEventListener('oshud_order_created', handleSyncEvent);
+    window.addEventListener('oshud_order_status_updated', handleSyncEvent);
+    window.addEventListener('storage', handleSyncEvent);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('oshud_order_created', handleSyncEvent);
+      window.removeEventListener('oshud_order_status_updated', handleSyncEvent);
+      window.removeEventListener('storage', handleSyncEvent);
     };
   }, [storeOrders]);
 
@@ -161,17 +195,22 @@ export const OrdersPage = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-0 border-brandBorder-subtle">
+                  <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-0 border-brandBorder-subtle">
                     {order.deliveryOtp && order.status !== 'DELIVERED' && (
-                      <div className="bg-forest-900 text-white px-3.5 py-1.5 rounded-xl text-center">
-                        <p className="text-[9px] uppercase tracking-wider text-forest-200">Delivery OTP</p>
-                        <p className="font-mono font-bold text-sm text-emerald-300">{order.deliveryOtp}</p>
+                      <div className="bg-forest-900 text-white px-3.5 py-1.5 rounded-2xl shadow-md border border-forest-700/60 flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-[9px] uppercase tracking-wider font-extrabold text-emerald-400 leading-tight">Delivery OTP</p>
+                          <p className="font-mono font-extrabold text-base tracking-widest text-emerald-300 leading-tight mt-0.5">{order.deliveryOtp}</p>
+                        </div>
                       </div>
                     )}
                     <div className="text-right">
-                      <p className="text-[11px] text-brandText-secondary">Total Amount</p>
+                      <p className="text-[11px] text-brandText-secondary font-medium">Total Amount</p>
                       <p className="font-heading font-extrabold text-forest-800 text-base sm:text-lg">
-                        ₹{Number(order.total).toFixed(2)}
+                        ₹{Number(order.total ?? (order.totalPaise ? order.totalPaise / 100 : 0)).toFixed(2)}
                       </p>
                     </div>
                   </div>
@@ -273,22 +312,50 @@ export const OrdersPage = () => {
 
                   {/* Medicines List In Order */}
                   <div className="border-t border-brandBorder-subtle pt-4">
-                    <h5 className="text-xs font-bold text-forest-800 uppercase tracking-wider mb-3">
-                      Ordered Medicines & Items ({order.items?.length || 0})
-                    </h5>
-                    <div className="divide-y divide-brandBorder-light">
-                      {(order.items || []).map((item, idx) => (
-                        <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
-                          <div className="min-w-0 pr-3">
-                            <span className="font-bold text-forest-900">{item.name}</span>
-                            <span className="text-brandText-secondary ml-2">({item.form || item.packaging || 'Pack'})</span>
-                            <span className="text-brandText-muted ml-2">x{item.qty || item.quantity || 1}</span>
-                          </div>
-                          <span className="font-bold text-forest-800 flex-shrink-0">
-                            ₹{((item.price || 0) * (item.qty || item.quantity || 1)).toFixed(2)}
-                          </span>
+                    <div className="flex items-center justify-between mb-3">
+                      <h5 className="text-xs font-bold text-forest-800 uppercase tracking-wider flex items-center gap-1.5">
+                        <Receipt className="w-3.5 h-3.5 text-forest-600" />
+                        <span>Prescribed Medicines & Items ({(order.items || []).length})</span>
+                      </h5>
+                      <span className="text-xs font-bold text-forest-700">
+                        Package Total: ₹{Number(order.total ?? (order.totalPaise ? order.totalPaise / 100 : 0)).toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-brandBorder-subtle bg-surface-warm/40 rounded-2xl p-2 border border-brandBorder-subtle">
+                      {(order.items || []).length > 0 ? (
+                        (order.items || []).map((item, idx) => {
+                          const itemName = item.name || item.nameSnapshot || 'Prescription Medicine';
+                          const itemQty = Number(item.qty || item.quantity || 1);
+                          const itemPrice = Number(item.price ?? (item.unitPricePaise ? item.unitPricePaise / 100 : 0));
+                          const itemLineTotal = Number(item.lineTotal || (itemPrice * itemQty));
+
+                          return (
+                            <div key={idx} className="p-2.5 flex items-center justify-between text-xs">
+                              <div className="min-w-0 pr-3 space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-forest-900 text-sm">{itemName}</span>
+                                  {item.requiresPrescription ? (
+                                    <span className="text-[9px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.5 rounded">Rx</span>
+                                  ) : (
+                                    <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">OTC</span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-brandText-secondary">
+                                  Quantity: <strong className="text-forest-900">{itemQty}</strong> &bull; Unit: ₹{itemPrice.toFixed(2)}
+                                </p>
+                              </div>
+                              <span className="font-mono font-extrabold text-forest-900 text-sm flex-shrink-0">
+                                ₹{itemLineTotal.toFixed(2)}
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="p-4 text-center text-xs text-brandText-muted">
+                          Medicines prepared and verified by fulfillment pharmacist.
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
 
