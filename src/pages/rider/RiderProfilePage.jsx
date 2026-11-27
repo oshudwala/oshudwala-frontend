@@ -362,18 +362,43 @@ export const RiderProfilePage = () => {
   };
 
   // Handover completed with customer OTP
-  const handleDeliveryConfirmed = (orderId, otp, amount) => {
+  const handleDeliveryConfirmed = async (orderId, otp, amount) => {
     try {
+      // 1. Call backend to mark delivery & order as DELIVERED in the database
+      const targetOrder = allAssignedOrders.find(
+        (o) => o.id === orderId || o.backendId === orderId || o.orderNumber === orderId
+      );
+      const deliveryLookupId = targetOrder?.deliveryId || targetOrder?.backendId || orderId;
+      await deliveryApi.completeDelivery(deliveryLookupId, otp);
+
+      // 2. Update workspace store
       completeDelivery(orderId, otp, amount);
+
+      // 3. Update local deliveries state
       setBackendDeliveries((prev) =>
         prev.map((d) =>
-          d.id === orderId || d.backendId === orderId ? { ...d, status: 'DELIVERED' } : d
+          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId ? { ...d, status: 'DELIVERED' } : d
         )
       );
+
+      // 4. Broadcast status event across all windows & tabs
+      window.dispatchEvent(
+        new CustomEvent('oshud_order_status_updated', {
+          detail: { orderId, status: 'DELIVERED', otp },
+        })
+      );
+      try {
+        localStorage.setItem(
+          'oshud_last_status_event',
+          JSON.stringify({ orderId, status: 'DELIVERED', time: Date.now() })
+        );
+      } catch (e) {}
+
+      fetchMyDeliveries();
       addToast(`Order ${orderId} delivered successfully! COD cash collected & reconciled.`, 'success');
       setDeliveryOtpModalOrder(null);
     } catch (err) {
-      addToast(err.message, 'error');
+      addToast(err.message || 'Failed to complete delivery', 'error');
     }
   };
 

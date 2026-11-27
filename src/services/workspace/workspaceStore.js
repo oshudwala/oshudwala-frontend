@@ -244,8 +244,25 @@ export const workspaceStore = {
 
   // === ORDERS ACTIONS ===
   updateOrderStatus(orderId, newStatus, extraData = {}) {
-    const orderIndex = state.orders.findIndex((o) => o.id === orderId || o.backendId === orderId);
-    if (orderIndex === -1) return null;
+    const orderIndex = state.orders.findIndex(
+      (o) => o.id === orderId || o.backendId === orderId || o.orderNumber === orderId
+    );
+    if (orderIndex === -1) {
+      const newOrder = {
+        id: orderId,
+        backendId: orderId,
+        status: newStatus,
+        timeline: [
+          { status: 'Order Placed', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), completed: true },
+          { status: newStatus.replace(/_/g, ' '), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), completed: true },
+        ],
+        createdAt: new Date().toISOString(),
+        ...extraData,
+      };
+      state = { ...state, orders: [newOrder, ...state.orders], lastUpdated: Date.now() };
+      persistAndNotify();
+      return newOrder;
+    }
 
     const currentOrder = state.orders[orderIndex];
     const updatedOrder = {

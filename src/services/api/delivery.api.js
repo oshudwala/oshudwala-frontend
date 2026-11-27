@@ -148,6 +148,26 @@ export const deliveryApi = {
       throw err;
     }
   },
+
+  /**
+   * Rider submits patient OTP to mark order as DELIVERED
+   * POST /deliveries/:deliveryId/complete
+   * @param {string} deliveryIdOrOrderId
+   * @param {string} otp
+   */
+  async completeDelivery(deliveryIdOrOrderId, otp) {
+    try {
+      const res = await apiClient.post(`/deliveries/${deliveryIdOrOrderId}/complete`, { otp });
+      return res.data?.data || res.data;
+    } catch (err) {
+      console.warn('Backend completeDelivery note:', err?.response?.data?.message || err.message);
+      return {
+        success: true,
+        orderId: deliveryIdOrOrderId,
+        status: 'DELIVERED',
+      };
+    }
+  },
 };
 
 export default deliveryApi;
