@@ -153,27 +153,78 @@ export const QRPickupVerificationPage = () => {
   }, [activeQrData]);
 
   // -------------------------------------------------------------
-  // AUTOMATIC VERIFICATION OBSERVER
+  // AUTOMATIC VERIFICATION OBSERVER & REAL-TIME POLLING
   // When the rider scans the QR code (backend updates status to SHIPPED / OUT_FOR_DELIVERY),
   // this observer automatically detects the transition and completes verification with 0 manual clicks!
   // -------------------------------------------------------------
   const processedHandoversRef = useRef(new Set());
 
+  // Poll backend orders every 2 seconds while waiting for rider pickup
   useEffect(() => {
-    if (!activeQrData?.order?.id) return;
+    if (!activeQrData) return;
+    const pollInterval = setInterval(() => {
+      fetchBackendOrders();
+    }, 2000);
+    return () => clearInterval(pollInterval);
+  }, [activeQrData]);
+
+  // Observer detecting when status transitions to SHIPPED / OUT_FOR_DELIVERY
+  useEffect(() => {
+    if (!activeQrData?.order) return;
     const targetId = activeQrData.order.id;
-    const orderInStore = orders.find((o) => o.id === targetId);
+    const targetBackendId = activeQrData.order.backendId;
+    const targetOrderNumber = activeQrData.order.orderNumber;
+
+    const matched = mergedOrders.find(
+      (o) =>
+        o.id === targetId ||
+        (targetBackendId && (o.id === targetBackendId || o.backendId === targetBackendId)) ||
+        (targetOrderNumber && (o.id === targetOrderNumber || o.orderNumber === targetOrderNumber))
+    );
 
     if (
-      orderInStore &&
-      ['SHIPPED', 'OUT_FOR_DELIVERY', 'PICKED_UP', 'DELIVERED'].includes(orderInStore.status)
+      matched &&
+      ['SHIPPED', 'OUT_FOR_DELIVERY', 'PICKED_UP', 'DELIVERED'].includes(matched.status)
     ) {
       if (!processedHandoversRef.current.has(targetId)) {
         processedHandoversRef.current.add(targetId);
-        handleExecuteAutomatedHandover(orderInStore, activeQrData.token);
+        handleExecuteAutomatedHandover(matched, activeQrData.token);
       }
     }
-  }, [orders, activeQrData]);
+  }, [mergedOrders, activeQrData]);
+
+  // Listen to cross-tab storage and window events
+  useEffect(() => {
+    const handleStatusUpdate = (e) => {
+      const { orderId, status } = e.detail || {};
+      fetchBackendOrders();
+      if (
+        activeQrData &&
+        (orderId === activeQrData.order?.id || orderId === activeQrData.order?.backendId || orderId === activeQrData.order?.orderNumber) &&
+        ['SHIPPED', 'OUT_FOR_DELIVERY', 'PICKED_UP', 'DELIVERED'].includes(status)
+      ) {
+        const target = mergedOrders.find((o) => o.id === orderId || o.backendId === orderId || o.orderNumber === orderId) || activeQrData.order;
+        if (!processedHandoversRef.current.has(activeQrData.order.id)) {
+          processedHandoversRef.current.add(activeQrData.order.id);
+          handleExecuteAutomatedHandover(target, activeQrData.token);
+        }
+      }
+    };
+
+    const handleStorageUpdate = (e) => {
+      if (e.key === 'oshud_workspace_orders' || e.key === 'oshud_last_status_event') {
+        fetchBackendOrders();
+      }
+    };
+
+    window.addEventListener('oshud_order_status_updated', handleStatusUpdate);
+    window.addEventListener('storage', handleStorageUpdate);
+
+    return () => {
+      window.removeEventListener('oshud_order_status_updated', handleStatusUpdate);
+      window.removeEventListener('storage', handleStorageUpdate);
+    };
+  }, [activeQrData, mergedOrders]);
 
   const handleExecuteAutomatedHandover = (order, qrToken) => {
     const assignedRider = order.assignedRider || {

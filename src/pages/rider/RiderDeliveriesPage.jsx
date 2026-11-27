@@ -134,6 +134,33 @@ export const RiderDeliveriesPage = () => {
   }, [user]);
 
   useEffect(() => {
+    const handleStatusSync = (e) => {
+      const { orderId, status } = e.detail || {};
+      if (orderId && status) {
+        setBackendDeliveries((prev) =>
+          prev.map((d) =>
+            d.id === orderId || d.backendId === orderId || d.orderNumber === orderId
+              ? { ...d, status }
+              : d
+          )
+        );
+        fetchMyDeliveries();
+      }
+    };
+    const handleStorageSync = (e) => {
+      if (e.key === 'oshud_workspace_orders' || e.key === 'oshud_last_status_event') {
+        fetchMyDeliveries();
+      }
+    };
+    window.addEventListener('oshud_order_status_updated', handleStatusSync);
+    window.addEventListener('storage', handleStorageSync);
+    return () => {
+      window.removeEventListener('oshud_order_status_updated', handleStatusSync);
+      window.removeEventListener('storage', handleStorageSync);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleProfileUpdate = () => {
       setRiderProfile(riderApi.getRiderProfile(user?.id, user));
     };
@@ -203,8 +230,44 @@ export const RiderDeliveriesPage = () => {
 
   const handlePickupVerified = (orderId, pickupCode, verifiedResult) => {
     try {
-      const verifiedItems = verifiedResult?.orders?.[0]?.items || [];
+      const verifiedOrders = verifiedResult?.orders || [];
+      const verifiedOrder = verifiedOrders[0] || {};
+      const verifiedItems = verifiedOrder.items || [];
+
+      // 1. Update local workspace store
       verifyPickup(orderId, pickupCode, verifiedItems);
+
+      // 2. Immediately update local deliveries state so the card flips to "Deliver to Patient"
+      setBackendDeliveries((prev) =>
+        prev.map((d) =>
+          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId
+            ? {
+                ...d,
+                status: 'OUT_FOR_DELIVERY',
+                items: verifiedItems.length > 0 ? verifiedItems : d.items,
+                customerName: verifiedOrder.customerName || d.customerName,
+                customerPhone: verifiedOrder.customerPhone || d.customerPhone,
+                address: verifiedOrder.deliveryAddress || d.address,
+                area: verifiedOrder.area || d.area,
+              }
+            : d
+        )
+      );
+
+      // 3. Broadcast status event across all windows & tabs
+      window.dispatchEvent(
+        new CustomEvent('oshud_order_status_updated', {
+          detail: { orderId, status: 'OUT_FOR_DELIVERY', pickupCode, verifiedItems },
+        })
+      );
+      try {
+        localStorage.setItem(
+          'oshud_last_status_event',
+          JSON.stringify({ orderId, status: 'OUT_FOR_DELIVERY', time: Date.now() })
+        );
+      } catch (e) {}
+
+      fetchMyDeliveries();
       addToast(`Pickup confirmed for Order ${orderId}! Package contents & medicine list verified.`, 'success');
       setPickupModalOrder(null);
     } catch (err) {
@@ -423,43 +486,47 @@ export const RiderDeliveriesPage = () => {
                   </div>
                 </div>
 
-                {/* Verified Medicine Contents List */}
-                {isOutForDelivery && (
-                  <div className="p-4 rounded-2xl bg-forest-50/70 border border-forest-100 space-y-3 animate-fade-in">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-heading font-bold text-xs text-forest-900 flex items-center gap-1.5 uppercase tracking-wider">
-                        <Receipt className="w-3.5 h-3.5 text-forest-700" />
-                        <span>Verified Package Contents ({order.items?.length || 0} Medicines)</span>
-                      </h4>
+                {/* Medicine Contents List */}
+                <div className="p-4 rounded-2xl bg-forest-50/70 border border-forest-100 space-y-3 animate-fade-in">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-heading font-bold text-xs text-forest-900 flex items-center gap-1.5 uppercase tracking-wider">
+                      <Receipt className="w-3.5 h-3.5 text-forest-700" />
+                      <span>{isOutForDelivery ? 'Verified Package Medicines' : 'Assigned Package Contents'} ({order.items?.length || 0} Items)</span>
+                    </h4>
+                    {isOutForDelivery ? (
                       <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
                         Authenticated Parcel
                       </span>
-                    </div>
-
-                    <div className="border border-brandBorder-subtle rounded-xl overflow-hidden divide-y divide-brandBorder-subtle bg-surface-pure text-xs">
-                      {order.items && order.items.length > 0 ? (
-                        order.items.map((it, idx) => (
-                          <div key={idx} className="p-2.5 flex items-center justify-between">
-                            <div>
-                              <p className="font-bold text-forest-900">{it.name}</p>
-                              <p className="text-[10px] text-brandText-muted">
-                                Qty: <strong className="text-forest-800">{it.quantity || it.qty || 1}</strong>{' '}
-                                {it.requiresPrescription ? '• Prescription Drug' : '• OTC Item'}
-                              </p>
-                            </div>
-                            <span className="font-bold text-forest-800">
-                              ₹{(Number(it.price || it.unitPrice || 0) * Number(it.quantity || it.qty || 1)).toFixed(2)}
-                            </span>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="p-3 text-center text-xs text-brandText-muted">
-                          Package contents verified by fulfillment pharmacist.
-                        </div>
-                      )}
-                    </div>
+                    ) : (
+                      <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                        Awaiting Pharmacy Pickup
+                      </span>
+                    )}
                   </div>
-                )}
+
+                  <div className="border border-brandBorder-subtle rounded-xl overflow-hidden divide-y divide-brandBorder-subtle bg-surface-pure text-xs">
+                    {order.items && order.items.length > 0 ? (
+                      order.items.map((it, idx) => (
+                        <div key={idx} className="p-2.5 flex items-center justify-between">
+                          <div>
+                            <p className="font-bold text-forest-900">{it.name || it.nameSnapshot || 'Medicine'}</p>
+                            <p className="text-[10px] text-brandText-muted">
+                              Qty: <strong className="text-forest-800">{it.quantity || it.qty || 1}</strong>{' '}
+                              {it.requiresPrescription ? '• Prescription Drug' : '• OTC Item'}
+                            </p>
+                          </div>
+                          <span className="font-bold text-forest-800">
+                            ₹{(Number(it.price || it.unitPrice || 0) * Number(it.quantity || it.qty || 1)).toFixed(2)}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-3 text-center text-xs text-brandText-muted">
+                        Package contents verified by fulfillment pharmacist.
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             );
           })}

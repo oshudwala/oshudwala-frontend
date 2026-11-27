@@ -162,6 +162,33 @@ export const RiderProfilePage = () => {
     fetchMyDeliveries();
   }, [user]);
 
+  useEffect(() => {
+    const handleStatusSync = (e) => {
+      const { orderId, status } = e.detail || {};
+      if (orderId && status) {
+        setBackendDeliveries((prev) =>
+          prev.map((d) =>
+            d.id === orderId || d.backendId === orderId || d.orderNumber === orderId
+              ? { ...d, status }
+              : d
+          )
+        );
+        fetchMyDeliveries();
+      }
+    };
+    const handleStorageSync = (e) => {
+      if (e.key === 'oshud_workspace_orders' || e.key === 'oshud_last_status_event') {
+        fetchMyDeliveries();
+      }
+    };
+    window.addEventListener('oshud_order_status_updated', handleStatusSync);
+    window.addEventListener('storage', handleStorageSync);
+    return () => {
+      window.removeEventListener('oshud_order_status_updated', handleStatusSync);
+      window.removeEventListener('storage', handleStorageSync);
+    };
+  }, []);
+
   // Merge backend deliveries with local workspace store orders assigned to this rider
   const allAssignedOrders = React.useMemo(() => {
     const cleanUserPhone = (user?.phone || profileData.phone || '').replace(/[^0-9]/g, '');
@@ -313,6 +340,19 @@ export const RiderProfilePage = () => {
           : d
       )
     );
+
+    // 3. Broadcast status event across all windows & tabs
+    window.dispatchEvent(
+      new CustomEvent('oshud_order_status_updated', {
+        detail: { orderId, status: 'OUT_FOR_DELIVERY', pickupCode, verifiedItems },
+      })
+    );
+    try {
+      localStorage.setItem(
+        'oshud_last_status_event',
+        JSON.stringify({ orderId, status: 'OUT_FOR_DELIVERY', time: Date.now() })
+      );
+    } catch (e) {}
 
     addToast(
       `Handover authenticated! Parcel for Order ${orderId} unlocked. Medicine list verified.`,
