@@ -99,6 +99,16 @@ export const RiderDashboardPage = () => {
             const bodyText = n.desc || n.body || '';
             const match = bodyText.match(/Order\s+([A-Za-z0-9-]+)\s+assigned/i);
             const orderIdFromNotif = n.data?.orderId || match?.[1] || 'Assigned Order';
+            // Do NOT resurrect if order is already delivered in workspace
+            const isAlreadyDelivered = (orders || []).some(
+              (wo) =>
+                (wo.id === orderIdFromNotif ||
+                  wo.backendId === orderIdFromNotif ||
+                  wo.orderNumber === orderIdFromNotif) &&
+                wo.status === 'DELIVERED'
+            );
+            if (isAlreadyDelivered) return;
+
             if (!mapped.some((m) => m.id === orderIdFromNotif || m.backendId === orderIdFromNotif)) {
               mapped.push({
                 id: orderIdFromNotif,
@@ -252,7 +262,7 @@ export const RiderDashboardPage = () => {
       // 3. Update local deliveries state so the order is immediately marked DELIVERED and removed from active queue
       setBackendDeliveries((prev) =>
         prev.map((d) =>
-          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId
+          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId || d.deliveryId === deliveryLookupId
             ? { ...d, status: 'DELIVERED' }
             : d
         )
@@ -261,7 +271,7 @@ export const RiderDashboardPage = () => {
       // 4. Broadcast status event across all windows & tabs
       window.dispatchEvent(
         new CustomEvent('oshud_order_status_updated', {
-          detail: { orderId, status: 'DELIVERED', otp },
+          detail: { orderId, backendId: targetOrder?.backendId, orderNumber: targetOrder?.orderNumber, status: 'DELIVERED', otp },
         })
       );
       try {
@@ -271,11 +281,12 @@ export const RiderDashboardPage = () => {
         );
       } catch (e) {}
 
-      fetchMyDeliveries();
-      addToast(`Order ${orderId} delivered successfully! Payment reconciled and verified.`, 'success');
       setDeliveryOtpModalOrder(null);
+      await fetchMyDeliveries();
+      addToast(`Order ${orderId} delivered successfully! Payment reconciled and verified.`, 'success');
     } catch (err) {
       addToast(err.message || 'Failed to complete delivery', 'error');
+      throw err;
     }
   };
 

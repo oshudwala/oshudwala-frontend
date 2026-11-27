@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Bike,
   Building2,
@@ -9,6 +10,7 @@ import {
   CheckCircle2,
   Receipt,
   RefreshCw,
+  History,
 } from 'lucide-react';
 import StatusBadge from '../../components/workspace/StatusBadge';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
@@ -23,6 +25,7 @@ import PharmacyPickupModal from '../../components/rider/PharmacyPickupModal';
 import DeliveryOtpModal from '../../components/rider/DeliveryOtpModal';
 
 export const RiderDeliveriesPage = () => {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { orders, riders, verifyPickup, completeDelivery, toggleRiderOnline } = useWorkspaceStore();
   const { addToast } = useToast();
@@ -96,6 +99,16 @@ export const RiderDeliveriesPage = () => {
             const bodyText = n.desc || n.body || '';
             const match = bodyText.match(/Order\s+([A-Za-z0-9-]+)\s+assigned/i);
             const orderIdFromNotif = n.data?.orderId || match?.[1] || 'Assigned Order';
+            // Do NOT resurrect if order is already delivered in workspace
+            const isAlreadyDelivered = (orders || []).some(
+              (wo) =>
+                (wo.id === orderIdFromNotif ||
+                  wo.backendId === orderIdFromNotif ||
+                  wo.orderNumber === orderIdFromNotif) &&
+                wo.status === 'DELIVERED'
+            );
+            if (isAlreadyDelivered) return;
+
             if (!mapped.some((m) => m.id === orderIdFromNotif || m.backendId === orderIdFromNotif)) {
               mapped.push({
                 id: orderIdFromNotif,
@@ -221,6 +234,12 @@ export const RiderDeliveriesPage = () => {
     ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'SHIPPED', 'PICKED_UP', 'ASSIGNED'].includes(o.status)
   );
 
+  const completedDeliveries = useMemo(() => {
+    return allAssignedOrders.filter(
+      (o) => o.status === 'DELIVERED' || o.deliveryStatus === 'DELIVERED'
+    );
+  }, [allAssignedOrders]);
+
   const handleToggleDuty = () => {
     if (currentRider?.id) {
       toggleRiderOnline(currentRider.id, !isOnline);
@@ -290,7 +309,7 @@ export const RiderDeliveriesPage = () => {
       // 3. Update local deliveries state so the order is immediately marked DELIVERED and removed from active queue
       setBackendDeliveries((prev) =>
         prev.map((d) =>
-          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId
+          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId || d.deliveryId === deliveryLookupId
             ? { ...d, status: 'DELIVERED' }
             : d
         )
@@ -299,7 +318,7 @@ export const RiderDeliveriesPage = () => {
       // 4. Broadcast status event across all windows & tabs
       window.dispatchEvent(
         new CustomEvent('oshud_order_status_updated', {
-          detail: { orderId, status: 'DELIVERED', otp },
+          detail: { orderId, backendId: targetOrder?.backendId, orderNumber: targetOrder?.orderNumber, status: 'DELIVERED', otp },
         })
       );
       try {
@@ -309,14 +328,15 @@ export const RiderDeliveriesPage = () => {
         );
       } catch (e) {}
 
-      fetchMyDeliveries();
+      setDeliveryOtpModalOrder(null);
+      await fetchMyDeliveries();
       addToast(
         `Order ${orderId} delivered successfully! Payment reconciled and verified.`,
         'success'
       );
-      setDeliveryOtpModalOrder(null);
     } catch (err) {
       addToast(err.message || 'Failed to complete delivery', 'error');
+      throw err;
     }
   };
 
@@ -374,7 +394,16 @@ export const RiderDeliveriesPage = () => {
             <Bike className="w-5 h-5 text-forest-600" />
             <span>Active Delivery Queue ({activeDeliveries.length})</span>
           </h3>
-          <span className="text-xs text-brandText-muted">Live synchronization active</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchMyDeliveries}
+            isLoading={isLoadingDeliveries}
+            className="text-xs flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3 h-3 ${isLoadingDeliveries ? 'animate-spin' : ''}`} />
+            <span>Sync</span>
+          </Button>
         </div>
 
         <div className="space-y-4">
@@ -564,16 +593,29 @@ export const RiderDeliveriesPage = () => {
           })}
 
           {activeDeliveries.length === 0 && (
-            <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle p-12 text-center space-y-3 shadow-card">
+            <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle p-12 text-center space-y-4 shadow-card">
               <div className="w-16 h-16 rounded-full bg-forest-50 text-forest-700 flex items-center justify-center mx-auto">
                 <Bike className="w-8 h-8" />
               </div>
-              <h3 className="font-heading font-extrabold text-lg text-forest-900">
-                All Deliveries Completed!
-              </h3>
-              <p className="text-xs text-brandText-secondary max-w-sm mx-auto">
-                You have no active orders in your queue. Stay online to receive incoming express delivery requests.
-              </p>
+              <div className="space-y-1">
+                <h3 className="font-heading font-extrabold text-lg text-forest-900">
+                  All Deliveries Completed!
+                </h3>
+                <p className="text-xs text-brandText-secondary max-w-sm mx-auto">
+                  You have no active orders in your queue. Stay online to receive incoming express delivery requests.
+                </p>
+              </div>
+              <div className="pt-1">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={History}
+                  onClick={() => navigate('/rider/history')}
+                  className="text-xs font-bold bg-forest-800 hover:bg-forest-900"
+                >
+                  View Completed Deliveries Tab
+                </Button>
+              </div>
             </div>
           )}
         </div>

@@ -160,7 +160,11 @@ export const deliveryApi = {
       const res = await apiClient.post(`/deliveries/${deliveryIdOrOrderId}/complete`, { otp });
       return res.data?.data || res.data;
     } catch (err) {
-      console.warn('Backend completeDelivery note:', err?.response?.data?.message || err.message);
+      const msg = err?.response?.data?.message || err.message;
+      console.warn('Backend completeDelivery note:', msg);
+      if (err?.response?.status === 400 && msg?.toLowerCase()?.includes('otp')) {
+        throw new Error(msg || 'Invalid delivery OTP. Please verify with the patient.');
+      }
       return {
         success: true,
         orderId: deliveryIdOrOrderId,

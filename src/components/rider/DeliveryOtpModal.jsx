@@ -24,7 +24,7 @@ export const DeliveryOtpModal = ({ order, isOpen, onClose, onConfirmDelivery }) 
 
   if (!isOpen || !order) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const cleanOtp = enteredOtp.trim();
 
@@ -37,11 +37,10 @@ export const DeliveryOtpModal = ({ order, isOpen, onClose, onConfirmDelivery }) 
     setError('');
 
     try {
-      onConfirmDelivery(order.id, cleanOtp, order.total);
+      await onConfirmDelivery(order.id, cleanOtp, order.total);
       onClose();
     } catch (err) {
-      // Do NOT reveal the original OTP in the error message
-      setError('Invalid Delivery OTP. Please double-check with the patient and re-enter.');
+      setError(err?.message || 'Invalid Delivery OTP. Please double-check with the patient and re-enter.');
     } finally {
       setIsSubmitting(false);
     }

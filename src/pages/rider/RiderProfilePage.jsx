@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   User,
   Bike,
@@ -25,6 +26,7 @@ import {
   Clock,
   ChevronRight,
   Receipt,
+  History,
 } from 'lucide-react';
 import Button from '../../components/common/Button';
 import MetricCard from '../../components/workspace/MetricCard';
@@ -40,6 +42,7 @@ import DeliveryOtpModal from '../../components/rider/DeliveryOtpModal';
 
 export const RiderProfilePage = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { addToast } = useToast();
   const { orders, verifyPickup, completeDelivery } = useWorkspaceStore();
   const fileInputRef = useRef(null);
@@ -125,6 +128,16 @@ export const RiderProfilePage = () => {
             const bodyText = n.desc || n.body || '';
             const match = bodyText.match(/Order\s+([A-Za-z0-9-]+)\s+assigned/i);
             const orderIdFromNotif = n.data?.orderId || match?.[1] || 'Assigned Order';
+            // Do NOT resurrect if order is already delivered in workspace
+            const isAlreadyDelivered = (orders || []).some(
+              (wo) =>
+                (wo.id === orderIdFromNotif ||
+                  wo.backendId === orderIdFromNotif ||
+                  wo.orderNumber === orderIdFromNotif) &&
+                wo.status === 'DELIVERED'
+            );
+            if (isAlreadyDelivered) return;
+
             if (!mapped.some((m) => m.id === orderIdFromNotif || m.backendId === orderIdFromNotif)) {
               mapped.push({
                 id: orderIdFromNotif,
@@ -377,14 +390,16 @@ export const RiderProfilePage = () => {
       // 3. Update local deliveries state
       setBackendDeliveries((prev) =>
         prev.map((d) =>
-          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId ? { ...d, status: 'DELIVERED' } : d
+          d.id === orderId || d.backendId === orderId || d.orderNumber === orderId || d.deliveryId === deliveryLookupId
+            ? { ...d, status: 'DELIVERED' }
+            : d
         )
       );
 
       // 4. Broadcast status event across all windows & tabs
       window.dispatchEvent(
         new CustomEvent('oshud_order_status_updated', {
-          detail: { orderId, status: 'DELIVERED', otp },
+          detail: { orderId, backendId: targetOrder?.backendId, orderNumber: targetOrder?.orderNumber, status: 'DELIVERED', otp },
         })
       );
       try {
@@ -394,11 +409,12 @@ export const RiderProfilePage = () => {
         );
       } catch (e) {}
 
-      fetchMyDeliveries();
-      addToast(`Order ${orderId} delivered successfully! COD cash collected & reconciled.`, 'success');
       setDeliveryOtpModalOrder(null);
+      await fetchMyDeliveries();
+      addToast(`Order ${orderId} delivered successfully! COD cash collected & reconciled.`, 'success');
     } catch (err) {
       addToast(err.message || 'Failed to complete delivery', 'error');
+      throw err;
     }
   };
 
@@ -495,7 +511,7 @@ export const RiderProfilePage = () => {
           </div>
 
           {activeDeliveries.length === 0 ? (
-            <div className="bg-surface-pure rounded-3xl p-8 border border-brandBorder-subtle shadow-card text-center space-y-3">
+            <div className="bg-surface-pure rounded-3xl p-8 border border-brandBorder-subtle shadow-card text-center space-y-4">
               <div className="w-14 h-14 bg-forest-50 text-forest-600 rounded-3xl flex items-center justify-center mx-auto">
                 <Bike className="w-7 h-7" />
               </div>
@@ -509,7 +525,7 @@ export const RiderProfilePage = () => {
                 </p>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -518,6 +534,15 @@ export const RiderProfilePage = () => {
                 >
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                   <span>Check for New Assignments</span>
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={History}
+                  onClick={() => navigate('/rider/history')}
+                  className="text-xs font-bold bg-forest-800 hover:bg-forest-900"
+                >
+                  View Completed Deliveries Tab
                 </Button>
               </div>
             </div>

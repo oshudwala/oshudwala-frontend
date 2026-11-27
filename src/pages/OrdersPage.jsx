@@ -43,27 +43,28 @@ export const OrdersPage = () => {
         const data = await orderService.getUserOrders();
         const map = new Map();
 
-        // 1. Add workspace store orders first
+        // 1. Add workspace store orders first keyed by canonical identifier
         (storeOrders || []).forEach((so) => {
-          map.set(so.id, so);
-          if (so.backendId) map.set(so.backendId, so);
-          if (so.orderNumber) map.set(so.orderNumber, so);
+          const key = so.orderNumber || so.backendId || so.id;
+          map.set(key, so);
         });
 
         // 2. Overlay backend orders
         (data || []).forEach((bo) => {
-          const key = bo.orderNumber || bo.id;
-          const existing = map.get(key) || (bo.backendId && map.get(bo.backendId)) || map.get(bo.id);
-          map.set(key, { ...existing, ...bo });
+          const key = bo.orderNumber || bo.backendId || bo.id;
+          const existing =
+            map.get(key) ||
+            (bo.backendId && map.get(bo.backendId)) ||
+            (bo.id && map.get(bo.id)) ||
+            (bo.orderNumber && map.get(bo.orderNumber));
+          const finalStatus =
+            existing?.status === 'DELIVERED' || bo.status === 'DELIVERED' ? 'DELIVERED' : bo.status;
+          map.set(key, { ...existing, ...bo, status: finalStatus });
         });
 
         if (isMounted) {
           const mergedList = Array.from(map.values());
-          if (mergedList.length > 0) {
-            setOrders(mergedList);
-          } else {
-            setOrders(storeOrders || []);
-          }
+          setOrders(mergedList.length > 0 ? mergedList : (storeOrders || []));
         }
       } catch (err) {
         if (isMounted) setOrders(storeOrders || []);
