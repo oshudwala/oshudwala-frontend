@@ -55,7 +55,7 @@ export const HomePage = () => {
       <CategoryGrid />
 
       {/* SECTION 7 — HOW IT WORKS */}
-      <HowItWorks />
+      {/* <HowItWorks /> */}
 
       {/* SECTION 8 — WHY CHOOSE OSHUD WALA */}
       <WhyChooseUs />

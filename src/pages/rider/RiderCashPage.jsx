@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Coins,
   Building,
@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   ShieldCheck,
   RefreshCw,
+  CheckCircle2,
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +20,6 @@ import { riderApi } from '../../services/api/rider.api';
 
 export const RiderCashPage = () => {
   const { user } = useAuth();
-  const { orders, riders } = useWorkspaceStore();
   const { addToast } = useToast();
 
   const [cashData, setCashData] = useState(() => {
@@ -34,8 +34,11 @@ export const RiderCashPage = () => {
   const [remittanceHistory, setRemittanceHistory] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const isFetchingRef = useRef(false);
 
   const loadCashData = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setIsLoading(true);
     try {
       const summary = await riderApi.fetchCashSummary(user?.id, user);
@@ -49,6 +52,7 @@ export const RiderCashPage = () => {
       console.warn('loadCashData fallback:', err);
     } finally {
       setIsLoading(false);
+      isFetchingRef.current = false;
     }
   };
 
@@ -69,10 +73,6 @@ export const RiderCashPage = () => {
       window.removeEventListener('storage', handleUpdate);
     };
   }, [user]);
-
-  useEffect(() => {
-    loadCashData();
-  }, [orders, riders]);
 
   // Keep deposit input aligned with current available cash
   useEffect(() => {
@@ -107,8 +107,8 @@ export const RiderCashPage = () => {
         'Central Hub Cash Depot Remittance'
       );
 
-      setRemittanceHistory((prev) => [slip, ...prev.filter((p) => p.depositId !== slip.depositId)]);
-      addToast(`Successfully remitted ₹${amount.toFixed(2)} to Depot! Slip: ${slip.depositId}`, 'success');
+      setRemittanceHistory((prev) => [slip, ...prev.filter((p) => p.depositId !== slip.depositId && p.id !== slip.id)]);
+      addToast(`Remittance slip for ₹${amount.toFixed(2)} submitted! Waiting for Admin verification.`, 'info');
 
       // Reload real cash data immediately from backend
       await loadCashData();
@@ -184,9 +184,6 @@ export const RiderCashPage = () => {
             <h2 className="font-heading font-bold text-base text-forest-900">
               Cash Handover Depot
             </h2>
-            <p className="text-xs text-brandText-secondary">
-              Sector V Central Hub Cash Counter &bull; Remit physical cash to deduct from Cash in Hand
-            </p>
           </div>
         </div>
 
@@ -317,29 +314,85 @@ export const RiderCashPage = () => {
 
       {/* Hub Remittance Deposit Slips */}
       {remittanceHistory.length > 0 && (
-        <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle shadow-card p-6 space-y-3">
-          <h3 className="font-heading font-bold text-sm text-forest-900 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-forest-700" />
-            <span>Today's Remittance Deposit Slips</span>
-          </h3>
-          <div className="space-y-2">
-            {remittanceHistory.map((slip) => (
-              <div
-                key={slip.id || slip.depositId}
-                className="p-3 bg-surface-warm rounded-2xl border border-brandBorder-subtle flex items-center justify-between text-xs"
-              >
-                <div>
-                  <span className="font-mono font-bold text-forest-900">{slip.depositId || slip.id}</span>
-                  <span className="text-brandText-muted ml-2">
-                    &bull; {slip.date} {slip.time ? `at ${slip.time}` : ''}
-                  </span>
-                  <p className="text-[11px] text-brandText-secondary">{slip.note || slip.method || 'Hub Remittance'}</p>
+        <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle shadow-card p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-2 border-b border-brandBorder-subtle">
+            <h3 className="font-heading font-bold text-sm text-forest-900 flex items-center gap-2">
+              <FileText className="w-4 h-4 text-forest-700" />
+              <span>Remittance Deposit Slips & Admin Verification</span>
+            </h3>
+            <span className="text-[11px] text-brandText-muted">
+              Deducts from Physical Cash once verified by Super Admin
+            </span>
+          </div>
+
+          <div className="space-y-2.5">
+            {remittanceHistory.map((slip) => {
+              const isWaiting =
+                slip.status === 'WAITING_VERIFICATION' ||
+                slip.status === 'SUBMITTED' ||
+                slip.rawStatus === 'SUBMITTED';
+              const isVerified = slip.status === 'VERIFIED';
+              const isRejected = slip.status === 'REJECTED';
+
+              return (
+                <div
+                  key={slip.id || slip.depositId}
+                  className="p-3.5 bg-surface-warm rounded-2xl border border-brandBorder-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-forest-900">
+                        {slip.depositId || slip.id}
+                      </span>
+                      <span className="text-brandText-muted text-[11px]">
+                        &bull; {slip.date} {slip.time ? `at ${slip.time}` : ''}
+                      </span>
+                      {isWaiting && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                          <Clock className="w-3 h-3 text-amber-700 animate-pulse" />
+                          <span>Waiting for Admin Verification</span>
+                        </span>
+                      )}
+                      {isVerified && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                          <span>Verified &bull; Deducted</span>
+                        </span>
+                      )}
+                      {isRejected && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-800 border border-red-300">
+                          <AlertCircle className="w-3 h-3 text-red-700" />
+                          <span>Rejected</span>
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-brandText-secondary">
+                      {slip.note || slip.method || 'Central Hub Cash Remittance'}
+                      {isWaiting && (
+                        <span className="text-amber-800 font-medium ml-1">
+                          (Waiting for Super Admin to verify with password. Cash in hand will be deducted once verified)
+                        </span>
+                      )}
+                      {isVerified && (
+                        <span className="text-emerald-700 font-medium ml-1">
+                          (Approved by Admin &bull; Deducted from physical cash in hand)
+                        </span>
+                      )}
+                      {slip.rejectionReason && (
+                        <span className="text-red-700 font-medium ml-1">
+                          (Reason: {slip.rejectionReason})
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-mono font-extrabold text-base text-forest-900">
+                      ₹{Number(slip.amount || 0).toFixed(2)}
+                    </span>
+                  </div>
                 </div>
-                <span className="font-mono font-extrabold text-sm text-emerald-700">
-                  ₹{Number(slip.amount || 0).toFixed(2)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

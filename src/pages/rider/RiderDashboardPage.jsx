@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Bike,
   Package,
@@ -16,6 +16,7 @@ import {
   Sparkles,
   Receipt,
   CheckCircle2,
+  RefreshCw,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import MetricCard from '../../components/workspace/MetricCard';
@@ -37,20 +38,55 @@ export const RiderDashboardPage = () => {
   const { addToast } = useToast();
 
   const [riderProfile, setRiderProfile] = useState(() => riderApi.getRiderProfile(user?.id, user));
-  const [metrics, setMetrics] = useState(() => riderApi.getRiderMetrics(user?.id, user));
+  const [metrics, setMetrics] = useState(() => {
+    const initial = riderApi.getRiderMetrics(user?.id, user);
+    return {
+      deliveriesToday: initial.deliveriesToday || 0,
+      totalAmountDeliveredToday: initial.totalAmountDeliveredToday || 0,
+      earningsToday: initial.earningsToday || 0,
+      monthlyTotalEarnings: initial.monthlyTotalEarnings || 0,
+      withdrawableBalance: initial.withdrawableBalance || 0,
+      cashInHand: initial.cashInHand || 0,
+    };
+  });
   const [backendDeliveries, setBackendDeliveries] = useState([]);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+  const isFetchingDashboardRef = useRef(false);
 
   // Modal triggers
   const [pickupModalOrder, setPickupModalOrder] = useState(null);
   const [deliveryOtpModalOrder, setDeliveryOtpModalOrder] = useState(null);
 
-  const currentRider = riders.find((r) => r.id === user?.id) || riders[0];
+  const currentRider =
+    riders.find((r) => r.id === user?.id) || {
+      id: user?.id || riderProfile?.id || 'usr-rider-current',
+      name: user?.fullName || user?.name || riderProfile?.name || 'Rider',
+      phone: user?.phone || riderProfile?.phone || '',
+      isOnline: riderProfile?.isOnline ?? true,
+    };
   const isOnline = currentRider?.isOnline ?? true;
 
-  const fetchMyDeliveries = async () => {
+  const loadDashboardData = async () => {
+    if (isFetchingDashboardRef.current) return;
+    isFetchingDashboardRef.current = true;
+    setIsLoadingDashboard(true);
     try {
-      const res = await deliveryApi.getMyDeliveries();
-      const list = Array.isArray(res) ? res : res?.deliveries || [];
+      const [deliveriesRes, cashRes, earningsRes] = await Promise.all([
+        deliveryApi.getMyDeliveries().catch((err) => {
+          console.warn('Backend getMyDeliveries notice:', err.message);
+          return [];
+        }),
+        riderApi.fetchCashSummary(user?.id, user).catch((err) => {
+          console.warn('Backend fetchCashSummary notice:', err.message);
+          return null;
+        }),
+        riderApi.fetchEarningsAndWallet(user?.id, user).catch((err) => {
+          console.warn('Backend fetchEarningsAndWallet notice:', err.message);
+          return null;
+        }),
+      ]);
+
+      const list = Array.isArray(deliveriesRes) ? deliveriesRes : deliveriesRes?.deliveries || [];
       let mapped = list.map((del) => {
         const o = del.order || {};
         const qrToken =
@@ -62,13 +98,16 @@ export const RiderDashboardPage = () => {
         return {
           id: o.orderNumber || o.id || del.id,
           backendId: o.id || del.orderId,
+          orderNumber: o.orderNumber || o.id,
           deliveryId: del.id,
           status: o.status || del.status,
           total: (o.totalPaise || 0) / 100,
           paymentMethod: o.paymentMethod || 'COD',
           customerName: o.deliveryAddress?.fullName || 'Valued Customer',
           customerPhone: o.deliveryAddress?.phone || '',
-          address: [o.deliveryAddress?.line1, o.deliveryAddress?.area, o.deliveryAddress?.city].filter(Boolean).join(', ') || 'Home Delivery',
+          address:
+            [o.deliveryAddress?.line1, o.deliveryAddress?.area, o.deliveryAddress?.city].filter(Boolean).join(', ') ||
+            'Home Delivery',
           area: o.deliveryAddress?.area || 'Kolkata Central',
           landmark: o.deliveryAddress?.landmark || '',
           pharmacyName: o.pharmacy?.name || 'Local Dispensary',
@@ -87,7 +126,7 @@ export const RiderDashboardPage = () => {
         };
       });
 
-      // Notification sync fallback
+      // Notification sync fallback: If notification was delivered for an assigned order, ensure it appears
       if (mapped.length === 0) {
         try {
           const notifsRes = await notificationApi.getNotifications({ category: 'DELIVERY' }, user);
@@ -99,7 +138,6 @@ export const RiderDashboardPage = () => {
             const bodyText = n.desc || n.body || '';
             const match = bodyText.match(/Order\s+([A-Za-z0-9-]+)\s+assigned/i);
             const orderIdFromNotif = n.data?.orderId || match?.[1] || 'Assigned Order';
-            // Do NOT resurrect if order is already delivered in workspace
             const isAlreadyDelivered = (orders || []).some(
               (wo) =>
                 (wo.id === orderIdFromNotif ||
@@ -135,13 +173,38 @@ export const RiderDashboardPage = () => {
       }
 
       setBackendDeliveries(mapped);
+
+      // Local store metrics fallback
+      const local = riderApi.getRiderMetrics(user?.id, user);
+
+      // Calculate delivered today stats
+      const deliveriesToday = earningsRes?.deliveriesToday ?? local.deliveriesToday ?? 0;
+      const totalAmountDeliveredToday = earningsRes?.totalAmountDeliveredToday ?? local.totalAmountDeliveredToday ?? 0;
+      const earningsToday = earningsRes?.earningsToday ?? (deliveriesToday * 30);
+      const monthlyTotalEarnings = earningsRes?.monthlyTotalEarnings ?? (local.totalDeliveriesMonth * 30);
+      const withdrawableBalance = earningsRes?.withdrawableBalance ?? local.withdrawableBalance ?? 0;
+      const cashInHand = cashRes?.cashInHand ?? local.cashInHand ?? 0;
+
+      setMetrics({
+        deliveriesToday,
+        totalAmountDeliveredToday,
+        earningsToday,
+        monthlyTotalEarnings,
+        withdrawableBalance,
+        cashInHand,
+      });
+
+      setRiderProfile(riderApi.getRiderProfile(user?.id, user));
     } catch (err) {
-      console.warn('Backend getMyDeliveries notice:', err.message);
+      console.warn('loadDashboardData notice:', err.message);
+    } finally {
+      setIsLoadingDashboard(false);
+      isFetchingDashboardRef.current = false;
     }
   };
 
   useEffect(() => {
-    fetchMyDeliveries();
+    loadDashboardData();
   }, [user]);
 
   useEffect(() => {
@@ -155,43 +218,34 @@ export const RiderDashboardPage = () => {
               : d
           )
         );
-        fetchMyDeliveries();
+        loadDashboardData();
       }
     };
     const handleStorageSync = (e) => {
-      if (e.key === 'oshud_workspace_orders' || e.key === 'oshud_last_status_event') {
-        fetchMyDeliveries();
+      if (
+        e.key === 'oshud_workspace_orders' ||
+        e.key === 'oshud_last_status_event' ||
+        e.key === 'oshud_rider_finance_data_v1'
+      ) {
+        loadDashboardData();
       }
     };
+    const handleFinanceSync = () => {
+      loadDashboardData();
+    };
+
     window.addEventListener('oshud_order_status_updated', handleStatusSync);
+    window.addEventListener('oshud_rider_finance_updated', handleFinanceSync);
+    window.addEventListener('oshud_rider_profile_updated', handleFinanceSync);
     window.addEventListener('storage', handleStorageSync);
+
     return () => {
       window.removeEventListener('oshud_order_status_updated', handleStatusSync);
+      window.removeEventListener('oshud_rider_finance_updated', handleFinanceSync);
+      window.removeEventListener('oshud_rider_profile_updated', handleFinanceSync);
       window.removeEventListener('storage', handleStorageSync);
     };
   }, []);
-
-  // Refresh metrics & profile on changes
-  useEffect(() => {
-    const handleUpdate = () => {
-      setRiderProfile(riderApi.getRiderProfile(user?.id, user));
-      setMetrics(riderApi.getRiderMetrics(user?.id, user));
-    };
-
-    window.addEventListener('oshud_rider_profile_updated', handleUpdate);
-    window.addEventListener('oshud_rider_finance_updated', handleUpdate);
-    window.addEventListener('storage', handleUpdate);
-
-    return () => {
-      window.removeEventListener('oshud_rider_profile_updated', handleUpdate);
-      window.removeEventListener('oshud_rider_finance_updated', handleUpdate);
-      window.removeEventListener('storage', handleUpdate);
-    };
-  }, [user]);
-
-  useEffect(() => {
-    setMetrics(riderApi.getRiderMetrics(user?.id, user));
-  }, [orders, riders, user]);
 
   const handleToggleDuty = () => {
     if (currentRider?.id) {
@@ -239,7 +293,7 @@ export const RiderDashboardPage = () => {
         );
       } catch (e) {}
 
-      fetchMyDeliveries();
+      loadDashboardData();
       addToast(`Pickup confirmed for Order ${orderId}! Package contents & medicine list verified.`, 'success');
       setPickupModalOrder(null);
     } catch (err) {
@@ -247,23 +301,23 @@ export const RiderDashboardPage = () => {
     }
   };
 
-  const handleDeliveryConfirmed = async (orderId, otp, amount) => {
+  const handleDeliveryConfirmed = async (orderId, otp, amount, paymentMethod = 'COD') => {
     try {
       // 1. Call backend to mark delivery & order as DELIVERED in the database
       const targetOrder = allAssignedOrders.find(
         (o) => o.id === orderId || o.backendId === orderId || o.orderNumber === orderId
       );
       const deliveryLookupId = targetOrder?.deliveryId || targetOrder?.backendId || orderId;
-      await deliveryApi.completeDelivery(deliveryLookupId, otp);
+      await deliveryApi.completeDelivery(deliveryLookupId, otp, paymentMethod);
 
       // 2. Update workspace store
-      completeDelivery(orderId, otp, amount);
+      completeDelivery(orderId, otp, amount, paymentMethod);
 
       // 3. Update local deliveries state so the order is immediately marked DELIVERED and removed from active queue
       setBackendDeliveries((prev) =>
         prev.map((d) =>
           d.id === orderId || d.backendId === orderId || d.orderNumber === orderId || d.deliveryId === deliveryLookupId
-            ? { ...d, status: 'DELIVERED' }
+            ? { ...d, status: 'DELIVERED', paymentMethod }
             : d
         )
       );
@@ -271,7 +325,14 @@ export const RiderDashboardPage = () => {
       // 4. Broadcast status event across all windows & tabs
       window.dispatchEvent(
         new CustomEvent('oshud_order_status_updated', {
-          detail: { orderId, backendId: targetOrder?.backendId, orderNumber: targetOrder?.orderNumber, status: 'DELIVERED', otp },
+          detail: {
+            orderId,
+            backendId: targetOrder?.backendId,
+            orderNumber: targetOrder?.orderNumber,
+            status: 'DELIVERED',
+            otp,
+            paymentMethod,
+          },
         })
       );
       try {
@@ -282,7 +343,7 @@ export const RiderDashboardPage = () => {
       } catch (e) {}
 
       setDeliveryOtpModalOrder(null);
-      await fetchMyDeliveries();
+      await loadDashboardData();
       addToast(`Order ${orderId} delivered successfully! Payment reconciled and verified.`, 'success');
     } catch (err) {
       addToast(err.message || 'Failed to complete delivery', 'error');
@@ -371,11 +432,20 @@ export const RiderDashboardPage = () => {
           </div>
         </div>
 
-        {/* Right Action: Duty Toggle & Profile Link */}
+        {/* Right Action: Sync, Duty Toggle & Profile Link */}
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={loadDashboardData}
+            disabled={isLoadingDashboard}
+            title="Refresh Dashboard Data from Backend"
+            className="p-2.5 rounded-2xl border border-brandBorder-subtle text-forest-800 bg-surface-warm hover:bg-forest-50 transition-colors flex items-center justify-center disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoadingDashboard ? 'animate-spin text-forest-600' : ''}`} />
+          </button>
           <NavLink
             to="/rider/profile"
-            className="px-4 py-2 rounded-2xl border border-brandBorder-subtle text-xs font-bold text-forest-900 bg-surface-warm hover:bg-forest-50 transition-colors"
+            className="px-4 py-2.5 rounded-2xl border border-brandBorder-subtle text-xs font-bold text-forest-900 bg-surface-warm hover:bg-forest-50 transition-colors"
           >
             Edit Profile
           </NavLink>
@@ -406,7 +476,7 @@ export const RiderDashboardPage = () => {
         />
         <MetricCard
           title="Total Delivered Amount (Today)"
-          value={`₹${metrics.totalAmountDeliveredToday.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+          value={`₹${(metrics.totalAmountDeliveredToday || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
           change="Gross Value of Packages"
           trend="up"
           icon={DollarSign}
@@ -414,7 +484,7 @@ export const RiderDashboardPage = () => {
         />
         <MetricCard
           title="Total Earnings (Today)"
-          value={`₹${metrics.earningsToday.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+          value={`₹${(metrics.earningsToday || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
           change={`${metrics.deliveriesToday} completed today (₹30.00 / order)`}
           trend="up"
           icon={TrendingUp}
@@ -442,7 +512,7 @@ export const RiderDashboardPage = () => {
                 Physical Cash in Hand (COD)
               </p>
               <p className="font-mono font-extrabold text-xl text-amber-950 mt-0.5">
-                ₹{metrics.cashInHand.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                ₹{(metrics.cashInHand || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
               <p className="text-[11px] text-amber-700">Hub deposit required before end-of-day</p>
             </div>
@@ -466,7 +536,7 @@ export const RiderDashboardPage = () => {
                 Total Withdrawable Balance
               </p>
               <p className="font-mono font-extrabold text-xl text-emerald-950 mt-0.5">
-                ₹{metrics.withdrawableBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                ₹{(metrics.withdrawableBalance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
               </p>
               <p className="text-[11px] text-emerald-700">Instant UPI / Bank payout available</p>
             </div>
@@ -695,16 +765,34 @@ export const RiderDashboardPage = () => {
           })}
 
           {activeDeliveries.length === 0 && (
-            <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle p-10 text-center space-y-3 shadow-card">
+            <div className="bg-surface-pure rounded-3xl border border-brandBorder-subtle p-10 text-center space-y-4 shadow-card">
               <div className="w-14 h-14 rounded-2xl bg-forest-50 text-forest-700 flex items-center justify-center mx-auto">
                 <Bike className="w-7 h-7" />
               </div>
-              <h3 className="font-heading font-extrabold text-base text-forest-900">
-                All Assigned Deliveries Completed!
-              </h3>
-              <p className="text-xs text-brandText-secondary max-w-sm mx-auto">
-                You have no active orders in your queue. Stay online to receive incoming express delivery requests.
-              </p>
+              <div className="space-y-1">
+                <h3 className="font-heading font-extrabold text-base text-forest-900">
+                  All Assigned Deliveries Completed!
+                </h3>
+                <p className="text-xs text-brandText-secondary max-w-sm mx-auto">
+                  You have no active orders in your queue. Stay online to receive incoming express delivery requests.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                <NavLink
+                  to="/rider/deliveries"
+                  className="px-4 py-2 rounded-2xl border border-brandBorder-subtle text-xs font-bold text-forest-900 bg-surface-warm hover:bg-forest-50 transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <Package className="w-3.5 h-3.5 text-forest-700" />
+                  <span>View Completed Deliveries</span>
+                </NavLink>
+                <NavLink
+                  to="/rider/earnings"
+                  className="px-4 py-2 rounded-2xl bg-forest-800 hover:bg-forest-900 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Check Earnings & Payouts</span>
+                </NavLink>
+              </div>
             </div>
           )}
         </div>

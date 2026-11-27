@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Coins,
   QrCode,
+  AlertCircle,
 } from 'lucide-react';
 import MetricCard from '../../components/workspace/MetricCard';
 import Button from '../../components/common/Button';
@@ -119,8 +120,8 @@ export const RiderEarningsPage = () => {
       );
 
       addToast(
-        `Withdrawal of ₹${amount.toFixed(2)} (${channelLabel}) successfully initiated! Ref: ${record.id}`,
-        'success'
+        `Withdrawal request of ₹${amount.toFixed(2)} (${channelLabel}) submitted! Waiting for Admin verification with password.`,
+        'info'
       );
 
       setWithdrawAmount('');
@@ -374,10 +375,22 @@ export const RiderEarningsPage = () => {
                       ₹{Number(w.amount || 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-3 text-right">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase flex items-center justify-end gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>{w.status || 'COMPLETED'}</span>
-                      </span>
+                      {w.status === 'WAITING_VERIFICATION' || w.status === 'REQUESTED' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                          <Clock className="w-3 h-3 text-amber-700 animate-pulse" />
+                          <span>Waiting for Admin Verification</span>
+                        </span>
+                      ) : w.status === 'REJECTED' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                          <AlertCircle className="w-3 h-3 text-rose-700" />
+                          <span>Rejected</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                          <span>Verified & Disbursed</span>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

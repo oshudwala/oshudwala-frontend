@@ -185,10 +185,18 @@ export const riderApi = {
       totalWithdrawn: 0,
     };
 
-    // Calculate actual COD cash in hand from completed COD orders not yet deposited (strictly COD, excluding UPI)
-    const completedCodOrders = completedOrders.filter((o) => (o.paymentMethod || 'COD').toUpperCase() === 'COD');
+    // Calculate actual COD cash in hand from completed COD orders (strictly COD, never UPI or ONLINE)
+    const completedCodOrders = completedOrders.filter((o) => {
+      const pm = (o.paymentMethod || '').trim().toUpperCase();
+      return pm === 'COD';
+    });
     const totalCodCollected = completedCodOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
-    const actualCashInHand = Math.max(0, totalCodCollected - (riderFinance.cashDeposited || 0));
+
+    // Only verified cash deposits reduce Physical Cash in Hand
+    const verifiedDepositedAmount = (riderFinance.verifiedCashDeposited !== undefined)
+      ? Number(riderFinance.verifiedCashDeposited)
+      : (Number(riderFinance.cashDeposited || 0));
+    const actualCashInHand = Math.max(0, totalCodCollected - verifiedDepositedAmount);
 
     // Calculate actual withdrawable balance (total earnings minus all approved withdrawals/disbursements)
     const riderWithdrawals = financeStore.withdrawals.filter(
@@ -246,6 +254,7 @@ export const riderApi = {
             orderId: c.orderId,
             customerName: c.customerName,
             amount: c.amount,
+            paymentMethod: c.paymentMethod || 'COD',
             time: new Date(c.collectedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             date: new Date(c.collectedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
             collectedAt: c.collectedAt,
@@ -255,10 +264,16 @@ export const riderApi = {
             id: d.id,
             depositId: d.depositId,
             amount: d.amount,
-            status: d.status,
+            status: (d.status === 'SUBMITTED' || d.rawStatus === 'SUBMITTED' || d.status === 'WAITING_VERIFICATION')
+              ? 'WAITING_VERIFICATION'
+              : (d.status === 'VERIFIED' ? 'VERIFIED' : d.status),
+            rawStatus: d.status,
             method: d.method,
-            time: new Date(d.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            date: new Date(d.submittedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+            time: new Date(d.submittedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(d.submittedAt || Date.now()).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+            submittedAt: d.submittedAt,
+            verifiedAt: d.verifiedAt,
+            rejectionReason: d.rejectionReason,
           })),
         };
       }
@@ -275,12 +290,12 @@ export const riderApi = {
       totalCollectedPaise: Math.round(local.cashInHand * 100),
       totalDepositedPaise: Math.round((local.cashDeposited || 0) * 100),
       collections: local.codTransactions,
-      deposits: (finance.withdrawals || []).filter((w) => w.disbursedBy === 'HUB_REMITTANCE'),
+      deposits: (finance.hubRemittances || finance.withdrawals || []).filter((w) => w.disbursedBy === 'HUB_REMITTANCE' || w.method === 'CASH_HANDOVER'),
     };
   },
 
   /**
-   * Submit cash deposit at Central Hub Depot (reducing physical cash in hand)
+   * Submit cash deposit at Central Hub Depot (remains in WAITING_VERIFICATION state until verified by Admin)
    */
   async submitCashDeposit(riderId, amount, method = 'CASH_HANDOVER', note = '') {
     const numAmount = Number(amount);
@@ -298,8 +313,10 @@ export const riderApi = {
       const data = res.data?.data || res.data;
       if (data) {
         depositSlip = {
+          id: data.id,
           depositId: data.referenceNo || `DEP-${data.id?.slice(0, 8)?.toUpperCase() || Date.now().toString().slice(-6)}`,
           amount: (data.amountPaise ? data.amountPaise / 100 : numAmount),
+          status: 'WAITING_VERIFICATION',
           date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           note: note || 'Sector V Hub Cash Counter Remittance',
@@ -310,18 +327,22 @@ export const riderApi = {
     }
 
     if (!depositSlip) {
-      depositSlip = this.depositCash(riderId, numAmount, note);
-    } else {
-      // Also sync local store
-      const financeStore = loadFinanceStore();
-      const targetId = riderId || 'usr-rider-01';
-      if (!financeStore.riders[targetId]) {
-        financeStore.riders[targetId] = { cashInHand: 0, cashDeposited: 0, withdrawableBalance: 0, totalWithdrawn: 0 };
-      }
-      financeStore.riders[targetId].cashDeposited = (financeStore.riders[targetId].cashDeposited || 0) + numAmount;
-      saveFinanceStore(financeStore);
-      workspaceStore.reconcileCash(targetId, numAmount);
+      depositSlip = {
+        id: `dep-${Date.now()}`,
+        depositId: `DEP-${Date.now().toString().slice(-6)}`,
+        amount: numAmount,
+        status: 'WAITING_VERIFICATION',
+        date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        note: note || 'Sector V Hub Cash Counter Remittance',
+      };
     }
+
+    // Save into pending hubRemittances in finance store (DO NOT deduct cashInHand until admin verifies!)
+    const financeStore = loadFinanceStore();
+    if (!financeStore.hubRemittances) financeStore.hubRemittances = [];
+    financeStore.hubRemittances.unshift(depositSlip);
+    saveFinanceStore(financeStore);
 
     window.dispatchEvent(new CustomEvent('oshud_rider_finance_updated'));
     return depositSlip;
@@ -349,13 +370,16 @@ export const riderApi = {
         withdrawals = (withdrawalsRes.data.data || []).map((w) => ({
           id: w.id,
           amount: Number(w.amountPaise || 0) / 100,
-          paymentMethod: w.payoutDetails?.method === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : 'Instant UPI',
+          paymentMethod: w.payoutDetails?.method === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : `UPI (${w.payoutDetails?.upiId || 'Direct'})`,
           rawMethod: w.payoutDetails?.method || 'UPI',
           upiId: w.payoutDetails?.upiId || '',
           note: w.payoutDetails?.note || '',
           date: new Date(w.requestedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
           time: new Date(w.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: w.status === 'PAID' ? 'COMPLETED' : w.status,
+          status: (w.status === 'REQUESTED' || w.status === 'SUBMITTED' || w.status === 'WAITING_VERIFICATION')
+            ? 'WAITING_VERIFICATION'
+            : (w.status === 'PAID' ? 'PAID' : w.status),
+          rawStatus: w.status,
           disbursedBy: w.reviewedById ? 'SUPER_ADMIN' : 'RIDER_PORTAL',
         }));
       }
@@ -390,8 +414,15 @@ export const riderApi = {
       return dt && new Date(dt).getMonth() === currentMonth && new Date(dt).getFullYear() === currentYear;
     });
 
-    const deliveriesToday = todayOrders.length > 0 ? todayOrders.length : local.deliveriesToday;
-    const totalDeliveriesMonth = monthOrders.length > 0 ? monthOrders.length : local.totalDeliveriesMonth;
+    const deliveriesToday = todayOrders.length > 0 ? todayOrders.length : (effectiveDeliveries.length > 0 ? effectiveDeliveries.length : local.deliveriesToday);
+    const totalDeliveriesMonth = monthOrders.length > 0 ? monthOrders.length : (effectiveDeliveries.length > 0 ? effectiveDeliveries.length : local.totalDeliveriesMonth);
+
+    // Total delivered package gross amount today
+    const totalAmountDeliveredToday = todayOrders.length > 0
+      ? todayOrders.reduce((sum, d) => sum + (Number(d.order?.totalPaise || d.totalPaise || 0) / 100 || Number(d.total || 0)), 0)
+      : (effectiveDeliveries.length > 0
+          ? effectiveDeliveries.reduce((sum, d) => sum + (Number(d.order?.totalPaise || d.totalPaise || 0) / 100 || Number(d.total || 0)), 0)
+          : (local.totalAmountDeliveredToday || 0));
 
     // ₹30 per order delivered
     const earningsToday = deliveriesToday * 30;
@@ -406,12 +437,14 @@ export const riderApi = {
 
     return {
       deliveriesToday,
+      totalAmountDeliveredToday,
       earningsToday,
       totalDeliveriesMonth,
       monthlyTotalEarnings,
       withdrawableBalance,
       totalWithdrawn,
       withdrawals: effectiveWithdrawals,
+      completedDeliveries: effectiveDeliveries,
     };
   },
 
@@ -443,12 +476,15 @@ export const riderApi = {
           id: data.id || `WTH-${Date.now().toString().slice(-6)}`,
           riderId,
           amount: numAmount,
-          paymentMethod: cleanMethod === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : 'Instant UPI',
+          paymentMethod: cleanMethod === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : `UPI (${upiId || 'Direct'})`,
+          rawMethod: cleanMethod,
+          upiId: cleanMethod === 'UPI' ? upiId : undefined,
           note: note || '',
           date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: 'COMPLETED',
-          disbursedBy: 'RIDER_PORTAL',
+          status: 'WAITING_VERIFICATION',
+          rawStatus: 'REQUESTED',
+          disbursedBy: 'PENDING_ADMIN_VERIFICATION',
         };
       }
     } catch (err) {
@@ -463,7 +499,7 @@ export const riderApi = {
       withdrawalRecord = this.requestWithdrawal(
         riderId,
         numAmount,
-        cleanMethod === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : 'Instant UPI',
+        cleanMethod === 'OFFLINE_CASH' ? 'Offline Cash in Hand' : `UPI (${upiId || 'Direct'})`,
         note
       );
     } else {
@@ -474,7 +510,6 @@ export const riderApi = {
       if (!financeStore.riders[targetId]) {
         financeStore.riders[targetId] = { cashInHand: 0, cashDeposited: 0, withdrawableBalance: 0, totalWithdrawn: 0 };
       }
-      financeStore.riders[targetId].totalWithdrawn = (financeStore.riders[targetId].totalWithdrawn || 0) + numAmount;
       financeStore.riders[targetId].withdrawableBalance = Math.max(0, (financeStore.riders[targetId].withdrawableBalance || 0) - numAmount);
       saveFinanceStore(financeStore);
     }
@@ -548,8 +583,9 @@ export const riderApi = {
       note: note || 'Rider self-service portal withdrawal',
       date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      status: 'COMPLETED',
-      disbursedBy: 'RIDER_PORTAL',
+      status: 'WAITING_VERIFICATION',
+      rawStatus: 'REQUESTED',
+      disbursedBy: 'PENDING_ADMIN_VERIFICATION',
     };
 
     financeStore.withdrawals.unshift(withdrawalRecord);
