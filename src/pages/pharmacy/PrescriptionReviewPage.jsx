@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   Sparkles,
   RefreshCw,
+  Search,
 } from 'lucide-react';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
@@ -30,32 +31,35 @@ import { useAuth } from '../../context/AuthContext';
 import { prescriptionApi } from '../../services/api/prescription.api';
 import { pharmacyApi } from '../../services/api/pharmacy.api';
 import { orderApi } from '../../services/api/order.api';
+import { productApi } from '../../services/api/product.api';
 import Button from '../../components/common/Button';
-import { calculateOrderBill } from '../../services/pricingRules';
+import { calculateOrderBill, calculatePlatformFee } from '../../services/pricingRules';
 
 export const PrescriptionReviewPage = () => {
-  const { prescriptions, verifyPrescription, rejectPrescription, createOrder } = useWorkspaceStore();
+  const { prescriptions, inventory, verifyPrescription, rejectPrescription, createOrder } = useWorkspaceStore();
   const { addToast } = useToast();
   const { user } = useAuth();
 
   const [backendPrescriptions, setBackendPrescriptions] = useState([]);
   const [primaryPharmacy, setPrimaryPharmacy] = useState(null);
+  const [catalogProducts, setCatalogProducts] = useState([]);
   const [isLoadingRx, setIsLoadingRx] = useState(false);
 
   const loadData = async () => {
     setIsLoadingRx(true);
     try {
-      const [rxList, prim] = await Promise.all([
+      const [rxList, prim, prods] = await Promise.all([
         prescriptionApi.getPharmacyPrescriptions().catch(() => []),
         pharmacyApi.getPrimaryPharmacy().catch(() => null),
+        productApi.getProducts().catch(() => []),
       ]);
 
-      if (Array.isArray(rxList) && rxList.length > 0) {
+      if (Array.isArray(rxList)) {
         const mapped = rxList.map((r) => {
           const fileUrl = r.files?.[0]?.storageKey
             ? (r.files[0].storageKey.startsWith('http') || r.files[0].storageKey.startsWith('data:')
                 ? r.files[0].storageKey
-                : `https://res.cloudinary.com/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'oshudwala'}/image/upload/${r.files[0].storageKey}`)
+                : `https://res.cloudinary.com/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'xi9ciynt'}/image/upload/${r.files[0].storageKey}`)
             : 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=800';
 
           return {
@@ -83,6 +87,7 @@ export const PrescriptionReviewPage = () => {
         setBackendPrescriptions(mapped);
       }
       setPrimaryPharmacy(prim);
+      setCatalogProducts(Array.isArray(prods) ? prods : []);
     } catch (err) {
       console.error('Error fetching prescriptions:', err);
     } finally {
@@ -95,6 +100,9 @@ export const PrescriptionReviewPage = () => {
   }, []);
 
   const mergedPrescriptions = useMemo(() => {
+    if (backendPrescriptions && backendPrescriptions.length > 0) {
+      return backendPrescriptions;
+    }
     const map = new Map();
     prescriptions.forEach((p) => map.set(p.id, p));
     backendPrescriptions.forEach((p) => {
@@ -122,29 +130,55 @@ export const PrescriptionReviewPage = () => {
     'All medicines verified against CDSCO / WBSPC Schedule H regulations.'
   );
 
-  // Approval Modal State
-  const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
-  const [orderPrice, setOrderPrice] = useState('500');
-  const [approvedItems, setApprovedItems] = useState([
-    { name: 'Augmentin 625 Duo Tablet', qty: 2, price: 200 },
-    { name: 'Pan 40 Tablet', qty: 2, price: 100 },
-  ]);
+  // Medicines Catalog & Available Stock from Pharmacy Inventory + Backend Catalog
+  const availableMedicines = useMemo(() => {
+    const list = [];
+    const seenNames = new Set();
 
-  // Manual Walk-in / In-Store Order Modal State
-  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [manualCustomerName, setManualCustomerName] = useState('');
-  const [manualCustomerPhone, setManualCustomerPhone] = useState('');
-  const [manualDeliveryType, setManualDeliveryType] = useState('DELIVERY'); // 'DELIVERY' | 'PICKUP'
-  const [manualAddress, setManualAddress] = useState('');
-  const [manualArea, setManualArea] = useState('City Centre');
-  const [manualPincode, setManualPincode] = useState('');
-  const [manualDiscountType, setManualDiscountType] = useState('PERCENT'); // 'PERCENT' | 'FLAT'
-  const [manualDiscountValue, setManualDiscountValue] = useState('');
-  const [manualNotes, setManualNotes] = useState('');
-  const [manualItems, setManualItems] = useState([
-    { name: 'Paracetamol 650mg (Dolo 650)', qty: 1, price: 35 },
-  ]);
-  const [isSubmittingManualOrder, setIsSubmittingManualOrder] = useState(false);
+    // 1. Pharmacy active inventory
+    if (Array.isArray(inventory)) {
+      inventory.forEach((item) => {
+        const cleanName = (item.name || '').trim();
+        if (cleanName && !seenNames.has(cleanName.toLowerCase())) {
+          seenNames.add(cleanName.toLowerCase());
+          const unitPrice = Number(item.sellingPrice || item.mrp || 0);
+          list.push({
+            id: item.id || `inv-${cleanName}`,
+            productId: item.productId || item.id,
+            name: cleanName,
+            price: unitPrice,
+            mrp: Number(item.mrp || item.sellingPrice || unitPrice),
+            stock: item.stock ?? item.units ?? 50,
+            category: item.category || 'Medicine',
+            generic: item.generic || '',
+          });
+        }
+      });
+    }
+
+    // 2. Master products from backend DB
+    if (Array.isArray(catalogProducts)) {
+      catalogProducts.forEach((prod) => {
+        const cleanName = (prod.name || '').trim();
+        if (cleanName && !seenNames.has(cleanName.toLowerCase())) {
+          seenNames.add(cleanName.toLowerCase());
+          const unitPrice = prod.mrpPaise ? Number(prod.mrpPaise) / 100 : 0;
+          list.push({
+            id: prod.id,
+            productId: prod.id,
+            name: cleanName,
+            price: unitPrice,
+            mrp: unitPrice,
+            stock: 100,
+            category: prod.category?.name || 'General',
+            generic: prod.genericName || '',
+          });
+        }
+      });
+    }
+
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [inventory, catalogProducts]);
 
   // Current active prescription being reviewed
   const currentRx = activeList.find((p) => p.id === selectedRxId) || activeList[0] || null;
@@ -189,70 +223,270 @@ export const PrescriptionReviewPage = () => {
     }
   };
 
-  // Pricing rules calculation for Online Prescription Approval
-  const numPrice = Number(orderPrice) || 0;
-  const approvalBill = calculateOrderBill({
-    items: approvedItems,
-    customSubtotal: numPrice,
-    isPickup: false,
-  });
+  // Manual Walk-in / In-Store Order Modal State
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualCustomerName, setManualCustomerName] = useState('');
+  const [manualCustomerPhone, setManualCustomerPhone] = useState('');
+  const [manualDeliveryType, setManualDeliveryType] = useState('DELIVERY'); // 'DELIVERY' | 'PICKUP'
+  const [manualAddress, setManualAddress] = useState('');
+  const [manualArea, setManualArea] = useState('City Centre');
+  const [manualPincode, setManualPincode] = useState('');
+  const [manualDiscountType, setManualDiscountType] = useState('PERCENT'); // 'PERCENT' | 'FLAT'
+  const [manualDiscountValue, setManualDiscountValue] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
+  const [manualItems, setManualItems] = useState([
+    { name: 'Paracetamol 650mg (Dolo 650)', qty: 1, price: 35 },
+  ]);
+  const [isSubmittingManualOrder, setIsSubmittingManualOrder] = useState(false);
 
-  // Submit Approval: Marks Verified, Creates Order & Removes from Pending Queue immediately
-  const handleConfirmApproval = (e) => {
+  // Approval Modal State (Empty by default - no hardcoded demo items)
+  const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
+  const [approvedItems, setApprovedItems] = useState([]);
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+  const [medSearchQuery, setMedSearchQuery] = useState('');
+
+  // Filter available medicines by search query
+  const filteredMedicines = useMemo(() => {
+    const q = medSearchQuery.trim().toLowerCase();
+    if (!q) return availableMedicines;
+    return availableMedicines.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        (m.generic && m.generic.toLowerCase().includes(q)) ||
+        (m.category && m.category.toLowerCase().includes(q))
+    );
+  }, [availableMedicines, medSearchQuery]);
+
+  // Quantity helper
+  const getItemQty = (medId) => {
+    const found = approvedItems.find((it) => it.id === medId);
+    return found ? found.qty : 0;
+  };
+
+  // Add or increment medicine in approved order
+  const handleAddOrIncrement = (med) => {
+    setApprovedItems((prev) => {
+      const idx = prev.findIndex((it) => it.id === med.id);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], qty: updated[idx].qty + 1 };
+        return updated;
+      } else {
+        return [
+          ...prev,
+          {
+            id: med.id,
+            productId: med.productId,
+            name: med.name,
+            price: Number(med.price) || 0,
+            qty: 1,
+            generic: med.generic || '',
+            stock: med.stock,
+          },
+        ];
+      }
+    });
+  };
+
+  // Decrement quantity or remove if reaching 0
+  const handleDecrement = (medId) => {
+    setApprovedItems((prev) => {
+      const idx = prev.findIndex((it) => it.id === medId);
+      if (idx < 0) return prev;
+      if (prev[idx].qty > 1) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], qty: updated[idx].qty - 1 };
+        return updated;
+      } else {
+        return prev.filter((it) => it.id !== medId);
+      }
+    });
+  };
+
+  // Explicit quantity setter
+  const handleSetQty = (med, newQty) => {
+    const qty = Math.max(0, parseInt(newQty, 10) || 0);
+    setApprovedItems((prev) => {
+      if (qty <= 0) {
+        return prev.filter((it) => it.id !== med.id);
+      }
+      const idx = prev.findIndex((it) => it.id === med.id);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], qty };
+        return updated;
+      } else {
+        return [
+          ...prev,
+          {
+            id: med.id,
+            productId: med.productId,
+            name: med.name,
+            price: Number(med.price) || 0,
+            qty,
+            generic: med.generic || '',
+            stock: med.stock,
+          },
+        ];
+      }
+    });
+  };
+
+  // Remove item from approved order
+  const handleRemoveItem = (medId) => {
+    setApprovedItems((prev) => prev.filter((it) => it.id !== medId));
+  };
+
+  // Add custom unlisted medicine if needed
+  const handleAddCustomMedicine = () => {
+    const customId = `custom-${Date.now()}`;
+    setApprovedItems((prev) => [
+      ...prev,
+      {
+        id: customId,
+        productId: undefined,
+        name: '',
+        price: 50,
+        qty: 1,
+        isCustom: true,
+      },
+    ]);
+  };
+
+  // Pricing rules calculation for Online Prescription Approval
+  // Subtotal = sum(qty * price). Delivery rule: < Rs 499 is Rs 30 delivery charge, >= 499 is FREE.
+  // Platform fee rules:
+  // - below 999: ₹9
+  // - below 1999: ₹12
+  // - below 2999: ₹15
+  // - below 3999: ₹20
+  // - below 4999 (above 3999): ₹25
+  // - 5000 onwards: ₹30
+  const approvalSubtotal = approvedItems.reduce(
+    (sum, it) => sum + (Number(it.price) || 0) * (Number(it.qty) || 1),
+    0
+  );
+  const approvalPackagingFee = approvedItems.length > 0 ? 6 : 0;
+  const approvalPlatformFee = calculatePlatformFee(approvalSubtotal);
+  const approvalDeliveryFee = approvalSubtotal > 0 && approvalSubtotal < 499 ? 30 : 0;
+  const approvalFinalTotal =
+    approvalSubtotal + approvalPackagingFee + approvalPlatformFee + approvalDeliveryFee;
+
+  // Submit Approval: Marks Verified, Creates Order & Stores permanently in backend database
+  const handleConfirmApproval = async (e) => {
     e.preventDefault();
     if (!currentRx) return;
 
-    if (numPrice <= 0) {
-      addToast('Please enter a valid medicine price.', 'warning');
+    if (approvedItems.length === 0) {
+      addToast('Please select at least one medicine item from stock to approve.', 'warning');
       return;
     }
 
-    const formattedItems =
-      approvedItems.length > 0
-        ? approvedItems
-        : [{ name: 'Prescribed Medicines Package', qty: 1, price: numPrice }];
+    const hasInvalidItem = approvedItems.some((it) => !it.name || Number(it.price) <= 0);
+    if (hasInvalidItem) {
+      addToast('Please ensure all added medicines have a valid name and price.', 'warning');
+      return;
+    }
 
-    // 1. Mark prescription verified in backend database
+    if (approvalSubtotal <= 0) {
+      addToast('Total medicine price must be greater than zero.', 'warning');
+      return;
+    }
+
+    setIsSubmittingApproval(true);
+
     try {
-      prescriptionApi.reviewPrescription(currentRx.id, {
-        status: 'VERIFIED',
-      }).catch((err) => console.warn('Backend prescription verification sync:', err.message));
-    } catch {}
+      const isUuid = (val) =>
+        typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
 
-    // 2. Mark prescription verified in store
-    verifyPrescription(currentRx.id, formattedItems, pharmacistNotes);
+      // 1. Create order in backend database linked to this prescription
+      const cleanPhone = (currentRx.patientPhone || '9876543210').replace(/[^0-9]/g, '');
+      let savedBackendOrder = null;
 
-    // 2. Create Order with packaging fee (₹6), tiered platform fee, and discount
-    const newOrder = createOrder({
-      customerName: currentRx.patientName,
-      customerPhone: currentRx.patientPhone,
-      address: 'Home Delivery Address (Provided by Patient)',
-      area: 'Kolkata Central & Suburban',
-      items: formattedItems,
-      totalMrp: approvalBill.totalMrp,
-      subtotal: approvalBill.totalMrp,
-      packagingFee: approvalBill.packagingFee,
-      platformFee: approvalBill.platformFee,
-      deliveryFee: approvalBill.deliveryFee,
-      discount: approvalBill.discount,
-      cashback: approvalBill.cashback,
-      total: approvalBill.finalTotal,
-      status: 'READY_FOR_PICKUP',
-      paymentMethod: 'COD',
-      prescriptionId: currentRx.id,
-    });
+      try {
+        savedBackendOrder = await orderApi.createWalkInOrder({
+          customerName: currentRx.patientName || 'Registered Patient',
+          customerPhone: cleanPhone.length >= 10 ? cleanPhone : '9876543210',
+          deliveryType: 'DELIVERY',
+          prescriptionId: isUuid(currentRx.id) ? currentRx.id : undefined,
+          address: currentRx.address || 'Home Delivery Address (Provided by Patient)',
+          area: 'Kolkata Central & Suburban',
+          pincode: currentRx.pincode || '',
+          items: approvedItems.map((it) => ({
+            name: it.name,
+            quantity: Number(it.qty) || 1,
+            price: Number(it.price) || 0,
+            productId: isUuid(it.productId) ? it.productId : undefined,
+          })),
+          subtotal: approvalSubtotal,
+          discount: 0,
+          discountType: 'FLAT',
+          discountValue: 0,
+          packagingFee: approvalPackagingFee,
+          platformFee: approvalPlatformFee,
+          deliveryFee: approvalDeliveryFee,
+          total: approvalFinalTotal,
+          notes: pharmacistNotes || undefined,
+        });
+      } catch (orderErr) {
+        console.warn('Backend order creation notice:', orderErr?.response?.data || orderErr.message);
+      }
 
-    // 3. Immediately advance selectedRxId to next pending prescription and close modal
-    const remainingPending = pendingPrescriptions.filter((p) => p.id !== currentRx.id);
-    setSelectedRxId(remainingPending[0]?.id || '');
-    setIsApproveModalOpen(false);
+      // 2. Mark prescription verified in backend database (if real UUID)
+      if (isUuid(currentRx.id)) {
+        await prescriptionApi
+          .reviewPrescription(currentRx.id, {
+            status: 'VERIFIED',
+          })
+          .catch((err) => console.warn('Backend prescription review notice:', err.message));
+      }
 
-    addToast(
-      `Prescription ${currentRx.id} approved! Order ${newOrder.id} created (₹${approvalBill.finalTotal.toFixed(
-        2
-      )}) & staged for dispatch.`,
-      'success'
-    );
+      // 3. Update local workspace store for instant UI response
+      verifyPrescription(currentRx.id, approvedItems, pharmacistNotes);
+      createOrder({
+        id: savedBackendOrder?.orderNumber || savedBackendOrder?.id,
+        customerName: currentRx.patientName,
+        customerPhone: currentRx.patientPhone,
+        address: 'Home Delivery Address (Provided by Patient)',
+        area: 'Kolkata Central & Suburban',
+        items: approvedItems,
+        totalMrp: approvalSubtotal,
+        subtotal: approvalSubtotal,
+        packagingFee: approvalPackagingFee,
+        platformFee: approvalPlatformFee,
+        deliveryFee: approvalDeliveryFee,
+        discount: 0,
+        cashback: 0,
+        total: approvalFinalTotal,
+        status: 'READY_FOR_PICKUP',
+        paymentMethod: 'COD',
+        prescriptionId: currentRx.id,
+      });
+
+      // 4. Update prescription lists and close modal
+      setBackendPrescriptions((prev) =>
+        prev.map((p) => (p.id === currentRx.id ? { ...p, status: 'VERIFIED' } : p))
+      );
+      const remainingPending = pendingPrescriptions.filter((p) => p.id !== currentRx.id);
+      setSelectedRxId(remainingPending[0]?.id || '');
+      setApprovedItems([]);
+      setIsApproveModalOpen(false);
+
+      addToast(
+        `Prescription approved! Order ${savedBackendOrder?.orderNumber || 'created'} saved to database (₹${approvalFinalTotal.toFixed(
+          2
+        )}) & staged for dispatch.`,
+        'success'
+      );
+    } catch (err) {
+      console.error('Prescription approval order creation error:', err);
+      addToast(
+        err?.response?.data?.message || err.message || 'Failed to complete prescription approval.',
+        'error'
+      );
+    } finally {
+      setIsSubmittingApproval(false);
+    }
   };
 
   // Pricing calculation for Walk-in Registration / In-Store Order
@@ -274,7 +508,7 @@ export const PrescriptionReviewPage = () => {
   }
 
   const manualPackagingFee = 6;
-  const manualPlatformFee = 0;
+  const manualPlatformFee = calculatePlatformFee(manualSubtotal);
   const manualDeliveryFee = isPickupOrder ? 0 : manualSubtotal < 499 ? 30 : 0;
   const manualFinalTotal = Math.max(
     0,
@@ -688,10 +922,13 @@ export const PrescriptionReviewPage = () => {
                   variant="primary"
                   size="md"
                   leftIcon={CheckCircle}
-                  onClick={() => setIsApproveModalOpen(true)}
+                  onClick={() => {
+                    setMedSearchQuery('');
+                    setIsApproveModalOpen(true);
+                  }}
                   className="w-full text-xs font-bold py-2.5 shadow-md flex items-center justify-center gap-2"
                 >
-                  Approve & Set Order Price
+                  Approve Prescription & Dispatch Order
                 </Button>
               </div>
             ) : (
@@ -733,7 +970,7 @@ export const PrescriptionReviewPage = () => {
             className="fixed inset-0 bg-forest-950/60 backdrop-blur-sm"
             onClick={() => setIsApproveModalOpen(false)}
           />
-          <div className="relative bg-surface-pure rounded-3xl max-w-lg w-full p-6 shadow-floating border border-brandBorder-subtle z-10 space-y-5 animate-scale-up">
+          <div className="relative bg-surface-pure rounded-3xl max-w-2xl w-full p-6 shadow-floating border border-brandBorder-subtle z-10 space-y-4 animate-scale-up max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-brandBorder-subtle">
               <div>
                 <h3 className="font-heading font-extrabold text-base text-forest-900">
@@ -753,117 +990,381 @@ export const PrescriptionReviewPage = () => {
             </div>
 
             <form onSubmit={handleConfirmApproval} className="space-y-4">
-              {/* Medicines in Order */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-forest-900">Order Items to Dispense</label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setApprovedItems([
-                        ...approvedItems,
-                        { name: 'Additional Medicine', qty: 1, price: 100 },
-                      ])
-                    }
-                    className="text-[11px] font-bold text-forest-700 hover:underline flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Add Item</span>
-                  </button>
+              {/* Prescribed Patient Info */}
+              <div className="bg-forest-50/70 p-3 rounded-2xl border border-forest-100 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[10px] text-brandText-muted uppercase font-bold block">Patient</span>
+                  <span className="font-bold text-forest-900">{currentRx.patientName}</span>
                 </div>
-
-                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                  {approvedItems.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-surface-warm p-2 rounded-xl text-xs">
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(e) => {
-                          const updated = [...approvedItems];
-                          updated[idx].name = e.target.value;
-                          setApprovedItems(updated);
-                        }}
-                        placeholder="Medicine name..."
-                        className="flex-1 bg-transparent border-0 font-semibold text-forest-900 focus:outline-none"
-                      />
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => {
-                          const updated = [...approvedItems];
-                          updated[idx].qty = Number(e.target.value) || 1;
-                          setApprovedItems(updated);
-                        }}
-                        className="w-12 text-center bg-surface-pure border border-brandBorder-subtle rounded-lg py-0.5 font-bold"
-                        title="Quantity"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setApprovedItems(approvedItems.filter((_, i) => i !== idx))}
-                        className="text-rose-500 hover:text-rose-700 p-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                <div className="text-right">
+                  <span className="text-[10px] text-brandText-muted uppercase font-bold block">Mobile</span>
+                  <span className="font-mono font-bold text-forest-800">{currentRx.patientPhone}</span>
                 </div>
               </div>
 
-              {/* Medicine MRP / Total Input */}
-              <div>
-                <label className="text-xs font-bold text-forest-900">Medicines Total MRP (₹)</label>
-                <div className="relative mt-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-brandText-muted">
-                    ₹
+              {/* Extracted medicines quick-add pills if available from uploaded document */}
+              {currentRx.extractedMedicines && currentRx.extractedMedicines.length > 0 && (
+                <div className="bg-forest-50/50 p-2.5 rounded-xl border border-forest-100/70 text-xs space-y-1.5">
+                  <span className="text-[10px] font-bold text-forest-800 uppercase tracking-wider block">
+                    Detected in Prescription (Click to Quick-Add):
                   </span>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    step="any"
-                    value={orderPrice}
-                    onChange={(e) => setOrderPrice(e.target.value)}
-                    className="w-full pl-7 pr-3 py-2 text-sm font-bold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {currentRx.extractedMedicines.map((em, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          const match = availableMedicines.find(
+                            (m) =>
+                              m.name.toLowerCase().includes(em.name.toLowerCase()) ||
+                              em.name.toLowerCase().includes(m.name.toLowerCase())
+                          );
+                          if (match) {
+                            handleAddOrIncrement(match);
+                          } else {
+                            setApprovedItems((prev) => [
+                              ...prev,
+                              {
+                                id: `rx-${em.name}-${Date.now()}`,
+                                productId: undefined,
+                                name: em.name,
+                                qty: em.qty || 1,
+                                price: 50,
+                              },
+                            ]);
+                          }
+                        }}
+                        className="bg-white hover:bg-forest-100/80 text-forest-900 border border-forest-200 px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+                      >
+                        <Plus className="w-3.5 h-3.5 text-forest-600" />
+                        <span>{em.name} (Qty: {em.qty || 1})</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              )}
+
+              {/* MEDICINE SEARCH & FULL LIST SECTION */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-bold text-forest-900">
+                      Search & Select Medicines from Stock
+                    </label>
+                    <p className="text-[10px] text-brandText-muted">
+                      Search any medicine from stock and add quantity directly
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-brandText-muted">
+                    {filteredMedicines.length} Available
+                  </span>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-forest-600" />
+                  <input
+                    type="text"
+                    value={medSearchQuery}
+                    onChange={(e) => setMedSearchQuery(e.target.value)}
+                    placeholder="Search medicine by name or generic formula (e.g. Paracetamol, Augmentin, Pan 40)..."
+                    className="w-full pl-9 pr-8 py-2 text-xs font-semibold bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 focus:bg-white transition-all shadow-xs"
+                  />
+                  {medSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setMedSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-brandText-muted hover:text-forest-900 rounded-full"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Whole List of Medicines */}
+                <div className="border border-brandBorder-subtle rounded-2xl bg-surface-pure overflow-hidden">
+                  <div className="space-y-1 max-h-56 overflow-y-auto p-2 divide-y divide-brandBorder-subtle/50">
+                    {filteredMedicines.length === 0 ? (
+                      <div className="py-6 text-center text-xs text-brandText-muted space-y-2">
+                        <p>No medicines found matching "{medSearchQuery}".</p>
+                        <button
+                          type="button"
+                          onClick={handleAddCustomMedicine}
+                          className="inline-flex items-center gap-1 text-xs font-bold text-forest-700 bg-forest-50 px-3 py-1.5 rounded-xl border border-forest-200 hover:bg-forest-100"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add as Custom Medicine</span>
+                        </button>
+                      </div>
+                    ) : (
+                      filteredMedicines.map((med) => {
+                        const currentQty = getItemQty(med.id);
+                        const isAdded = currentQty > 0;
+                        return (
+                          <div
+                            key={med.id}
+                            className={`p-2.5 rounded-xl transition-all flex items-center justify-between gap-3 ${
+                              isAdded
+                                ? 'bg-forest-50/90 border border-forest-300 shadow-xs'
+                                : 'hover:bg-surface-warm/80 border border-transparent'
+                            }`}
+                          >
+                            {/* Medicine Details */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-xs font-bold text-forest-900 truncate">
+                                  {med.name}
+                                </h4>
+                                {med.category && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-forest-100 text-forest-800">
+                                    {med.category}
+                                  </span>
+                                )}
+                              </div>
+                              {med.generic && (
+                                <p className="text-[10px] text-brandText-muted truncate mt-0.5">
+                                  {med.generic}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-2.5 mt-1">
+                                <span className="text-xs font-bold font-mono text-forest-900">
+                                  ₹{med.price.toFixed(2)}
+                                </span>
+                                <span className="text-[10px] text-brandText-muted">
+                                  In Stock: <strong>{med.stock}</strong> units
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Add / Quantity Stepper Controls */}
+                            <div className="shrink-0">
+                              {!isAdded ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddOrIncrement(med)}
+                                  className="px-3 py-1.5 bg-forest-700 hover:bg-forest-800 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs transition-colors"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Add</span>
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-1.5 bg-white border border-forest-400 rounded-xl p-1 shadow-xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDecrement(med.id)}
+                                    className="w-6 h-6 rounded-lg bg-forest-50 hover:bg-forest-100 text-forest-800 flex items-center justify-center font-bold text-xs"
+                                    title="Decrease quantity"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={currentQty}
+                                    onChange={(e) => handleSetQty(med, e.target.value)}
+                                    className="w-10 text-center font-mono font-bold text-xs focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddOrIncrement(med)}
+                                    className="w-6 h-6 rounded-lg bg-forest-50 hover:bg-forest-100 text-forest-800 flex items-center justify-center font-bold text-xs"
+                                    title="Increase quantity"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* SELECTED MEDICINES TRAY (ORDER BASKET) */}
+              <div className="space-y-2 pt-1 border-t border-brandBorder-subtle">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-forest-900 flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5 text-forest-700" />
+                    <span>Selected Dispensing Items ({approvedItems.length})</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleAddCustomMedicine}
+                      className="text-[11px] text-forest-700 hover:underline font-bold flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Custom Medicine</span>
+                    </button>
+                    {approvedItems.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setApprovedItems([])}
+                        className="text-[11px] text-rose-600 hover:underline font-semibold"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {approvedItems.length === 0 ? (
+                  <div className="p-3.5 bg-surface-warm rounded-2xl border border-dashed border-brandBorder-subtle text-center text-xs text-brandText-muted">
+                    No medicines selected yet. Search above and click <strong>Add</strong> to select medicines and set quantities.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {approvedItems.map((item, idx) => {
+                      const rowTotal = (Number(item.price) || 0) * (Number(item.qty) || 1);
+                      return (
+                        <div
+                          key={item.id || idx}
+                          className="flex items-center justify-between gap-2 p-2 bg-forest-50/70 rounded-xl border border-forest-200 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            {item.isCustom ? (
+                              <input
+                                type="text"
+                                required
+                                value={item.name}
+                                onChange={(e) => {
+                                  const updated = [...approvedItems];
+                                  updated[idx].name = e.target.value;
+                                  setApprovedItems(updated);
+                                }}
+                                placeholder="Enter custom medicine name"
+                                className="w-full bg-white px-2 py-0.5 rounded-lg border border-brandBorder-subtle text-xs font-semibold focus:outline-none"
+                              />
+                            ) : (
+                              <p className="font-bold text-forest-900 truncate">{item.name}</p>
+                            )}
+                            <div className="flex items-center gap-2 text-[10px] text-brandText-muted font-mono mt-0.5">
+                              <span>Rate:</span>
+                              {item.isCustom ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.price}
+                                  onChange={(e) => {
+                                    const updated = [...approvedItems];
+                                    updated[idx].price = Number(e.target.value) || 0;
+                                    setApprovedItems(updated);
+                                  }}
+                                  className="w-14 bg-white px-1 py-0.5 rounded border border-brandBorder-subtle text-center font-bold"
+                                />
+                              ) : (
+                                <span>₹{Number(item.price).toFixed(2)} / unit</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {/* Quantity Controls */}
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleDecrement(item.id)}
+                                className="w-5 h-5 rounded bg-white hover:bg-forest-100 text-forest-800 flex items-center justify-center font-bold text-xs border border-brandBorder-subtle"
+                              >
+                                -
+                              </button>
+                              <span className="w-6 text-center font-bold font-mono text-xs">{item.qty}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleAddOrIncrement(item)}
+                                className="w-5 h-5 rounded bg-white hover:bg-forest-100 text-forest-800 flex items-center justify-center font-bold text-xs border border-brandBorder-subtle"
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <span className="w-16 text-right font-mono font-bold text-forest-900">
+                              ₹{rowTotal.toFixed(2)}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(item.id)}
+                              className="text-rose-500 hover:text-rose-700 p-1"
+                              title="Remove item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Price Calculation Summary Breakdown according to Rules */}
               <div className="p-3.5 rounded-2xl bg-forest-50/80 border border-forest-100 text-xs space-y-1.5">
-                <div className="flex justify-between text-brandText-secondary">
-                  <span>Total MRP:</span>
-                  <span className="font-mono font-semibold">₹{approvalBill.totalMrp.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-emerald-700 font-semibold">
-                  <span className="flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5" />
-                    <span>
-                      {approvalBill.isHighValueTier
-                        ? 'High-Value Discount (18%):'
-                        : `Platform Discount (${approvalBill.discountPercent}%):`}
-                    </span>
-                  </span>
-                  <span className="font-mono">-₹{approvalBill.discount.toFixed(2)}</span>
+                <div className="flex justify-between font-bold text-forest-900">
+                  <span>Subtotal (Total MRP):</span>
+                  <span className="font-mono text-sm">₹{approvalSubtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-brandText-secondary">
                   <span>Packaging Charges (Fixed):</span>
-                  <span className="font-mono">₹{approvalBill.packagingFee.toFixed(2)}</span>
+                  <span className="font-mono">₹{approvalPackagingFee.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-brandText-secondary">
-                  <span>Platform Fee:</span>
-                  <span className="font-mono">₹{approvalBill.platformFee.toFixed(2)}</span>
+
+                {/* Tiered Platform Fee with official rule indicator */}
+                <div className="flex justify-between text-brandText-secondary items-center">
+                  <span>Platform Fee (Tiered):</span>
+                  <span className="font-mono font-bold flex items-center gap-1.5 text-forest-900">
+                    <span>₹{approvalPlatformFee.toFixed(2)}</span>
+                    {approvalSubtotal > 0 && (
+                      <span className="text-[10px] text-forest-700 bg-forest-100/90 px-1.5 py-0.5 rounded font-sans font-bold">
+                        {approvalSubtotal < 999
+                          ? 'Order < ₹999 (₹9)'
+                          : approvalSubtotal < 1999
+                          ? 'Order < ₹1999 (₹12)'
+                          : approvalSubtotal < 2999
+                          ? 'Order < ₹2999 (₹15)'
+                          : approvalSubtotal < 3999
+                          ? 'Order < ₹3999 (₹20)'
+                          : approvalSubtotal < 5000
+                          ? 'Order < ₹4999 (₹25)'
+                          : 'Order ₹5000+ (₹30)'}
+                      </span>
+                    )}
+                  </span>
                 </div>
-                {approvalBill.cashback > 0 && (
-                  <div className="flex justify-between text-emerald-800 font-semibold bg-emerald-100/60 px-2 py-1 rounded-lg">
-                    <span>Wallet Cashback (2%):</span>
-                    <span className="font-mono">+₹{approvalBill.cashback.toFixed(2)}</span>
-                  </div>
+
+                {/* Delivery Fee with official rule indicator (₹30 under ₹499, FREE for ₹499+) */}
+                <div className="flex justify-between text-brandText-secondary items-center">
+                  <span>Delivery Charges:</span>
+                  <span className="font-mono font-bold flex items-center gap-1.5">
+                    {approvalDeliveryFee > 0 ? (
+                      <>
+                        <span className="text-amber-800">₹{approvalDeliveryFee.toFixed(2)}</span>
+                        <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-sans font-bold">
+                          Order &lt; ₹499
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full text-[10px]">
+                        FREE Delivery {approvalSubtotal >= 499 ? '(Order ₹499+)' : ''}
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {approvalSubtotal > 0 && approvalSubtotal < 499 && (
+                  <p className="text-[10px] text-amber-800 font-medium bg-amber-50/90 p-1.5 rounded-lg border border-amber-200/60">
+                    💡 Delivery fee of <strong>₹30</strong> applied on orders under ₹499. Add ₹{(499 - approvalSubtotal).toFixed(2)} more for <strong>FREE Delivery</strong>!
+                  </p>
                 )}
+
                 <div className="border-t border-forest-200/80 pt-1.5 flex justify-between font-bold text-forest-900 text-sm">
                   <span>Final Net Total (COD):</span>
-                  <span className="font-mono text-forest-800">
-                    ₹{approvalBill.finalTotal.toFixed(2)}
+                  <span className="font-mono text-forest-800 text-base">
+                    ₹{approvalFinalTotal.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -882,7 +1383,9 @@ export const PrescriptionReviewPage = () => {
                   type="submit"
                   variant="primary"
                   size="sm"
+                  isLoading={isSubmittingApproval}
                   leftIcon={CheckCircle}
+                  disabled={approvedItems.length === 0 || approvalSubtotal <= 0}
                   className="text-xs font-bold px-4 py-2"
                 >
                   Approve & Create Delivery Order
@@ -1183,6 +1686,29 @@ export const PrescriptionReviewPage = () => {
                 <div className="flex justify-between text-brandText-secondary">
                   <span>Packaging Charges (Fixed):</span>
                   <span className="font-mono">₹{manualBill.packagingFee.toFixed(2)}</span>
+                </div>
+
+                {/* Platform Fee with tier rule indicator */}
+                <div className="flex justify-between text-brandText-secondary items-center">
+                  <span>Platform Fee (Tiered):</span>
+                  <span className="font-mono font-bold flex items-center gap-1.5 text-forest-900">
+                    <span>₹{manualBill.platformFee.toFixed(2)}</span>
+                    {manualBill.totalMrp > 0 && (
+                      <span className="text-[10px] text-forest-700 bg-forest-100/90 px-1.5 py-0.5 rounded font-sans font-bold">
+                        {manualBill.totalMrp < 999
+                          ? 'Order < ₹999 (₹9)'
+                          : manualBill.totalMrp < 1999
+                          ? 'Order < ₹1999 (₹12)'
+                          : manualBill.totalMrp < 2999
+                          ? 'Order < ₹2999 (₹15)'
+                          : manualBill.totalMrp < 3999
+                          ? 'Order < ₹3999 (₹20)'
+                          : manualBill.totalMrp < 5000
+                          ? 'Order < ₹4999 (₹25)'
+                          : 'Order ₹5000+ (₹30)'}
+                      </span>
+                    )}
+                  </span>
                 </div>
 
                 {/* Delivery Fee with official rule indicator */}

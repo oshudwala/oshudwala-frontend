@@ -1,5 +1,9 @@
 import apiClient from './api';
 
+const isUuid = (val) =>
+  typeof val === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+
 export const orderService = {
   /**
    * Place an order with verified pharmacy
@@ -23,38 +27,50 @@ export const orderService = {
     cashback,
     total,
   }) {
+    const formattedItems = Array.isArray(items)
+      ? items.map((it) => ({
+          productId: isUuid(it.productId) ? it.productId : isUuid(it.id) ? it.id : undefined,
+          id: isUuid(it.id) ? it.id : undefined,
+          quantity: Math.max(1, parseInt(it.quantity, 10) || 1),
+        }))
+      : undefined;
+
+    const payload = {
+      addressId: isUuid(addressId) ? addressId : undefined,
+      prescriptionId: isUuid(prescriptionId) ? prescriptionId : null,
+      couponCode: couponCode ? String(couponCode).trim().toUpperCase() : null,
+      items: formattedItems,
+      // Metadata / slip details
+      address,
+      paymentMethod: paymentMethod || 'Cash on Delivery (COD)',
+      deliverySlot: deliverySlot || 'Standard Delivery',
+      subtotal: totalMrp || subtotal,
+      packagingFee: packagingFee || 6,
+      platformFee: platformFee || 9,
+      deliveryFee,
+      discount,
+      cashback,
+      total,
+    };
+
     try {
-      const response = await apiClient.post('/orders', {
-        addressId,
-        items,
-        address,
-        paymentMethod: paymentMethod || 'Cash on Delivery (COD)',
-        deliverySlot: deliverySlot || 'Standard Delivery',
-        prescriptionId,
-        couponCode,
-        subtotal: totalMrp || subtotal,
-        packagingFee: packagingFee || 6,
-        platformFee: platformFee || 9,
-        deliveryFee,
-        discount,
-        cashback,
-        total,
-      });
+      const response = await apiClient.post('/orders', payload);
       return response.data?.data || response.data;
     } catch (err) {
-      console.warn('Backend order placement API returned:', err.response?.data || err.message);
-      // Fallback for seamless frontend experience during development
-      return {
-        id: `ORD-${Date.now().toString().slice(-6)}`,
-        address,
-        pharmacy: { name: 'Oshud Wala Express Pharmacy (Verified Hub)' },
-        deliveryOtp: Math.floor(1000 + Math.random() * 9000).toString(),
-        total,
-        paymentMethod: 'Cash on Delivery (COD)',
-        itemsCount: items?.length || 1,
-        prescriptionAttached: prescriptionFileName || null,
-        createdAt: new Date().toISOString(),
-      };
+      const errorMsg = err.response?.data?.message || err.message;
+      console.warn('Backend order placement API returned:', errorMsg);
+
+      // If backend gave an explicit error (coupon issue, empty cart, validation), throw so user sees it
+      if (err.response && (err.response.status === 400 || err.response.status === 422 || err.response.status === 409)) {
+        throw new Error(errorMsg || 'Order placement failed. Please verify your order details.');
+      }
+
+      // If network offline or completely unhandled server error, throw clear error
+      if (err.response?.status === 401) {
+        throw new Error('Please sign in to complete your checkout.');
+      }
+
+      throw new Error(errorMsg || 'Failed to place order. Please check network connection.');
     }
   },
 

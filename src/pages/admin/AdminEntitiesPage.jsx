@@ -283,15 +283,16 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
   const editEmailConflict = useMemo(() => {
     if (!editFormData.email || !editFormData.email.includes('@') || !itemToEdit) return null;
     const cleanEmail = editFormData.email.trim().toLowerCase();
-    const origEmail = (itemToEdit.email || itemToEdit.user?.email || '').trim().toLowerCase();
+    const origEmail = (itemToEdit.email || itemToEdit.user?.email || itemToEdit.owner?.email || '').trim().toLowerCase();
     // If the email was NOT changed on edit, it belongs to this account!
     if (cleanEmail === origEmail) return null;
 
-    const origPhone = normalizePhoneNumber(itemToEdit.phone || itemToEdit.user?.phone);
+    const origPhone = normalizePhoneNumber(itemToEdit.phone || itemToEdit.user?.phone || itemToEdit.owner?.phone);
+    const origUserId = itemToEdit.userId || itemToEdit.user?.id || itemToEdit.ownerId || itemToEdit.owner?.id;
     const isCurrent = (p) =>
       Boolean(
         (itemToEdit.id && (p.id === itemToEdit.id || p.userId === itemToEdit.id)) ||
-        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId)) ||
+        (origUserId && (p.id === origUserId || p.userId === origUserId)) ||
         (origEmail && p.email && p.email.trim().toLowerCase() === origEmail) ||
         (origPhone && p.phone && normalizePhoneNumber(p.phone) === origPhone)
       );
@@ -303,15 +304,16 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     if (!itemToEdit) return null;
     const cleanPhone = normalizePhoneNumber(editFormData.phone);
     if (cleanPhone.length < 10) return null;
-    const origPhone = normalizePhoneNumber(itemToEdit.phone || itemToEdit.user?.phone);
+    const origPhone = normalizePhoneNumber(itemToEdit.phone || itemToEdit.user?.phone || itemToEdit.owner?.phone);
     // If the phone was NOT changed on edit, it belongs to this account!
     if (cleanPhone === origPhone) return null;
 
-    const origEmail = (itemToEdit.email || itemToEdit.user?.email || '').trim().toLowerCase();
+    const origEmail = (itemToEdit.email || itemToEdit.user?.email || itemToEdit.owner?.email || '').trim().toLowerCase();
+    const origUserId = itemToEdit.userId || itemToEdit.user?.id || itemToEdit.ownerId || itemToEdit.owner?.id;
     const isCurrent = (p) =>
       Boolean(
         (itemToEdit.id && (p.id === itemToEdit.id || p.userId === itemToEdit.id)) ||
-        (itemToEdit.userId && (p.id === itemToEdit.userId || p.userId === itemToEdit.userId)) ||
+        (origUserId && (p.id === origUserId || p.userId === origUserId)) ||
         (origPhone && p.phone && normalizePhoneNumber(p.phone) === origPhone) ||
         (origEmail && p.email && p.email.trim().toLowerCase() === origEmail)
       );
@@ -505,7 +507,13 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
   const handleEditInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setEditFormData((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    const finalVal = type === 'checkbox' ? checked : value;
+    setEditFormData((prev) => {
+      const updated = { ...prev, [name]: finalVal };
+      if (name === 'name') updated.fullName = finalVal;
+      if (name === 'fullName') updated.name = finalVal;
+      return updated;
+    });
   };
 
   // Calculate 30 days deadline countdown
@@ -655,21 +663,55 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
 
   // Open Edit Modal
   const handleOpenEdit = (row, type) => {
-    setItemToEdit({ ...row, entityType: type });
+    const resolvedUserId =
+      row.userId ||
+      row.user?.id ||
+      row.ownerId ||
+      row.owner?.id ||
+      row.managerId ||
+      row.manager?.id ||
+      (type === 'users' || type === 'receptionists' ? row.id : null);
+    const resolvedPhone =
+      row.phone ||
+      row.user?.phone ||
+      row.owner?.phone ||
+      row.manager?.phone ||
+      '';
+    const resolvedEmail =
+      row.email ||
+      row.user?.email ||
+      row.owner?.email ||
+      row.manager?.email ||
+      '';
+    const resolvedName =
+      row.name ||
+      row.fullName ||
+      row.user?.fullName ||
+      row.owner?.fullName ||
+      '';
+
+    setItemToEdit({
+      ...row,
+      entityType: type,
+      userId: resolvedUserId,
+      phone: resolvedPhone,
+      email: resolvedEmail,
+    });
     setEditCustomSpecialization('');
     setEditFormData({
       id: row.id,
-      userId: row.userId || row.user?.id || row.id,
-      fullName: row.fullName || row.name || row.user?.fullName || '',
-      name: row.name || row.fullName || '',
-      email: row.email || row.user?.email || '',
-      phone: row.phone || row.user?.phone || '',
-      imageUrl: row.imageUrl || row.user?.imageUrl || '',
+      userId: resolvedUserId,
+      fullName: resolvedName,
+      name: resolvedName,
+      email: resolvedEmail,
+      phone: resolvedPhone,
+      imageUrl: row.imageUrl || row.user?.imageUrl || row.logoUrl || '',
       locationId: row.locationId || '',
       address: row.line1 || row.address || '',
       city: row.city || 'Durgapur',
       state: row.state || 'WB',
       pincode: row.pincode || '713216',
+      status: row.user?.status || row.status || 'ACTIVE',
       isFeatured: Boolean(row.isFeatured),
       hasClinicService: row.hasClinicService ?? (type === 'clinics'),
       hasMedicineService: row.hasMedicineService ?? (type === 'pharmacies'),
@@ -686,7 +728,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
       // Rider
       vehicleType: row.vehicleType || 'Motorcycle',
       vehicleNumber: row.vehicleNumber || '',
-      licenseNo: row.licenseNumber || '',
+      licenseNo: row.licenseNumber || row.licenseNo || '',
     });
     setIsEditModalOpen(true);
   };
@@ -696,8 +738,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
     e.preventDefault();
     if (!itemToEdit) return;
 
-    const origPhone = itemToEdit.phone || itemToEdit.user?.phone;
-    const origEmail = itemToEdit.email || itemToEdit.user?.email;
+    const origPhone = itemToEdit.phone || itemToEdit.user?.phone || itemToEdit.owner?.phone;
+    const origEmail = itemToEdit.email || itemToEdit.user?.email || itemToEdit.owner?.email;
     const origUserId = itemToEdit.userId || itemToEdit.user?.id || itemToEdit.ownerId || itemToEdit.owner?.id;
 
     // Strict duplicate credential check (skips if phone/email was not changed)
@@ -793,6 +835,7 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           isFeatured: Boolean(editFormData.isFeatured),
           hasClinicService: editFormData.hasClinicService !== false,
           hasMedicineService: Boolean(editFormData.hasMedicineService),
+          chamberCount: editFormData.chamberCount,
           locationId: editFormData.locationId || undefined,
           line1: editFormData.address,
           city: editFormData.city,
@@ -823,6 +866,8 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
           imageUrl: editFormData.imageUrl,
+          status: editFormData.status || 'ACTIVE',
+          roleName: 'RECEPTIONIST',
         });
         addToast(`Receptionist ${editFormData.fullName} profile updated!`, 'success');
       } else if (type === 'users') {
@@ -833,13 +878,15 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
           email: editFormData.email,
           phone: editFormData.phone.replace(/[^0-9]/g, ''),
           imageUrl: editFormData.imageUrl,
+          status: editFormData.status || 'ACTIVE',
+          roleName: itemToEdit.role?.name || itemToEdit.roleName || 'PATIENT',
         });
         addToast(`Patient ${editFormData.fullName} profile updated!`, 'success');
       }
 
       setIsEditModalOpen(false);
       setItemToEdit(null);
-      await loadData();
+      await loadData(true);
     } catch (err) {
       addToast(err.message || 'Failed to update details.', 'error');
     } finally {
@@ -2898,15 +2945,27 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                         className="w-full px-3.5 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
                       />
                     </div>
-                    <div className={`grid grid-cols-1 ${itemToEdit.entityType === 'pharmacies' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-brandText-main mb-1">City</label>
                         <input
                           type="text"
                           name="city"
                           value={editFormData.city || ''}
-                          readOnly
-                          className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium cursor-not-allowed"
+                          onChange={handleEditInputChange}
+                          placeholder="e.g. Durgapur"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">State</label>
+                        <input
+                          type="text"
+                          name="state"
+                          value={editFormData.state || ''}
+                          onChange={handleEditInputChange}
+                          placeholder="e.g. WB"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
                         />
                       </div>
                       <div>
@@ -2915,26 +2974,44 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                           type="text"
                           name="pincode"
                           value={editFormData.pincode || ''}
-                          readOnly
-                          className="w-full px-3 py-2 text-xs bg-surface-warm/70 border border-brandBorder-subtle rounded-xl text-brandText-secondary font-medium font-mono cursor-not-allowed"
+                          onChange={handleEditInputChange}
+                          placeholder="713216"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium font-mono"
                         />
                       </div>
-                      {itemToEdit.entityType === 'pharmacies' && (
-                        <div>
-                          <label className="block text-xs font-semibold text-brandText-main mb-1">
-                            Drug License No.
-                          </label>
-                          <input
-                            type="text"
-                            name="licenseNumber"
-                            value={editFormData.licenseNumber || ''}
-                            onChange={handleEditInputChange}
-                            placeholder="WB-DL-9901"
-                            className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                          />
-                        </div>
-                      )}
                     </div>
+
+                    {itemToEdit.entityType === 'pharmacies' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">
+                          Drug License No.
+                        </label>
+                        <input
+                          type="text"
+                          name="licenseNumber"
+                          value={editFormData.licenseNumber || ''}
+                          onChange={handleEditInputChange}
+                          placeholder="WB-DL-9901"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                        />
+                      </div>
+                    )}
+
+                    {itemToEdit.entityType === 'clinics' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">
+                          Available Chambers / Rooms
+                        </label>
+                        <input
+                          type="text"
+                          name="chamberCount"
+                          value={editFormData.chamberCount || ''}
+                          onChange={handleEditInputChange}
+                          placeholder="e.g. 6 Chambers"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        />
+                      </div>
+                    )}
 
                     {/* Active Facility Services (hasClinicService & hasMedicineService) */}
                     <div className="p-3.5 bg-forest-50/80 border border-forest-200/80 rounded-2xl space-y-2">
@@ -3003,40 +3080,74 @@ export const AdminEntitiesPage = ({ initialTab = 'clinics' }) => {
                 )}
 
                 {itemToEdit.entityType === 'riders' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-brandBorder-subtle">
-                    <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">Vehicle Type</label>
-                      <select
-                        name="vehicleType"
-                        value={editFormData.vehicleType || 'Motorcycle'}
-                        onChange={handleEditInputChange}
-                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                      >
-                        <option value="Motorcycle">Motorcycle</option>
-                        <option value="Scooter">Scooter</option>
-                        <option value="EV Bike">EV Bike</option>
-                      </select>
+                  <div className="space-y-3 pt-2 border-t border-brandBorder-subtle">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Vehicle Type</label>
+                        <select
+                          name="vehicleType"
+                          value={editFormData.vehicleType || 'Motorcycle'}
+                          onChange={handleEditInputChange}
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                        >
+                          <option value="Motorcycle">Motorcycle</option>
+                          <option value="Scooter">Scooter</option>
+                          <option value="EV Bike">EV Bike</option>
+                          <option value="Bicycle">Bicycle</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Vehicle Number</label>
+                        <input
+                          type="text"
+                          name="vehicleNumber"
+                          value={editFormData.vehicleNumber || ''}
+                          onChange={handleEditInputChange}
+                          placeholder="WB-40-1234"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">Vehicle Number</label>
-                      <input
-                        type="text"
-                        name="vehicleNumber"
-                        value={editFormData.vehicleNumber || ''}
-                        onChange={handleEditInputChange}
-                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">Driving License No.</label>
+                        <input
+                          type="text"
+                          name="licenseNo"
+                          value={editFormData.licenseNo || ''}
+                          onChange={handleEditInputChange}
+                          placeholder="DL-WB-20230001234"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-brandText-main mb-1">City / Zone</label>
+                        <input
+                          type="text"
+                          name="city"
+                          value={editFormData.city || ''}
+                          onChange={handleEditInputChange}
+                          placeholder="Durgapur"
+                          className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-brandText-main mb-1">City Zone</label>
-                      <input
-                        type="text"
-                        name="city"
-                        value={editFormData.city || ''}
-                        onChange={handleEditInputChange}
-                        className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500"
-                      />
-                    </div>
+                  </div>
+                )}
+
+                {(itemToEdit.entityType === 'users' || itemToEdit.entityType === 'receptionists') && (
+                  <div className="pt-2 border-t border-brandBorder-subtle">
+                    <label className="block text-xs font-semibold text-brandText-main mb-1">Account Status</label>
+                    <select
+                      name="status"
+                      value={editFormData.status || 'ACTIVE'}
+                      onChange={handleEditInputChange}
+                      className="w-full px-3 py-2 text-xs bg-surface-warm border border-brandBorder-subtle rounded-xl focus:outline-none focus:border-forest-500 font-medium"
+                    >
+                      <option value="ACTIVE">ACTIVE (Normal Access)</option>
+                      <option value="SUSPENDED">SUSPENDED (Temporarily Blocked)</option>
+                      <option value="DEACTIVATED">DEACTIVATED (Account Disabled)</option>
+                    </select>
                   </div>
                 )}
 

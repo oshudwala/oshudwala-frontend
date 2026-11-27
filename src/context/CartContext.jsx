@@ -108,7 +108,10 @@ export const CartProvider = ({ children }) => {
   const applyCoupon = async (code) => {
     setCouponError('');
     const cleanCode = String(code || '').trim().toUpperCase();
-    if (!cleanCode) return false;
+    if (!cleanCode) {
+      setCouponError('Please enter a coupon code.');
+      return false;
+    }
 
     // Calculate current subtotal in paise for backend validation
     const currentSubtotal = cartItems.reduce(
@@ -121,32 +124,34 @@ export const CartProvider = ({ children }) => {
       const res = await couponApi.validateCoupon(cleanCode, subtotalPaise);
       if (res && (res.discountPaise !== undefined || res.couponId)) {
         const discountRupees = Math.round(Number(res.discountPaise || 0)) / 100;
+        const discountVal = Number(res.discountValue || 0);
+        let label = `₹${discountRupees} OFF`;
+        if (res.discountType === 'PERCENT') {
+          label = `${discountVal}% OFF (Saved ₹${discountRupees})`;
+        } else if (discountRupees > 0) {
+          label = `₹${discountRupees} OFF`;
+        }
+
         setAppliedCoupon({
           id: res.couponId,
           code: res.code || cleanCode,
-          type: 'fixed',
-          value: discountRupees,
+          discountType: res.discountType,
+          discountValue: res.discountValue,
           discountPaise: res.discountPaise,
-          label: `₹${discountRupees} OFF (${res.code || cleanCode})`,
+          discountRupees: discountRupees,
+          maxDiscountPaise: res.maxDiscountPaise,
+          minOrderPaise: res.minOrderPaise,
+          label: `${label} (${res.code || cleanCode})`,
         });
+        setCouponError('');
         return true;
-      }
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message;
-      if (msg && !msg.includes('Network Error')) {
-        setCouponError(msg);
+      } else {
+        setCouponError('Unable to apply coupon. Please check requirements.');
         return false;
       }
-    }
-
-    if (cleanCode === 'OSHUD10') {
-      setAppliedCoupon({ code: 'OSHUD10', type: 'percent', value: 10, label: '10% OFF Oshud Care' });
-      return true;
-    } else if (cleanCode === 'WELCOME50') {
-      setAppliedCoupon({ code: 'WELCOME50', type: 'fixed', value: 50, label: '₹50 OFF First Order' });
-      return true;
-    } else {
-      setCouponError('Invalid or expired coupon code.');
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Invalid or expired coupon code.';
+      setCouponError(msg);
       return false;
     }
   };

@@ -248,35 +248,23 @@ export const CartPage = () => {
                   {couponError && (
                     <p className="text-[11px] text-rose-600">{couponError}</p>
                   )}
-                  {availableCoupons.length > 0 ? (
+                  {availableCoupons.length > 0 && (
                     <div className="pt-1 flex flex-wrap gap-1.5">
-                      {availableCoupons.slice(0, 4).map((c) => (
-                        <button
-                          key={c.id || c.code}
-                          type="button"
-                          onClick={() => applyCoupon(c.code)}
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200 cursor-pointer transition-colors"
-                        >
-                          Use {c.code} ({c.discountType === 'PERCENT' ? `${c.discountValue}% OFF` : `₹${c.discountValue / 100} OFF`})
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="pt-1 flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => applyCoupon('OSHUD10')}
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200 cursor-pointer"
-                      >
-                        Use OSHUD10 (10% OFF)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => applyCoupon('WELCOME50')}
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200 cursor-pointer"
-                      >
-                        Use WELCOME50 (₹50 OFF)
-                      </button>
+                      {availableCoupons.slice(0, 4).map((c) => {
+                        const discountLabel = c.discountType === 'PERCENT'
+                          ? `${c.discountValue}% OFF`
+                          : `₹${c.discountValue > 500 ? c.discountValue / 100 : c.discountValue} OFF`;
+                        return (
+                          <button
+                            key={c.id || c.code}
+                            type="button"
+                            onClick={() => applyCoupon(c.code)}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-forest-50 hover:bg-forest-100 text-forest-700 border border-forest-200 cursor-pointer transition-colors"
+                          >
+                            Use {c.code} ({discountLabel})
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </form>

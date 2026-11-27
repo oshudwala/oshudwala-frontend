@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ShoppingBag,
   Bike,
@@ -17,6 +17,9 @@ import {
   Receipt,
   Sparkles,
   Filter,
+  RefreshCw,
+  AlertCircle,
+  Download,
 } from 'lucide-react';
 import DataTable from '../../components/workspace/DataTable';
 import StatusBadge from '../../components/workspace/StatusBadge';
@@ -25,28 +28,177 @@ import ConfirmationModal from '../../components/workspace/ConfirmationModal';
 import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
-import { calculateOrderBill } from '../../services/pricingRules';
+import { calculatePlatformFee } from '../../services/pricingRules';
 import { deliveryApi } from '../../services/api/delivery.api';
+import { orderApi } from '../../services/api/order.api';
+import apiClient from '../../services/api/client';
 
 export const AdminOrdersPage = () => {
-  const { orders, riders, updateOrderStatus, assignRider } = useWorkspaceStore();
+  const { assignRider: storeAssignRider } = useWorkspaceStore();
   const { addToast } = useToast();
+
+  const [orders, setOrders] = useState([]);
+  const [riders, setRiders] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAssigning, setIsAssigning] = useState(false);
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedRiderId, setSelectedRiderId] = useState('');
 
-  // Date Filtering State (Requirement 3)
+  // Date Filtering State
   const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom'
   const [customDate, setCustomDate] = useState('');
 
   const filterOptions = [
-    { label: 'Pending', value: 'PENDING' },
+    { label: 'Pending Review', value: 'PENDING_PHARMACY_REVIEW' },
+    { label: 'Accepted', value: 'ACCEPTED' },
     { label: 'Preparing', value: 'PREPARING' },
     { label: 'Ready for Pickup', value: 'READY_FOR_PICKUP' },
+    { label: 'Rider Assigned', value: 'RIDER_ASSIGNED' },
     { label: 'Out for Delivery', value: 'OUT_FOR_DELIVERY' },
     { label: 'Delivered', value: 'DELIVERED' },
+    { label: 'Cancelled', value: 'CANCELLED' },
   ];
+
+  // Fetch real orders and real riders from backend
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [ordersRes, ridersRes] = await Promise.allSettled([
+        orderApi.getPharmacyOrders(),
+        apiClient.get('/riders'),
+      ]);
+
+      if (ordersRes.status === 'fulfilled') {
+        const rawOrders = Array.isArray(ordersRes.value)
+          ? ordersRes.value
+          : ordersRes.value?.orders || [];
+
+        const normalized = rawOrders.map((o) => {
+          const subtotal = (o.subtotalPaise || 0) / 100;
+          const discount = (o.couponDiscountPaise || 0) / 100;
+          const packagingFee = (o.packagingFeePaise || 0) / 100;
+          const platformFee =
+            (o.platformFeePaise || 0) / 100 || (subtotal > 0 ? calculatePlatformFee(subtotal) : 0);
+          const deliveryFee =
+            (o.deliveryFeePaise || 0) / 100 || (subtotal > 0 && subtotal < 499 ? 30 : 0);
+          const total = (o.totalPaise || 0) / 100 || subtotal - discount + packagingFee + platformFee + deliveryFee;
+
+          const addr = o.deliveryAddress || {};
+          const fullAddress = [addr.line1, addr.area, addr.city, addr.pincode]
+            .filter(Boolean)
+            .join(', ');
+
+          const riderObj = o.delivery?.rider
+            ? {
+                id: o.delivery.rider.id,
+                name: o.delivery.rider.fullName || 'Assigned Rider',
+                phone: o.delivery.rider.phone || '',
+              }
+            : null;
+
+          const itemsList = (o.items || []).map((it) => ({
+            id: it.id,
+            name: it.nameSnapshot || it.name || 'Medicine Item',
+            qty: Number(it.quantity) || 1,
+            price: (it.unitPricePaise || it.mrpPaise || 0) / 100,
+            form: 'Strip / Unit',
+          }));
+
+          return {
+            id: o.orderNumber || o.id,
+            backendId: o.id,
+            customerName: addr.fullName || o.patient?.fullName || 'Walk-in Customer',
+            customerPhone: addr.phone || o.patient?.phone || 'Not Specified',
+            area: addr.area || addr.line1 || 'Kolkata Central & Suburban',
+            address: fullAddress || 'Direct Dispatch / Counter Pickup',
+            landmark: addr.landmark || 'Near Center',
+            pharmacyName: o.pharmacy?.name || 'Primary Medicine Hub',
+            pharmacyAddress: 'Kolkata Dispensary Hub',
+            assignedRider: riderObj,
+            pickupQrCode: o.delivery?.qrToken || (o.status === 'READY_FOR_PICKUP' ? 'READY_FOR_PICKUP' : null),
+            deliveryOtp: 'Verified on Handover',
+            items: itemsList,
+            totalMrp: subtotal,
+            subtotal,
+            discount,
+            packagingFee: packagingFee || 15,
+            platformFee,
+            deliveryFee,
+            total,
+            status: o.status,
+            paymentMethod: o.paymentMethod || 'COD',
+            paymentStatus: o.paymentStatus || 'PENDING',
+            createdAt: o.placedAt || o.createdAt,
+            timeline: [
+              {
+                status: 'Order Placed & Registered',
+                time: new Date(o.placedAt || o.createdAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+                completed: true,
+              },
+              {
+                status: 'Pharmacy Stock Verified & Packed',
+                time: ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(
+                  o.status
+                )
+                  ? 'Completed'
+                  : 'Pending',
+                completed: ['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(
+                  o.status
+                ),
+              },
+              {
+                status: 'Rider Assigned & Ready for Pickup',
+                time: ['RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(o.status)
+                  ? riderObj?.name ? `Assigned to ${riderObj.name}` : 'Assigned'
+                  : 'Pending',
+                completed: ['RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(o.status),
+              },
+              {
+                status: 'Delivered to Customer Doorstep',
+                time: o.status === 'DELIVERED' ? 'Delivered' : 'Pending',
+                completed: o.status === 'DELIVERED',
+              },
+            ],
+          };
+        });
+
+        setOrders(normalized);
+      }
+
+      if (ridersRes.status === 'fulfilled') {
+        const rawRiders = ridersRes.value.data?.data || ridersRes.value.data || [];
+        const normalizedRiders = (Array.isArray(rawRiders) ? rawRiders : []).map((r) => ({
+          id: r.user?.id || r.userId || r.id,
+          profileId: r.id,
+          name: r.user?.fullName || r.fullName || 'Delivery Partner',
+          phone: r.user?.phone || r.phone || '',
+          email: r.user?.email || r.email || '',
+          zone: r.zone || 'Kolkata City & Suburbs',
+          vehicle: r.vehicleType
+            ? `${r.vehicleType} (${r.vehicleNumber || 'Registered'})`
+            : 'Two-Wheeler Delivery Partner',
+          isOnline: r.status === 'AVAILABLE' || r.status === 'ACTIVE' || r.isOnline !== false,
+          status: r.status,
+          kycStatus: r.kycStatus || 'APPROVED',
+        }));
+        setRiders(normalizedRiders);
+      }
+    } catch (err) {
+      console.warn('Admin orders & riders fetch notice:', err.message);
+      addToast('Could not sync orders from server. Showing cached view.', 'warning');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   // Apply Date Filtering
   const todayStr = new Date().toDateString();
@@ -80,28 +232,70 @@ export const AdminOrdersPage = () => {
     const rider = riders.find((r) => r.id === selectedRiderId);
     if (!rider) return;
 
+    setIsAssigning(true);
     try {
       // Call backend POST /deliveries/assign to automatically generate and save pickup QR in DB
-      const result = await deliveryApi.assignDeliveries(rider.id || rider.userId, [selectedOrder.id]);
-      const backendQr = result?.pickupQrs?.[0]?.qrToken || null;
+      const result = await deliveryApi.assignDeliveries(rider.id, [
+        selectedOrder.backendId || selectedOrder.id,
+      ]);
+      const backendQr = result?.pickupQrs?.[0]?.qrToken || result?.deliveries?.[0]?.qrToken || null;
 
-      const updated = assignRider(selectedOrder.id, rider, backendQr);
+      // Update local state
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === selectedOrder.id || o.backendId === selectedOrder.backendId
+            ? {
+                ...o,
+                status: 'RIDER_ASSIGNED',
+                assignedRider: rider,
+                pickupQrCode: backendQr || o.pickupQrCode,
+                timeline: o.timeline.map((step, idx) =>
+                  idx === 2 ? { ...step, completed: true, time: `Assigned to ${rider.name}` } : step
+                ),
+              }
+            : o
+        )
+      );
+
+      setSelectedOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'RIDER_ASSIGNED',
+              assignedRider: rider,
+              pickupQrCode: backendQr || prev.pickupQrCode,
+            }
+          : null
+      );
+
+      // Also sync workspace store
+      storeAssignRider(selectedOrder.id, rider, backendQr);
+
       addToast(
-        `Assigned Order ${selectedOrder.id} to rider ${rider.name}. Pickup QR code automatically generated & saved in DB!`,
+        `Order ${selectedOrder.id} successfully assigned to ${rider.name}! Pickup QR token created & saved in DB.`,
         'success'
       );
       setIsAssignModalOpen(false);
-      setSelectedOrder((prev) =>
-        prev ? { ...prev, assignedRider: rider, pickupQrCode: updated.pickupQrCode } : null
-      );
+      setSelectedRiderId('');
     } catch (err) {
-      console.warn('Backend assignDeliveries fallback note:', err);
-      const updated = assignRider(selectedOrder.id, rider);
-      addToast(`Assigned Order ${selectedOrder.id} to rider ${rider.name}`, 'success');
-      setIsAssignModalOpen(false);
-      setSelectedOrder((prev) =>
-        prev ? { ...prev, assignedRider: rider, pickupQrCode: updated.pickupQrCode } : null
+      console.error('Assign rider error:', err);
+      addToast(
+        err.response?.data?.message || err.message || 'Failed to assign rider to this order',
+        'error'
       );
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const handleDownloadInvoice = async (order) => {
+    if (!order) return;
+    try {
+      await orderApi.downloadInvoicePdf(order.backendId || order.id, order.id);
+      addToast(`Invoice PDF for Order ${order.id} downloaded successfully.`, 'success');
+    } catch (err) {
+      console.warn('Invoice download notice:', err.message);
+      window.print();
     }
   };
 
@@ -113,7 +307,8 @@ export const AdminOrdersPage = () => {
         <div>
           <span className="font-mono font-bold text-xs text-forest-800">{row.id}</span>
           <p className="text-[10px] text-brandText-muted">
-            {new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} &bull;{' '}
+            {new Date(row.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
           </p>
         </div>
       ),
@@ -152,7 +347,7 @@ export const AdminOrdersPage = () => {
             <span>{row.assignedRider.name}</span>
           </div>
         ) : (
-          <span className="text-[11px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded">
+          <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
             Unassigned
           </span>
         ),
@@ -184,12 +379,25 @@ export const AdminOrdersPage = () => {
             Platform Orders Directory
           </h1>
           <p className="text-xs text-brandText-secondary mt-0.5">
-            Monitor, assign riders, and update medicine delivery orders across all zones.
+            Monitor, assign riders, and manage medicine delivery orders across all zones.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchData}
+            isLoading={isLoading}
+            className="text-xs flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>Refresh Orders</span>
+          </Button>
         </div>
       </div>
 
-      {/* Date Filter & Control Strip (Requirement 3) */}
+      {/* Date Filter & Control Strip */}
       <div className="bg-surface-pure p-4 rounded-2xl border border-brandBorder-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-bold text-forest-900 flex items-center gap-1.5 mr-1">
@@ -238,7 +446,8 @@ export const AdminOrdersPage = () => {
         </div>
 
         <div className="text-xs text-brandText-secondary">
-          Showing <strong className="text-forest-900">{filteredOrders.length}</strong> of {orders.length} total orders
+          Showing <strong className="text-forest-900">{filteredOrders.length}</strong> of{' '}
+          {orders.length} total orders
         </div>
       </div>
 
@@ -246,6 +455,7 @@ export const AdminOrdersPage = () => {
       <DataTable
         columns={columns}
         data={filteredOrders}
+        isLoading={isLoading}
         searchKey="customerName"
         searchPlaceholder="Search by customer name, phone, order ID..."
         filterOptions={filterOptions}
@@ -258,26 +468,30 @@ export const AdminOrdersPage = () => {
         isOpen={Boolean(selectedOrder)}
         onClose={() => setSelectedOrder(null)}
         title={`Order Details: ${selectedOrder?.id}`}
-        subtitle={`Placed on ${new Date(selectedOrder?.createdAt || Date.now()).toLocaleDateString('en-IN')}`}
+        subtitle={`Placed on ${new Date(selectedOrder?.createdAt || Date.now()).toLocaleDateString(
+          'en-IN',
+          { day: 'numeric', month: 'short', year: 'numeric' }
+        )}`}
         footer={
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 w-full">
             <button
-              onClick={() => {
-                window.print();
-              }}
-              className="px-3 py-2 border border-brandBorder-subtle rounded-xl text-xs font-bold text-forest-800 hover:bg-forest-50 flex items-center gap-1.5"
+              onClick={() => handleDownloadInvoice(selectedOrder)}
+              className="px-3.5 py-2 border border-brandBorder-subtle rounded-xl text-xs font-bold text-forest-800 hover:bg-forest-50 flex items-center gap-1.5 transition-colors"
             >
-              <Printer className="w-4 h-4 text-forest-600" />
-              <span>Print Invoice</span>
+              <Download className="w-4 h-4 text-forest-600" />
+              <span>Download PDF Invoice</span>
             </button>
             <div className="flex items-center gap-2">
               <Button
-                variant="outline"
+                variant="primary"
                 size="sm"
                 onClick={() => setIsAssignModalOpen(true)}
-                className="text-xs"
+                className="text-xs px-4"
               >
-                Assign / Reassign Rider
+                <Bike className="w-3.5 h-3.5 mr-1.5" />
+                <span>
+                  {selectedOrder?.assignedRider ? 'Reassign Rider' : 'Assign Delivery Rider'}
+                </span>
               </Button>
             </div>
           </div>
@@ -311,8 +525,12 @@ export const AdminOrdersPage = () => {
                 <p className="text-[10px] font-bold text-brandText-secondary uppercase">
                   Pharmacy Pickup QR Code
                 </p>
-                <p className="font-mono font-bold text-forest-800 mt-0.5">
-                  {selectedOrder.pickupQrCode}
+                <p className="font-mono font-bold text-forest-800 mt-0.5 break-all">
+                  {selectedOrder.pickupQrCode || (
+                    <span className="text-brandText-muted font-normal italic">
+                      Generated upon rider assignment
+                    </span>
+                  )}
                 </p>
               </div>
               <div>
@@ -344,7 +562,7 @@ export const AdminOrdersPage = () => {
                   <div>
                     <p>{selectedOrder.address}</p>
                     <p className="text-[11px] text-brandText-muted mt-0.5">
-                      Landmark: {selectedOrder.landmark} &bull; {selectedOrder.area}
+                      Area: {selectedOrder.area}
                     </p>
                   </div>
                 </div>
@@ -375,7 +593,7 @@ export const AdminOrdersPage = () => {
                       {selectedOrder.assignedRider.name}
                     </p>
                     <p className="text-[11px] text-brandText-secondary">
-                      {selectedOrder.assignedRider.vehicle}
+                      {selectedOrder.assignedRider.phone || 'Active Partner'}
                     </p>
                   </>
                 ) : (
@@ -390,84 +608,84 @@ export const AdminOrdersPage = () => {
                 Order Items ({selectedOrder.items.length})
               </h3>
               <div className="border border-brandBorder-subtle rounded-xl overflow-hidden divide-y divide-brandBorder-subtle text-xs">
-                {selectedOrder.items.map((item, idx) => (
-                  <div key={idx} className="p-3 flex items-center justify-between">
-                    <div>
-                      <p className="font-bold text-forest-900">{item.name}</p>
-                      <p className="text-[11px] text-brandText-muted">
-                        {item.form} &bull; Qty: {item.qty}
-                      </p>
+                {selectedOrder.items.length > 0 ? (
+                  selectedOrder.items.map((item, idx) => (
+                    <div key={idx} className="p-3 flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-forest-900">{item.name}</p>
+                        <p className="text-[11px] text-brandText-muted">
+                          {item.form} &bull; Qty: {item.qty}
+                        </p>
+                      </div>
+                      <span className="font-bold text-forest-800">
+                        ₹{(item.price * item.qty).toFixed(2)}
+                      </span>
                     </div>
-                    <span className="font-bold text-forest-800">
-                      ₹{(item.price * item.qty).toFixed(2)}
-                    </span>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-brandText-muted">
+                    Prescription items verified by pharmacy
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
-            {/* Bill Breakdown (Requirement 3) */}
-            {(() => {
-              const bill = calculateOrderBill({
-                items: selectedOrder.items,
-                customSubtotal: selectedOrder.totalMrp || selectedOrder.subtotal || selectedOrder.total,
-                deliveryFee: selectedOrder.deliveryFee,
-              });
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-heading font-bold text-xs text-forest-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <Receipt className="w-3.5 h-3.5 text-forest-600" />
-                      <span>Itemized Bill Breakdown</span>
-                    </h3>
-                    <span className="text-[10px] font-mono text-brandText-secondary uppercase">
-                      Rule Engine Verified
-                    </span>
-                  </div>
+            {/* Bill Breakdown */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="font-heading font-bold text-xs text-forest-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Receipt className="w-3.5 h-3.5 text-forest-600" />
+                  <span>Itemized Bill Breakdown</span>
+                </h3>
+                <span className="text-[10px] font-mono text-brandText-secondary uppercase">
+                  Rule Engine Verified
+                </span>
+              </div>
 
-                  <div className="p-3.5 rounded-2xl bg-surface-warm border border-brandBorder-subtle space-y-1.5 text-xs font-mono">
-                    <div className="flex justify-between text-brandText-secondary">
-                      <span>Total MRP / Subtotal:</span>
-                      <span>₹{bill.totalMrp.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-700 font-semibold">
-                      <span>
-                        {bill.isHighValueTier
-                          ? 'High-Value Tier Discount (18%):'
-                          : `Platform Discount (${bill.discountPercent}%):`}
-                      </span>
-                      <span>-₹{bill.discount.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-brandText-secondary">
-                      <span>Packaging Charges (Fixed):</span>
-                      <span>+₹{bill.packagingFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-brandText-secondary">
-                      <span>Platform Fee (Tiered):</span>
-                      <span>+₹{bill.platformFee.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-brandText-secondary">
-                      <span>Delivery Charges:</span>
-                      <span>{bill.deliveryFee > 0 ? `+₹${bill.deliveryFee.toFixed(2)}` : 'FREE'}</span>
-                    </div>
-                    {bill.cashback > 0 && (
-                      <div className="flex justify-between text-emerald-800 font-bold bg-emerald-100/70 p-1.5 rounded-lg text-[10px]">
-                        <span>Wallet Cashback (2% credited to patient):</span>
-                        <span>+₹{bill.cashback.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="border-t border-brandBorder-subtle pt-2 flex justify-between font-bold text-forest-900 text-sm">
-                      <span>NET AMOUNT PAYABLE:</span>
-                      <span className="text-forest-800">₹{bill.finalTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-[11px] text-brandText-secondary pt-1 border-t border-dashed border-brandBorder-subtle font-sans">
-                      <span>Payment Mode: <strong>{selectedOrder.paymentMethod || 'COD'}</strong></span>
-                      <span>Status: <strong className="text-forest-700">{selectedOrder.paymentStatus || 'PENDING'}</strong></span>
-                    </div>
-                  </div>
+              <div className="p-3.5 rounded-2xl bg-surface-warm border border-brandBorder-subtle space-y-1.5 text-xs font-mono">
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Total MRP / Subtotal:</span>
+                  <span>₹{selectedOrder.subtotal.toFixed(2)}</span>
                 </div>
-              );
-            })()}
+                {selectedOrder.discount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-semibold">
+                    <span>Discount Applied:</span>
+                    <span>-₹{selectedOrder.discount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Packaging Charges (Fixed):</span>
+                  <span>+₹{selectedOrder.packagingFee.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Platform Fee (Tiered):</span>
+                  <span>+₹{selectedOrder.platformFee.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-brandText-secondary">
+                  <span>Delivery Charges:</span>
+                  <span>
+                    {selectedOrder.deliveryFee > 0
+                      ? `+₹${selectedOrder.deliveryFee.toFixed(2)}`
+                      : 'FREE'}
+                  </span>
+                </div>
+                <div className="border-t border-brandBorder-subtle pt-2 flex justify-between font-bold text-forest-900 text-sm">
+                  <span>NET AMOUNT PAYABLE:</span>
+                  <span className="text-forest-800">₹{selectedOrder.total.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[11px] text-brandText-secondary pt-1 border-t border-dashed border-brandBorder-subtle font-sans">
+                  <span>
+                    Payment Mode: <strong>{selectedOrder.paymentMethod || 'COD'}</strong>
+                  </span>
+                  <span>
+                    Status:{' '}
+                    <strong className="text-forest-700">
+                      {selectedOrder.paymentStatus || 'PENDING'}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+            </div>
 
             {/* Order Timeline */}
             <div className="space-y-2">
@@ -515,50 +733,63 @@ export const AdminOrdersPage = () => {
                 Dispatch Order to Rider
               </h3>
               <p className="text-xs text-brandText-secondary mt-0.5">
-                Assign Order {selectedOrder?.id} to an active delivery partner in Kolkata.
+                Assign Order <span className="font-mono font-bold text-forest-800">{selectedOrder?.id}</span> to an active delivery partner registered in the database.
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-forest-800">Select Available Rider</label>
-              <div className="space-y-2 max-h-56 overflow-y-auto">
-                {riders.map((r) => (
-                  <label
-                    key={r.id}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-xs cursor-pointer transition-all ${
-                      selectedRiderId === r.id
-                        ? 'border-forest-600 bg-forest-50/80 shadow-sm'
-                        : 'border-brandBorder-subtle hover:bg-forest-50/30'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="radio"
-                        name="riderChoice"
-                        value={r.id}
-                        checked={selectedRiderId === r.id}
-                        onChange={() => setSelectedRiderId(r.id)}
-                        className="text-forest-600 focus:ring-forest-500"
-                      />
-                      <div>
-                        <p className="font-bold text-forest-900">{r.name}</p>
-                        <p className="text-[11px] text-brandText-secondary">
-                          {r.zone} &bull; {r.vehicle}
-                        </p>
-                      </div>
-                    </div>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        r.isOnline
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-gray-100 text-gray-600'
+              <label className="text-xs font-bold text-forest-800">
+                Select Available Rider ({riders.length} registered)
+              </label>
+
+              {riders.length === 0 ? (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-800 text-center space-y-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600 mx-auto" />
+                  <p className="font-bold">No registered riders found in database.</p>
+                  <p className="text-[11px]">
+                    Create rider accounts in the Admin Staff Management tab to dispatch deliveries.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {riders.map((r) => (
+                    <label
+                      key={r.id}
+                      className={`flex items-center justify-between p-3 rounded-xl border text-xs cursor-pointer transition-all ${
+                        selectedRiderId === r.id
+                          ? 'border-forest-600 bg-forest-50/80 shadow-sm'
+                          : 'border-brandBorder-subtle hover:bg-forest-50/30'
                       }`}
                     >
-                      {r.isOnline ? 'Online' : 'Offline'}
-                    </span>
-                  </label>
-                ))}
-              </div>
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="radio"
+                          name="riderChoice"
+                          value={r.id}
+                          checked={selectedRiderId === r.id}
+                          onChange={() => setSelectedRiderId(r.id)}
+                          className="text-forest-600 focus:ring-forest-500"
+                        />
+                        <div>
+                          <p className="font-bold text-forest-900">{r.name}</p>
+                          <p className="text-[11px] text-brandText-secondary">
+                            {r.phone} &bull; {r.vehicle}
+                          </p>
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          r.isOnline
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {r.isOnline ? 'Online' : 'Offline'}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -573,7 +804,8 @@ export const AdminOrdersPage = () => {
               <Button
                 variant="primary"
                 size="sm"
-                disabled={!selectedRiderId}
+                disabled={!selectedRiderId || isAssigning}
+                isLoading={isAssigning}
                 onClick={handleAssignRiderSubmit}
                 className="text-xs px-5"
               >

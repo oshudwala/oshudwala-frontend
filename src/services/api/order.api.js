@@ -55,6 +55,26 @@ export const orderApi = {
     const res = await apiClient.patch(`/orders/${orderId}/cancel`, { cancelReason });
     return res.data?.data || res.data;
   },
+
+  /**
+   * Download order invoice PDF
+   * GET /orders/:id/invoice.pdf
+   */
+  async downloadInvoicePdf(orderId, orderNumber = 'invoice') {
+    const res = await apiClient.get(`/orders/${orderId}/invoice.pdf`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Invoice-${orderNumber}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    return true;
+  },
 };
 
 export default orderApi;

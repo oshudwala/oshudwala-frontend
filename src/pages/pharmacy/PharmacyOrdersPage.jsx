@@ -25,6 +25,7 @@ import { useWorkspaceStore } from '../../services/workspace/useWorkspaceStore';
 import { useToast } from '../../context/ToastContext';
 import Button from '../../components/common/Button';
 import { orderApi } from '../../services/api/order.api';
+import { calculatePlatformFee } from '../../services/pricingRules';
 
 export const PharmacyOrdersPage = () => {
   const { orders, updateOrderStatus } = useWorkspaceStore();
@@ -266,7 +267,11 @@ export const PharmacyOrdersPage = () => {
     const subtotal = Number(order.subtotal ?? (order.totalMrp ?? 0));
     const discount = Number(order.discount ?? 0);
     const packagingFee = Number(order.packagingFee ?? 6);
-    const platformFee = Number(order.platformFee ?? 0);
+    const platformFee = Number(
+      order.platformFee !== undefined && Number(order.platformFee) > 0
+        ? order.platformFee
+        : calculatePlatformFee(subtotal)
+    );
     // Exact delivery fee rule: Pickup is ₹0; Home delivery is ₹30 if subtotal < ₹499, else ₹0
     const deliveryFee = Number(
       order.deliveryFee !== undefined
@@ -420,6 +425,20 @@ export const PharmacyOrdersPage = () => {
                 </h3>
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  leftIcon={FileText}
+                  onClick={() => {
+                    if (slipOrder?.id) {
+                      orderApi.downloadInvoicePdf(slipOrder.id, slipOrder.orderNumber)
+                        .catch(() => addToast('Failed to download invoice PDF', 'error'));
+                    }
+                  }}
+                  className="text-xs font-bold px-3 py-1.5 shadow-sm text-forest-800 border-forest-200 hover:bg-forest-50"
+                >
+                  Download PDF Bill
+                </Button>
                 <Button
                   variant="primary"
                   size="sm"
@@ -614,6 +633,12 @@ export const PharmacyOrdersPage = () => {
                     <span>Packaging Charges (Fixed):</span>
                     <span>₹{slipBill.packagingFee.toFixed(2)}</span>
                   </div>
+                  {slipBill.platformFee > 0 && (
+                    <div className="flex justify-between text-slate-600">
+                      <span>Platform Fee (Tiered):</span>
+                      <span>₹{slipBill.platformFee.toFixed(2)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-slate-600">
                     <span>Delivery Charges:</span>
                     <span className="font-bold">

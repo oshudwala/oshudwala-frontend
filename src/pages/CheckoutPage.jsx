@@ -24,7 +24,11 @@ import {
   Home,
   Briefcase,
   Banknote,
-  X
+  X,
+  Tag,
+  ChevronDown,
+  ChevronUp,
+  Sparkles
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +36,7 @@ import { useToast } from '../context/ToastContext';
 import { orderService } from '../services/orderService';
 import { prescriptionService } from '../services/prescriptionService';
 import { userApi } from '../services/api/user.api';
+import { couponApi } from '../services/api/coupon.api';
 import Button from '../components/common/Button';
 
 export const CheckoutPage = () => {
@@ -47,10 +52,75 @@ export const CheckoutPage = () => {
     discount,
     total,
     appliedCoupon,
+    couponError,
+    applyCoupon,
+    removeCoupon,
     clearCart,
     hasPrescriptionRequiredItems
   } = useCart();
   const { addToast } = useToast();
+
+  // ================= COUPONS & OFFERS STATE =================
+  const [couponInput, setCouponInput] = useState('');
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [isLoadingOffers, setIsLoadingOffers] = useState(false);
+  const [showOffers, setShowOffers] = useState(false);
+
+  // Fetch available active coupons for patient shop checkout
+  useEffect(() => {
+    let isMounted = true;
+    const fetchOffers = async () => {
+      setIsLoadingOffers(true);
+      try {
+        const list = await couponApi.getCoupons();
+        if (isMounted && Array.isArray(list)) {
+          const now = new Date();
+          const activeList = list.filter((c) => {
+            if (c.isActive === false) return false;
+            if (c.validTo && new Date(c.validTo) < now) return false;
+            return true;
+          });
+          setAvailableCoupons(activeList);
+        }
+      } catch (err) {
+        console.warn('Could not fetch coupons for checkout:', err);
+      } finally {
+        if (isMounted) setIsLoadingOffers(false);
+      }
+    };
+    fetchOffers();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleApplyCoupon = async (codeToApply) => {
+    const code = (codeToApply || couponInput || '').trim();
+    if (!code) {
+      addToast('Please enter a coupon code.', 'warning');
+      return;
+    }
+    setIsApplyingCoupon(true);
+    try {
+      const ok = await applyCoupon(code);
+      if (ok) {
+        addToast(`Coupon "${code.toUpperCase()}" applied successfully!`, 'success');
+        setCouponInput('');
+      } else {
+        // Error will be shown in the UI via couponError
+      }
+    } catch (err) {
+      addToast(err.message || 'Failed to apply coupon', 'error');
+    } finally {
+      setIsApplyingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    removeCoupon();
+    addToast('Coupon removed.', 'info');
+  };
 
   const [useWalletBalance, setUseWalletBalance] = useState(false);
   const walletBalance = Number(user?.walletBalance ?? user?.coins ?? user?.wallet ?? 0);
@@ -470,21 +540,25 @@ export const CheckoutPage = () => {
 
         activeAddress = `${newAddressForm.line1}${newAddressForm.line2 ? `, ${newAddressForm.line2}` : ''}${newAddressForm.landmark ? ` (Landmark: ${newAddressForm.landmark})` : ''}, ${newAddressForm.city}, ${newAddressForm.state} - ${newAddressForm.pincode}`;
 
-        // If user wants to save this address, save it
-        if (newAddressForm.saveAddress) {
-          try {
-            const saved = await handleSaveManualAddress();
-            if (saved?.id) addressId = saved.id;
-          } catch {}
+        // Ensure address is saved to backend to obtain a valid addressId
+        try {
+          const saved = await handleSaveManualAddress();
+          if (saved?.id) addressId = saved.id;
+        } catch (addrErr) {
+          console.warn('Address persistence error:', addrErr);
         }
       } else {
         const found = savedAddresses.find((a) => a.id === selectedAddressId);
-        if (!found) {
+        if (!found && savedAddresses.length > 0) {
+          addressId = savedAddresses[0].id;
+          activeAddress = savedAddresses[0].address;
+        } else if (found) {
+          activeAddress = found.address;
+        } else {
           addToast('Please select or add a delivery destination address.', 'error');
           setIsSubmitting(false);
           return;
         }
-        activeAddress = found.address;
       }
 
       // 2. Validate Prescription Requirement
@@ -512,18 +586,20 @@ export const CheckoutPage = () => {
           if (rxRes?.id) finalRxId = rxRes.id;
         } catch (uploadErr) {
           console.warn('Prescription background upload status:', uploadErr);
-          finalRxId = `RX-${Date.now().toString().slice(-6)}`;
         }
       }
+
+      const isUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+      const cleanPrescriptionId = isUuid(finalRxId) ? finalRxId : null;
 
       // 4. Place Order via orderService (COD Only, No delivery speed toggle)
       const res = await orderService.placeOrder({
         items: cartItems,
         address: activeAddress,
-        addressId: addressId || 'addr-current',
+        addressId: isUuid(addressId) ? addressId : undefined,
         paymentMethod: 'Cash on Delivery (COD)',
         deliverySlot: 'Standard Express (35-45 mins)',
-        prescriptionId: hasPrescriptionRequiredItems ? (finalRxId || 'RX-ATTACHED') : null,
+        prescriptionId: hasPrescriptionRequiredItems ? cleanPrescriptionId : null,
         prescriptionFileName: attachedPrescriptionFile ? attachedPrescriptionFile.name : null,
         couponCode: appliedCoupon?.code,
         subtotal,
@@ -542,39 +618,12 @@ export const CheckoutPage = () => {
         clearCart();
         addToast(`Order ${res.id} placed successfully with Cash on Delivery!`, 'success');
       } else {
-        // Fallback for seamless local verification
-        const localOrder = {
-          id: `ORD-${Date.now().toString().slice(-6)}`,
-          address: activeAddress,
-          pharmacy: { name: 'Oshud Wala Express Pharmacy (Nearest Hub)' },
-          deliveryOtp: Math.floor(1000 + Math.random() * 9000).toString(),
-          total: finalTotalPayable,
-          paymentMethod: 'Cash on Delivery (COD)',
-          itemsCount: cartItems.length,
-          prescriptionAttached: attachedPrescriptionFile ? attachedPrescriptionFile.name : null,
-          createdAt: new Date().toISOString(),
-        };
-        setPlacedOrderResult(localOrder);
-        clearCart();
-        addToast(`Order ${localOrder.id} placed successfully with Cash on Delivery!`, 'success');
+        throw new Error('Order placement could not be completed. Please try again.');
       }
     } catch (err) {
       console.warn('Order placement notice:', err);
-      // Ensure smooth confirmation with COD
-      const localOrder = {
-        id: `ORD-${Date.now().toString().slice(-6)}`,
-        address: newAddressForm.line1 ? `${newAddressForm.line1}, ${newAddressForm.city}` : 'Your Delivery Address',
-        pharmacy: { name: 'Oshud Wala Express Pharmacy (Nearest Hub)' },
-        deliveryOtp: Math.floor(1000 + Math.random() * 9000).toString(),
-        total: finalTotalPayable,
-        paymentMethod: 'Cash on Delivery (COD)',
-        itemsCount: cartItems.length,
-        prescriptionAttached: attachedPrescriptionFile ? attachedPrescriptionFile.name : null,
-        createdAt: new Date().toISOString(),
-      };
-      setPlacedOrderResult(localOrder);
-      clearCart();
-      addToast(`Order ${localOrder.id} confirmed with Cash on Delivery!`, 'success');
+      const errorMsg = err.message || 'Unable to place order. Please review your order details.';
+      addToast(errorMsg, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -1353,6 +1402,169 @@ export const CheckoutPage = () => {
                 </div>
               )}
 
+              {/* Promo & Coupon Offers Section */}
+              <div className="p-3.5 bg-forest-50/70 rounded-2xl border border-forest-200/80 space-y-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-bold text-forest-900">
+                    <Tag className="w-3.5 h-3.5 text-forest-700" />
+                    <span>Coupons & Offers</span>
+                  </label>
+                  {availableCoupons.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowOffers(!showOffers)}
+                      className="text-[11px] font-bold text-forest-700 hover:text-forest-900 flex items-center gap-1 hover:underline transition-all"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-500" />
+                      <span>{availableCoupons.length} Offers Available</span>
+                      {showOffers ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+                  )}
+                </div>
+
+                {appliedCoupon ? (
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-300 flex items-center justify-between animate-fadeIn">
+                    <div className="min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span className="font-mono font-black text-xs text-emerald-900 tracking-wider">
+                          {appliedCoupon.code}
+                        </span>
+                        <span className="text-[10px] bg-emerald-200 text-emerald-800 font-bold px-1.5 py-0.2 rounded">
+                          APPLIED
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                        {appliedCoupon.label || `Saved ₹${discount.toFixed(2)} on this order`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex-shrink-0"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleApplyCoupon();
+                          }
+                        }}
+                        placeholder="ENTER COUPON CODE"
+                        className="flex-1 px-3 py-1.5 text-xs font-mono font-bold uppercase rounded-xl border border-brandBorder-subtle bg-surface-pure focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-600 tracking-wider placeholder:tracking-normal placeholder:font-normal placeholder:text-brandText-muted"
+                      />
+                      <button
+                        type="button"
+                        disabled={!couponInput.trim() || isApplyingCoupon}
+                        onClick={() => handleApplyCoupon()}
+                        className="px-4 py-1.5 bg-forest-800 hover:bg-forest-900 disabled:bg-gray-200 disabled:text-gray-400 text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center min-w-[70px]"
+                      >
+                        {isApplyingCoupon ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Apply'}
+                      </button>
+                    </div>
+                    {couponError && (
+                      <div className="p-2 bg-red-50 rounded-xl border border-red-200 flex items-start gap-1.5 text-[11px] text-red-700 font-medium">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-red-600" />
+                        <span>{couponError}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Available Offers Drawer / Accordion */}
+                {showOffers && availableCoupons.length > 0 && (
+                  <div className="p-2 bg-surface-pure rounded-xl border border-forest-200 space-y-2 mt-2 max-h-56 overflow-y-auto">
+                    <p className="text-[10px] font-bold text-forest-800 uppercase tracking-wider flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-500" />
+                      Available Coupons for your order
+                    </p>
+                    <div className="space-y-2">
+                      {availableCoupons.map((coupon) => {
+                        const minOrderRupees = coupon.minOrderPaise ? coupon.minOrderPaise / 100 : 0;
+                        const isEligible = subtotal >= minOrderRupees;
+                        const diffRupees = minOrderRupees - subtotal;
+                        const isCurrentlyApplied = appliedCoupon?.code === coupon.code;
+
+                        let discountText = '';
+                        if (coupon.discountType === 'PERCENT') {
+                          discountText = `${coupon.discountValue}% OFF`;
+                          if (coupon.maxDiscountPaise) {
+                            discountText += ` (up to ₹${coupon.maxDiscountPaise / 100})`;
+                          }
+                        } else {
+                          const flatVal = coupon.discountValue > 500 ? coupon.discountValue / 100 : coupon.discountValue;
+                          discountText = `Flat ₹${flatVal} OFF`;
+                        }
+
+                        return (
+                          <div
+                            key={coupon.id || coupon.code}
+                            className={`p-2.5 rounded-xl border text-xs transition-all ${
+                              isCurrentlyApplied
+                                ? 'bg-emerald-50/80 border-emerald-400 shadow-sm'
+                                : isEligible
+                                ? 'bg-forest-50/40 border-forest-200 hover:border-forest-400'
+                                : 'bg-gray-50 border-gray-200 opacity-80'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono font-black text-xs text-forest-900 bg-forest-100 px-2 py-0.5 rounded border border-forest-300 tracking-wider">
+                                {coupon.code}
+                              </span>
+                              {isCurrentlyApplied ? (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                  <Check className="w-3 h-3" /> Applied
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={!isEligible || isApplyingCoupon}
+                                  onClick={() => handleApplyCoupon(coupon.code)}
+                                  className="text-[11px] font-bold px-2.5 py-0.5 rounded-lg bg-forest-800 hover:bg-forest-900 disabled:bg-gray-200 text-white disabled:text-gray-400 transition-colors"
+                                >
+                                  Apply
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-[11px] font-bold text-forest-900 mt-1">
+                              {discountText}
+                            </p>
+                            {coupon.description && (
+                              <p className="text-[10px] text-brandText-secondary line-clamp-1 mt-0.5">
+                                {coupon.description}
+                              </p>
+                            )}
+                            <div className="flex items-center justify-between text-[10px] text-brandText-secondary mt-1.5 pt-1 border-t border-brandBorder-subtle/40 font-mono">
+                              <span>
+                                {minOrderRupees > 0 ? `Min: ₹${minOrderRupees}` : 'No min order'}
+                              </span>
+                              {!isEligible && diffRupees > 0 ? (
+                                <span className="text-amber-700 font-bold font-sans">
+                                  Add ₹{Math.ceil(diffRupees)} more
+                                </span>
+                              ) : coupon.validTo ? (
+                                <span className="text-forest-700 font-sans">
+                                  Valid till {new Date(coupon.validTo).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Bill Breakdown */}
               <div className="pt-3 border-t border-brandBorder-subtle space-y-1.5 text-xs text-brandText-secondary font-mono">
                 <div className="flex justify-between">
@@ -1361,7 +1573,7 @@ export const CheckoutPage = () => {
                 </div>
                 {discount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-bold">
-                    <span>Discount {appliedCoupon ? `(${appliedCoupon.code})` : ''}</span>
+                    <span>Coupon Discount {appliedCoupon ? `(${appliedCoupon.code})` : ''}</span>
                     <span>-₹{discount.toFixed(2)}</span>
                   </div>
                 )}

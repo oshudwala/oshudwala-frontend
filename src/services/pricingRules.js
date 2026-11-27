@@ -25,11 +25,11 @@ export const PACKAGING_FEE = 6; // Fixed ₹6 packaging fee on every type of bil
 export function calculatePlatformFee(subtotal) {
   const amount = Number(subtotal) || 0;
   if (amount <= 0) return 0;
-  if (amount <= 999) return 9;
-  if (amount <= 1999) return 12;
-  if (amount <= 2999) return 15;
-  if (amount <= 3999) return 20;
-  if (amount <= 4999) return 25;
+  if (amount < 999) return 9;
+  if (amount < 1999) return 12;
+  if (amount < 2999) return 15;
+  if (amount < 3999) return 20;
+  if (amount < 5000) return 25;
   return 30; // ₹5000 onwards
 }
 
@@ -59,7 +59,45 @@ export function calculateDiscountsAndCashback(subtotal, coupon = null) {
     return { discount: 0, cashback: 0, discountPercent: 0, isHighValueTier: false };
   }
 
-  // Rule h: Above ₹4999 gets 18% direct discount + 2% wallet cashback
+  // Exact Coupon discount when coupon is applied
+  if (coupon) {
+    let discount = 0;
+    let pct = 0;
+
+    if (coupon.discountPaise !== undefined) {
+      discount = Number(coupon.discountPaise) / 100;
+      pct = amount > 0 ? Math.round((discount / amount) * 100) : 0;
+    } else if (coupon.discountRupees !== undefined) {
+      discount = Number(coupon.discountRupees);
+      pct = amount > 0 ? Math.round((discount / amount) * 100) : 0;
+    } else if (coupon.discountType === 'PERCENT' || coupon.type === 'percent') {
+      pct = Number(coupon.discountValue || coupon.value) || 0;
+      let calc = Math.round((amount * pct) / 100);
+      const maxDiscount = coupon.maxDiscountPaise
+        ? Number(coupon.maxDiscountPaise) / 100
+        : (coupon.maxDiscountRupees ? Number(coupon.maxDiscountRupees) : null);
+      if (maxDiscount !== null && calc > maxDiscount) {
+        calc = maxDiscount;
+      }
+      discount = calc;
+    } else if (coupon.discountType === 'FLAT' || coupon.type === 'fixed') {
+      const rawVal = Number(coupon.discountValue || coupon.value) || 0;
+      // Stored in paise (e.g. 5000 paise = ₹50) or in rupees
+      const flatRs = rawVal >= 100 && coupon.discountType === 'FLAT' ? rawVal / 100 : rawVal;
+      discount = flatRs;
+      pct = amount > 0 ? Math.round((discount / amount) * 100) : 0;
+    }
+
+    discount = Math.min(amount, Math.max(0, discount));
+    return {
+      discount,
+      cashback: 0,
+      discountPercent: pct,
+      isHighValueTier: false,
+    };
+  }
+
+  // High-value tier: Orders > ₹4999 get 18% direct discount + 2% wallet cashback
   if (amount > 4999) {
     const discount = Math.round((amount * 18) / 100);
     const cashback = Math.round((amount * 2) / 100);
@@ -71,24 +109,11 @@ export function calculateDiscountsAndCashback(subtotal, coupon = null) {
     };
   }
 
-  // Orders <= 4999: coupon discount if applied, otherwise default platform discount (15%)
-  if (coupon) {
-    if (coupon.type === 'percent') {
-      const discount = Math.round((amount * coupon.value) / 100);
-      return { discount, cashback: 0, discountPercent: coupon.value, isHighValueTier: false };
-    }
-    if (coupon.type === 'fixed') {
-      const discount = Math.min(amount, coupon.value);
-      return { discount, cashback: 0, discountPercent: Math.round((discount / amount) * 100), isHighValueTier: false };
-    }
-  }
-
-  // Default standard platform discount for orders (15%)
-  const defaultDiscount = Math.round((amount * 15) / 100);
+  // Standard orders without coupon: 0 discount
   return {
-    discount: defaultDiscount,
+    discount: 0,
     cashback: 0,
-    discountPercent: 15,
+    discountPercent: 0,
     isHighValueTier: false,
   };
 }

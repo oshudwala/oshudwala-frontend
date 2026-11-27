@@ -2483,12 +2483,24 @@ export const adminApi = {
         await apiClient.put(`/doctors/${id}`, {
           fullName: data.fullName,
           phone: data.phone,
+          email: data.email,
           registrationNumber: data.registrationNumber,
           qualifications: data.qualifications,
           experienceYears: Number(data.experienceYears) || 0,
           bio: data.bio || '',
           isFeatured: Boolean(data.isFeatured),
+          specializationIds: data.specializationIds || undefined,
         });
+
+        if (data.userId && data.userId !== id) {
+          try {
+            await apiClient.put(`/admin/users/${data.userId}`, {
+              fullName: data.fullName,
+              phone: data.phone,
+              email: data.email,
+            });
+          } catch {}
+        }
       }
     } catch (err) {
       console.warn('Backend update doctor notice:', err.message);
@@ -2542,6 +2554,9 @@ export const adminApi = {
     const hasClinicService = Boolean(data.hasClinicService);
     const hasMedicineService = data.hasMedicineService !== false;
 
+    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
+    const finalPharmacyImage = optimizedImage || data.imageUrl;
+
     try {
       if (id && id.includes('-')) {
         await Promise.allSettled([
@@ -2549,23 +2564,38 @@ export const adminApi = {
             hasClinicService,
             hasMedicineService,
           }),
-          ...(data.imageUrl ? [apiClient.put(`/pharmacies/${id}/media`, { logoUrl: data.imageUrl })] : []),
+          ...(finalPharmacyImage ? [apiClient.put(`/pharmacies/${id}/media`, { logoUrl: finalPharmacyImage })] : []),
           apiClient.put(`/pharmacies/${id}`, {
             name: data.name,
             phone: data.phone,
+            email: data.email,
+            licenseNumber: data.licenseNumber,
             line1: data.line1 || data.address,
             city: data.city,
             state: data.state,
             pincode: data.pincode,
+            hasClinicService,
+            hasMedicineService,
+            isFeatured: Boolean(data.isFeatured),
+            locationId: data.locationId || undefined,
+            logoUrl: finalPharmacyImage || undefined,
           }),
         ]);
+
+        if (data.userId && data.userId !== id) {
+          try {
+            await apiClient.put(`/admin/users/${data.userId}`, {
+              fullName: data.name,
+              phone: data.phone,
+              email: data.email,
+            });
+          } catch {}
+        }
       }
     } catch (err) {
       console.warn('Backend update pharmacy notice:', err.message);
     }
 
-    const optimizedImage = await ensureOptimizedImageUrl(data.imageUrl);
-    const finalPharmacyImage = optimizedImage || data.imageUrl;
     if (finalPharmacyImage && id) {
       try {
         const curSettings = await this.getSettings();
@@ -2628,12 +2658,28 @@ export const adminApi = {
           apiClient.put(`/pharmacies/${id}`, {
             name: data.name,
             phone: data.phone,
+            email: data.email,
             line1: data.line1 || data.address,
             city: data.city,
             state: data.state,
             pincode: data.pincode,
+            hasClinicService,
+            hasMedicineService,
+            isFeatured: Boolean(data.isFeatured),
+            locationId: data.locationId || undefined,
+            logoUrl: finalClinicImage || undefined,
           }),
         ]);
+
+        if (data.userId && data.userId !== id) {
+          try {
+            await apiClient.put(`/admin/users/${data.userId}`, {
+              fullName: data.name,
+              phone: data.phone,
+              email: data.email,
+            });
+          } catch {}
+        }
       }
     } catch (err) {
       console.warn('Backend update clinic notice:', err.message);
@@ -2687,9 +2733,29 @@ export const adminApi = {
       });
     }
     try {
-      await apiClient.put(`/admin/riders/${id}`, data);
+      await apiClient.put(`/admin/riders/${id}`, {
+        fullName: data.fullName,
+        phone: data.phone,
+        email: data.email,
+        vehicleType: data.vehicleType,
+        vehicleNumber: data.vehicleNumber,
+        licenseNumber: data.licenseNumber,
+        city: data.city,
+      });
     } catch (err) {
-      console.warn('Backend update rider notice:', err.message);
+      try {
+        await apiClient.put(`/riders/${id}`, {
+          fullName: data.fullName,
+          phone: data.phone,
+          email: data.email,
+          vehicleType: data.vehicleType,
+          vehicleNumber: data.vehicleNumber,
+          licenseNumber: data.licenseNumber,
+          city: data.city,
+        });
+      } catch (err2) {
+        console.warn('Backend update rider notice:', err2.message);
+      }
     }
     accountRegistry.updateAccount(id, {
       fullName: data.fullName,
@@ -2720,12 +2786,22 @@ export const adminApi = {
       });
     }
     try {
-      await apiClient.put(`/admin/users/${id}/access`, {
-        roleName: 'PATIENT',
+      await apiClient.put(`/admin/users/${id}`, {
+        fullName: data.fullName,
+        email: data.email,
+        phone: data.phone,
         status: data.status || 'ACTIVE',
+        roleName: data.roleName || data.role || undefined,
       });
     } catch (err) {
-      console.warn('Backend update user notice:', err.message);
+      try {
+        await apiClient.put(`/admin/users/${id}/access`, {
+          roleName: data.roleName || data.role || 'PATIENT',
+          status: data.status || 'ACTIVE',
+        });
+      } catch (err2) {
+        console.warn('Backend update user notice:', err2.message);
+      }
     }
     accountRegistry.updateAccount(id, {
       fullName: data.fullName,
