@@ -8,9 +8,8 @@ import {
   Plus,
   ShieldCheck,
   X,
-  Building2,
-  CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
@@ -30,13 +29,15 @@ export const LocationModal = () => {
     setIsLocationModalOpen,
     locations,
     isLoadingLocations,
+    isDetectingLocation,
+    locationError,
+    detectLiveLocation,
     searchLocations,
     refreshLocations,
     addLocation,
   } = useLocation();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLocatingGps, setIsLocatingGps] = useState(false);
   const [showAdminAdd, setShowAdminAdd] = useState(false);
   const [isSubmittingAdmin, setIsSubmittingAdmin] = useState(false);
   const [adminForm, setAdminForm] = useState({
@@ -52,76 +53,17 @@ export const LocationModal = () => {
     searchLocations(val);
   };
 
-  // GPS Current Location Detection
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      addToast('Geolocation is not supported by your browser.', 'error');
-      return;
+  // Live GPS Detection + Serviceability Check
+  const handleUseCurrentLocation = async () => {
+    const result = await detectLiveLocation();
+    if (result?.available && result?.location) {
+      addToast(`Location set to ${result.location.label} via GPS!`, 'success');
+    } else {
+      addToast(result?.message || 'This location is not available', 'error');
     }
-
-    setIsLocatingGps(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-            { headers: { 'Accept-Language': 'en' } }
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const addr = data.address || {};
-            const city = addr.city || addr.town || addr.village || 'Durgapur';
-            const area = addr.suburb || addr.neighbourhood || addr.road || 'Current Location';
-            const postcode = addr.postcode || '';
-
-            // Try to match with existing fetched active location by PIN or city/area
-            const matched = locations.find(
-              (l) => (postcode && l.pincode === postcode) ||
-                     (l.city.toLowerCase() === city.toLowerCase() && l.area?.toLowerCase().includes(area.toLowerCase()))
-            );
-
-            if (matched) {
-              changeLocation(matched);
-              addToast(`Location set to ${matched.label} via GPS!`, 'success');
-            } else {
-              // Custom live detected location
-              const detectedLoc = {
-                id: `loc-gps-${Date.now()}`,
-                city,
-                area,
-                state: addr.state || 'WB',
-                pincode: postcode || '713216',
-                defaultPostal: postcode || '713216',
-                label: `${area}, ${city}`,
-                latitude: lat,
-                longitude: lng,
-                isActive: true,
-              };
-              changeLocation(detectedLoc);
-              addToast(`GPS location (${detectedLoc.label}) set for express delivery!`, 'success');
-            }
-          }
-        } catch (err) {
-          addToast('Could not resolve street name. Select a listed location below.', 'info');
-        } finally {
-          setIsLocatingGps(false);
-        }
-      },
-      (err) => {
-        setIsLocatingGps(false);
-        addToast(
-          err.code === 1 ? 'Location permission was denied.' : 'Failed to retrieve GPS location.',
-          'error'
-        );
-      },
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
   };
 
   // SUPER_ADMIN: POST /locations
-  // Body: {"city": "Durgapur", "area": "City Centre", "state": "WB", "pincode": "713216"}
   const handleAdminCreateLocation = async (e) => {
     e.preventDefault();
     if (!adminForm.city || !adminForm.pincode) {
@@ -156,11 +98,12 @@ export const LocationModal = () => {
     }
   };
 
-  const filteredLocations = locations.filter((loc) =>
-    loc.label?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    loc.area?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    loc.city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    loc.pincode?.includes(searchTerm)
+  const filteredLocations = locations.filter(
+    (loc) =>
+      loc.label?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      loc.area?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      loc.city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      loc.pincode?.includes(searchTerm)
   );
 
   return (
@@ -179,12 +122,12 @@ export const LocationModal = () => {
         <button
           type="button"
           onClick={handleUseCurrentLocation}
-          disabled={isLocatingGps}
-          className="w-full flex items-center justify-between p-3 rounded-2xl bg-forest-50 hover:bg-forest-100/80 border border-forest-200/80 text-forest-900 transition-all group"
+          disabled={isDetectingLocation}
+          className="w-full flex items-center justify-between p-3 rounded-2xl bg-forest-50 hover:bg-forest-100/80 border border-forest-200/80 text-forest-900 transition-all group disabled:opacity-70"
         >
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-forest-600 text-white flex items-center justify-center shadow-xs">
-              {isLocatingGps ? (
+              {isDetectingLocation ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Navigation className="w-4 h-4" />
@@ -194,11 +137,13 @@ export const LocationModal = () => {
               <p className="text-xs font-bold text-forest-900 flex items-center gap-1.5">
                 <span>Use Current Location</span>
                 <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full">
-                  GPS
+                  Live GPS
                 </span>
               </p>
               <p className="text-[11px] text-brandText-secondary">
-                {isLocatingGps ? 'Acquiring GPS coordinates...' : 'Auto-detect your nearest delivery hub'}
+                {isDetectingLocation
+                  ? 'Detecting live GPS location...'
+                  : 'Auto-detect & check delivery availability'}
               </p>
             </div>
           </div>
@@ -206,6 +151,23 @@ export const LocationModal = () => {
             Detect &rarr;
           </span>
         </button>
+
+        {/* Unavailable / Error Banner when live detected location is not serviceable */}
+        {(locationError || selectedLocation?.isUnavailable) && (
+          <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 animate-fade-in">
+            <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <p className="font-extrabold text-rose-800">
+                {locationError || 'This location is not available'}
+              </p>
+              {selectedLocation?.label && selectedLocation?.isUnavailable && (
+                <p className="text-[11px] text-rose-700 mt-0.5">
+                  Detected: <strong>{selectedLocation.label}</strong>. Please select an active delivery hub below.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Search from GET /locations */}
         <div className="relative">
@@ -241,8 +203,10 @@ export const LocationModal = () => {
         {/* Location Cards List */}
         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
           {filteredLocations.map((loc) => {
-            const isSelected = selectedLocation?.id === loc.id ||
-              (selectedLocation?.pincode === loc.pincode && selectedLocation?.area === loc.area);
+            const isSelected =
+              !selectedLocation?.isUnavailable &&
+              (selectedLocation?.id === loc.id ||
+                (selectedLocation?.pincode === loc.pincode && selectedLocation?.area === loc.area));
 
             return (
               <button
@@ -265,7 +229,11 @@ export const LocationModal = () => {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-forest-900' : 'text-brandText-main'}`}>
+                      <p
+                        className={`text-xs sm:text-sm font-bold ${
+                          isSelected ? 'text-forest-900' : 'text-brandText-main'
+                        }`}
+                      >
                         {loc.label}
                       </p>
                       {loc.isActive && (
@@ -275,7 +243,9 @@ export const LocationModal = () => {
                       )}
                     </div>
                     <p className="text-[11px] text-brandText-secondary mt-0.5">
-                      {loc.area ? `${loc.area}, ` : ''}{loc.city}, {loc.state} &bull; PIN: <span className="font-mono font-medium">{loc.pincode}</span>
+                      {loc.area ? `${loc.area}, ` : ''}
+                      {loc.city}, {loc.state} &bull; PIN:{' '}
+                      <span className="font-mono font-medium">{loc.pincode}</span>
                     </p>
                   </div>
                 </div>
@@ -292,7 +262,7 @@ export const LocationModal = () => {
 
           {filteredLocations.length === 0 && !isLoadingLocations && (
             <div className="py-6 text-center text-brandText-secondary text-xs bg-surface-warm rounded-2xl border border-dashed border-brandBorder-subtle">
-              <p className="font-semibold text-forest-900">No active delivery locations found</p>
+              <p className="font-semibold text-forest-900">This location is not available</p>
               <p className="text-[11px] mt-1">Try another area name, road, or 6-digit PIN code</p>
             </div>
           )}
@@ -311,7 +281,10 @@ export const LocationModal = () => {
                 <span>Add Delivery Location (Super Admin)</span>
               </button>
             ) : (
-              <form onSubmit={handleAdminCreateLocation} className="p-3.5 bg-forest-50/50 rounded-2xl border border-forest-200 space-y-3 animate-fade-in">
+              <form
+                onSubmit={handleAdminCreateLocation}
+                className="p-3.5 bg-forest-50/50 rounded-2xl border border-forest-200 space-y-3 animate-fade-in"
+              >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-forest-900 flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4 text-forest-700" />
@@ -378,7 +351,9 @@ export const LocationModal = () => {
                       required
                       maxLength={6}
                       value={adminForm.pincode}
-                      onChange={(e) => setAdminForm({ ...adminForm, pincode: e.target.value.replace(/\D/g, '') })}
+                      onChange={(e) =>
+                        setAdminForm({ ...adminForm, pincode: e.target.value.replace(/\D/g, '') })
+                      }
                       placeholder="e.g. 713216"
                       className="w-full px-2.5 py-1.5 bg-white border border-brandBorder-subtle rounded-lg text-xs font-mono focus:outline-none focus:border-forest-600"
                     />

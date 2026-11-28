@@ -14,10 +14,8 @@ import {
   CheckCheck,
   FileText,
   Wallet,
-  AlertTriangle,
   Users,
-  ExternalLink,
-  Sparkles,
+  X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -53,7 +51,10 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
     try {
       const data = await notificationApi.getNotifications({}, user);
       const items = data.items || [];
-      const unread = typeof data.unreadCount === 'number' ? data.unreadCount : items.filter((n) => !n.isRead && !n.readAt).length;
+      const unread =
+        typeof data.unreadCount === 'number'
+          ? data.unreadCount
+          : items.filter((n) => !n.isRead && !n.readAt).length;
 
       setNotifications(items);
       setUnreadCount(unread);
@@ -125,7 +126,9 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
     if (!n.isRead && !n.readAt) {
       await notificationApi.markAsRead(n.id, user);
       setNotifications((prev) =>
-        prev.map((item) => (item.id === n.id ? { ...item, isRead: true, readAt: new Date().toISOString() } : item))
+        prev.map((item) =>
+          item.id === n.id ? { ...item, isRead: true, readAt: new Date().toISOString() } : item
+        )
       );
       setUnreadCount((c) => Math.max(0, c - 1));
       if (onUnreadCountChange) onUnreadCountChange(Math.max(0, unreadCount - 1));
@@ -151,7 +154,9 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
     e.stopPropagation();
     await notificationApi.deleteNotification(id, user);
     setNotifications((prev) => prev.filter((item) => item.id !== id));
-    const nextUnread = notifications.filter((item) => item.id !== id && !item.isRead && !item.readAt).length;
+    const nextUnread = notifications.filter(
+      (item) => item.id !== id && !item.isRead && !item.readAt
+    ).length;
     setUnreadCount(nextUnread);
     if (onUnreadCountChange) onUnreadCountChange(nextUnread);
   };
@@ -230,13 +235,23 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
     if (cat === 'QUEUE' || title.includes('queue') || title.includes('token')) {
       return { icon: Users, color: 'bg-teal-100 text-teal-800' };
     }
-    if (cat === 'WALLET' || title.includes('cash') || title.includes('remittance') || title.includes('incentive')) {
+    if (
+      cat === 'WALLET' ||
+      title.includes('cash') ||
+      title.includes('remittance') ||
+      title.includes('incentive')
+    ) {
       return { icon: Wallet, color: 'bg-purple-100 text-purple-800' };
     }
     if (cat === 'PHARMACY' || title.includes('stock')) {
       return { icon: Building2, color: 'bg-rose-100 text-rose-800' };
     }
-    if (cat === 'SECURITY' || cat === 'SYSTEM' || title.includes('review') || title.includes('clinic')) {
+    if (
+      cat === 'SECURITY' ||
+      cat === 'SYSTEM' ||
+      title.includes('review') ||
+      title.includes('clinic')
+    ) {
       return { icon: Shield, color: 'bg-indigo-100 text-indigo-800' };
     }
     return { icon: CheckCircle2, color: 'bg-forest-100 text-forest-800' };
@@ -257,52 +272,63 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
     }
   };
 
-  const displayedNotifications = activeTab === 'unread'
-    ? notifications.filter((n) => !n.isRead && !n.readAt)
-    : notifications;
+  const displayedNotifications =
+    activeTab === 'unread'
+      ? notifications.filter((n) => !n.isRead && !n.readAt)
+      : notifications;
 
   if (!isOpen) return null;
 
   return (
     <div
       ref={dropdownRef}
-      className="absolute right-0 mt-2 w-80 sm:w-[410px] bg-surface-pure rounded-3xl shadow-floating border border-brandBorder-subtle z-50 overflow-hidden animate-scale-up"
+      className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[410px] max-w-[calc(100vw-1.5rem)] bg-surface-pure rounded-3xl shadow-floating border border-brandBorder-subtle z-50 overflow-hidden animate-scale-up"
     >
       {/* Header with Role Title & Badge */}
-      <div className="p-4 border-b border-brandBorder-subtle bg-surface-warm/80 backdrop-blur-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-2xl ${profileHeader.color}`}>
+      <div className="p-3.5 sm:p-4 border-b border-brandBorder-subtle bg-surface-warm/80 backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`p-2 rounded-2xl flex-shrink-0 ${profileHeader.color}`}>
               <HeaderIcon className="w-4 h-4" />
             </div>
-            <div>
-              <h4 className="font-heading font-extrabold text-sm text-forest-900 leading-tight">
+            <div className="min-w-0">
+              <h4 className="font-heading font-extrabold text-sm text-forest-900 leading-tight truncate">
                 {profileHeader.title}
               </h4>
-              <p className="text-[11px] text-brandText-secondary font-medium">
+              <p className="text-[11px] text-brandText-secondary font-medium truncate">
                 {profileHeader.subtitle}
               </p>
             </div>
           </div>
 
-          {unreadCount > 0 ? (
-            <span className="text-[11px] font-bold text-white bg-rose-500 px-2.5 py-0.5 rounded-full shadow-2xs animate-pulse">
-              {unreadCount} New
-            </span>
-          ) : (
-            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-              Up to date
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {unreadCount > 0 ? (
+              <span className="text-[10px] sm:text-[11px] font-bold text-white bg-rose-500 px-2.5 py-0.5 rounded-full shadow-2xs animate-pulse">
+                {unreadCount} New
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                Up to date
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-full text-brandText-muted hover:text-forest-900 hover:bg-forest-100/70 transition-colors sm:hidden"
+              aria-label="Close notifications"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Filters and Quick Actions */}
-        <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-brandBorder-subtle/70 text-xs">
+        <div className="flex items-center justify-between gap-2 mt-3 pt-2.5 border-t border-brandBorder-subtle/70 text-xs">
           <div className="flex items-center gap-1 bg-surface-pure p-0.5 rounded-xl border border-brandBorder-subtle">
             <button
               type="button"
               onClick={() => setActiveTab('all')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all ${
                 activeTab === 'all'
                   ? 'bg-forest-800 text-white shadow-2xs'
                   : 'text-brandText-secondary hover:text-forest-900'
@@ -313,7 +339,7 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
             <button
               type="button"
               onClick={() => setActiveTab('unread')}
-              className={`px-3 py-1 rounded-lg font-bold transition-all ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all ${
                 activeTab === 'unread'
                   ? 'bg-forest-800 text-white shadow-2xs'
                   : 'text-brandText-secondary hover:text-forest-900'
@@ -323,7 +349,7 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
             </button>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -350,7 +376,7 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
       </div>
 
       {/* Notifications List */}
-      <div className="max-h-[380px] overflow-y-auto divide-y divide-brandBorder-subtle/70">
+      <div className="max-h-[60vh] sm:max-h-[380px] overflow-y-auto divide-y divide-brandBorder-subtle/70">
         {displayedNotifications.length > 0 ? (
           displayedNotifications.map((n) => {
             const isUnread = !n.isRead && !n.readAt;
@@ -376,7 +402,11 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
 
                 <div className="min-w-0 flex-1 pr-4">
                   <div className="flex items-center justify-between gap-2">
-                    <p className={`text-xs truncate ${isUnread ? 'font-extrabold text-forest-900' : 'font-semibold text-slate-800'}`}>
+                    <p
+                      className={`text-xs truncate ${
+                        isUnread ? 'font-extrabold text-forest-900' : 'font-semibold text-slate-800'
+                      }`}
+                    >
                       {n.title}
                     </p>
                     <span className="text-[10px] font-mono text-brandText-muted flex-shrink-0">
@@ -397,7 +427,7 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
                     <button
                       type="button"
                       onClick={(e) => handleDeleteItem(e, n.id)}
-                      className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 transition-opacity p-1"
+                      className="sm:opacity-0 sm:group-hover:opacity-100 text-slate-400 hover:text-rose-600 transition-opacity p-1"
                       title="Dismiss notification"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -410,7 +440,9 @@ export const NotificationsDropdown = ({ isOpen, onClose, onUnreadCountChange }) 
         ) : (
           <div className="p-8 text-center text-xs text-brandText-secondary space-y-2">
             <Bell className="w-8 h-8 mx-auto text-brandText-muted opacity-40 mb-1" />
-            <p className="font-bold text-forest-900">No {activeTab === 'unread' ? 'unread ' : ''}notifications</p>
+            <p className="font-bold text-forest-900">
+              No {activeTab === 'unread' ? 'unread ' : ''}notifications
+            </p>
             <p className="text-[11px] text-brandText-muted max-w-xs mx-auto">
               You are all caught up. Only original notifications from your account will appear here.
             </p>

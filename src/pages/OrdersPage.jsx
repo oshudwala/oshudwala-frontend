@@ -15,11 +15,14 @@ import {
   KeyRound,
   Receipt,
   Sparkles,
+  Printer,
 } from 'lucide-react';
 import { orderService } from '../services/orderService';
 import { useWorkspaceStore } from '../services/workspace/useWorkspaceStore';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import { printOrderInvoicePdf } from '../utils/orderInvoicePdf';
 import Button from '../components/common/Button';
 import StatusBadge from '../components/workspace/StatusBadge';
 
@@ -29,6 +32,7 @@ export const OrdersPage = () => {
   const navigate = useNavigate();
   const { addToCart } = useCart();
   const { addToast } = useToast();
+  const { user } = useAuth();
   const { orders: storeOrders } = useWorkspaceStore();
 
   const [activeTab, setActiveTab] = useState('active'); // 'active' | 'history'
@@ -102,6 +106,13 @@ export const OrdersPage = () => {
     });
     addToast('Items added to cart for re-ordering!', 'success');
     navigate('/cart');
+  };
+
+  const handlePrintPdf = (order) => {
+    const opened = printOrderInvoicePdf(order, user);
+    if (!opened) {
+      addToast('Please allow pop-ups in your browser to download/print the PDF invoice.', 'warning');
+    }
   };
 
   return (
@@ -374,8 +385,17 @@ export const OrdersPage = () => {
                     </div>
                   </div>
 
-                  {/* Reorder Button */}
-                  <div className="flex justify-end pt-2">
+                  {/* Action Buttons: Print PDF Invoice & Reorder */}
+                  <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      leftIcon={Printer}
+                      onClick={() => handlePrintPdf(order)}
+                      className="text-xs font-bold border-forest-200 text-forest-800 hover:bg-forest-50"
+                    >
+                      Print / Save PDF
+                    </Button>
                     <Button
                       variant="secondary"
                       size="sm"

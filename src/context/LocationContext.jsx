@@ -10,10 +10,25 @@ export const defaultLocations = [
   { id: 'loc-4', city: 'Kolkata', area: 'Park Street', state: 'West Bengal', pincode: '700016', label: 'Park Street, Kolkata', defaultPostal: '700016' },
 ];
 
+// Haversine distance in km (used when DB locations have latitude/longitude)
+const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
 export const LocationProvider = ({ children }) => {
   const [locations, setLocations] = useState(defaultLocations);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [isLocationServiceable, setIsLocationServiceable] = useState(true);
   const debounceTimerRef = useRef(null);
 
   const [selectedLocation, setSelectedLocation] = useState(() => {
@@ -66,12 +81,13 @@ export const LocationProvider = ({ children }) => {
         const formatted = items.map(formatLocation);
         setLocations(formatted);
 
-        // If currently selected location is mock or missing, link to active DB location
         setSelectedLocation((prev) => {
-          if (!prev || String(prev.id).startsWith('loc-')) {
-            const match = formatted.find(
-              (f) => f.pincode === prev?.pincode || (f.city === prev?.city && f.area === prev?.area)
-            ) || formatted[0];
+          if (!prev || prev.isUnavailable) return prev;
+          if (String(prev.id).startsWith('loc-')) {
+            const match =
+              formatted.find(
+                (f) => f.pincode === prev?.pincode || (f.city === prev?.city && f.area === prev?.area)
+              ) || formatted[0];
             return match;
           }
           const stillActive = formatted.find((f) => f.id === prev.id);
@@ -95,8 +111,121 @@ export const LocationProvider = ({ children }) => {
   useEffect(() => {
     if (selectedLocation) {
       localStorage.setItem('oshud_selected_location', JSON.stringify(selectedLocation));
+      setIsLocationServiceable(!selectedLocation.isUnavailable);
     }
   }, [selectedLocation]);
+
+  // Live GPS Detection + Serviceability Check
+  const detectLiveLocation = useCallback(async () => {
+    setLocationError('');
+
+    if (!navigator.geolocation) {
+      const msg = 'Live location is not supported by your browser.';
+      setLocationError(msg);
+      return { available: false, message: msg };
+    }
+
+    setIsDetectingLocation(true);
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { latitude, longitude } = position.coords;
+
+            // Reverse geocode via OpenStreetMap Nominatim
+            const geoRes = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&addressdetails=1`,
+              { headers: { 'Accept-Language': 'en' } }
+            );
+            const geoData = await geoRes.json();
+            const addr = geoData?.address || {};
+
+            const detectedPincode = String(addr.postcode || '').trim();
+            const detectedCity = String(
+              addr.city || addr.town || addr.village || addr.county || addr.state_district || ''
+            ).trim();
+            const detectedArea = String(
+              addr.suburb || addr.neighbourhood || addr.road || detectedCity || ''
+            ).trim();
+            const detectedState = String(addr.state || 'West Bengal').trim();
+
+            // Fetch latest active locations list from backend
+            const activeList = await fetchActiveLocations();
+            const pool = activeList && activeList.length > 0 ? activeList : locations;
+
+            // Match by Pincode -> City/Area -> Coordinate radius (<= 15km)
+            let matched =
+              (detectedPincode &&
+                pool.find((loc) => String(loc.pincode || '').trim() === detectedPincode)) ||
+              (detectedCity &&
+                pool.find(
+                  (loc) =>
+                    loc.city?.toLowerCase() === detectedCity.toLowerCase() &&
+                    (!detectedArea ||
+                      loc.area?.toLowerCase().includes(detectedArea.toLowerCase()) ||
+                      detectedArea.toLowerCase().includes(loc.area?.toLowerCase()))
+                )) ||
+              (detectedCity &&
+                pool.find((loc) => loc.city?.toLowerCase() === detectedCity.toLowerCase())) ||
+              pool.find(
+                (loc) =>
+                  loc.latitude != null &&
+                  loc.longitude != null &&
+                  getDistanceKm(latitude, longitude, Number(loc.latitude), Number(loc.longitude)) <= 15
+              );
+
+            if (matched) {
+              const resolvedLoc = { ...matched, latitude, longitude, isUnavailable: false };
+              setSelectedLocation(resolvedLoc);
+              setIsLocationServiceable(true);
+              setLocationError('');
+              setIsLocationModalOpen(false);
+              setIsDetectingLocation(false);
+              resolve({ available: true, location: resolvedLoc });
+            } else {
+              const displayPlace = [detectedArea, detectedCity, detectedPincode]
+                .filter(Boolean)
+                .join(', ');
+              const unavailableLoc = {
+                id: 'unavailable-live',
+                city: detectedCity || 'Unknown',
+                area: detectedArea || 'Current Location',
+                state: detectedState,
+                pincode: detectedPincode,
+                defaultPostal: detectedPincode,
+                label: displayPlace || 'Current Location',
+                latitude,
+                longitude,
+                isUnavailable: true,
+              };
+              const msg = 'This location is not available';
+              setSelectedLocation(unavailableLoc);
+              setIsLocationServiceable(false);
+              setLocationError(msg);
+              setIsDetectingLocation(false);
+              resolve({ available: false, message: msg, location: unavailableLoc });
+            }
+          } catch (err) {
+            const msg = 'Unable to verify your current location. Please select manually.';
+            setLocationError(msg);
+            setIsDetectingLocation(false);
+            resolve({ available: false, message: msg });
+          }
+        },
+        (err) => {
+          const msg =
+            err.code === 1
+              ? 'Location permission denied. Please allow location access in browser.'
+              : 'Could not detect your live location. Please try again.';
+          setLocationError(msg);
+          setIsDetectingLocation(false);
+          resolve({ available: false, message: msg });
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    });
+  }, [fetchActiveLocations, locations]);
 
   // Debounced search for locations
   const searchLocations = (query) => {
@@ -107,7 +236,9 @@ export const LocationProvider = ({ children }) => {
   };
 
   const changeLocation = (loc) => {
-    setSelectedLocation(loc);
+    setLocationError('');
+    setIsLocationServiceable(true);
+    setSelectedLocation({ ...loc, isUnavailable: false });
     setIsLocationModalOpen(false);
   };
 
@@ -119,6 +250,8 @@ export const LocationProvider = ({ children }) => {
     if (newLoc?.id) {
       const formatted = formatLocation(newLoc);
       setSelectedLocation(formatted);
+      setLocationError('');
+      setIsLocationServiceable(true);
     }
     return newLoc;
   };
@@ -132,6 +265,10 @@ export const LocationProvider = ({ children }) => {
         setIsLocationModalOpen,
         locations,
         isLoadingLocations,
+        isDetectingLocation,
+        locationError,
+        isLocationServiceable,
+        detectLiveLocation,
         searchLocations,
         refreshLocations: fetchActiveLocations,
         addLocation,
