@@ -6,6 +6,7 @@ import { CartProvider } from './context/CartContext';
 import { ToastProvider } from './context/ToastContext';
 import { LanguageProvider } from './context/LanguageContext';
 import AppRoutes from './routes/AppRoutes';
+import NotificationPermissionBanner from './components/common/NotificationPermissionBanner';
 
 export function App() {
   return (
@@ -16,6 +17,7 @@ export function App() {
             <CartProvider>
               <ToastProvider>
                 <AppRoutes />
+                <NotificationPermissionBanner />
               </ToastProvider>
             </CartProvider>
           </LanguageProvider>
